@@ -210,7 +210,7 @@ def _env_list(*names):
     return out
 
 PROVIDERS = (   # name, env key, base url, default models (override with SACH_<NAME>_MODELS; verify with scripts/check_llm.py)
-    ("groq", "GROQ_API_KEY", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile,llama-3.1-8b-instant"),
+    ("groq", "GROQ_API_KEY", "https://api.groq.com/openai/v1", "openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b"),
     ("openrouter", "OPENROUTER_API_KEY", "https://openrouter.ai/api/v1", "meta-llama/llama-3.3-70b-instruct:free,google/gemma-3-27b-it:free"),
     ("mistral", "MISTRAL_API_KEY", "https://api.mistral.ai/v1", "mistral-small-latest"),
 )
