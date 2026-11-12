@@ -333,10 +333,10 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="wrap"><a class="logo" href="/" title="Sach (Hindi सच) and nijam (Telugu నిజం) both mean “truth”">Sach<small><span class="sc">सच · నిజం · </span>truth</small></a>
 <nav aria-label="Main"><a href="/#check">Check</a><a class="opt" href="/#how">How it works</a><a class="opt" href="/#rules">Rules</a><a class="opt" href="/#faq">FAQ</a>
-<a href="/?view=ledger">Ledger</a><a class="opt" href="{REPO}" rel="noopener">GitHub</a><button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button></nav></div></header>
+<a href="/?view=ledger">Ledger</a><a class="opt" href="/?view=impact">Impact</a><a class="opt" href="{REPO}" rel="noopener">GitHub</a><button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button></nav></div></header>
 <main id="main">{body}</main>
 <footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Bharat Agentic-AI Hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
-<div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/#api">API</a>{tip_link}<br><a href="/?view=terms">Terms</a> · <a href="/?view=privacy">Privacy</a> · <a href="/?view=refund">Refunds</a> · <a href="/?view=contact">Contact</a></div></div></footer>
+<div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/?view=impact">Impact</a> · <a href="/#api">API</a>{tip_link}<br><a href="/?view=terms">Terms</a> · <a href="/?view=privacy">Privacy</a> · <a href="/?view=refund">Refunds</a> · <a href="/?view=contact">Contact</a></div></div></footer>
 <script>{JS}</script></body></html>""".encode()
 
 
