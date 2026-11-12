@@ -25,7 +25,7 @@ if llm is None:
 elif failed:
     mode = f"FALLBACK: the LLM failed on {failed} source judgements (quota/outage), so those sources fell back to the safe PIB-debunk-only check"
 else:
-    mode = "LLM stance (Gemini, with second-opinion consensus)"
+    mode = "LLM stance (free-tier models with automatic failover, plus second-opinion consensus)"
 L = ["# Evaluation" + (" (fallback mode)" if degraded else ""), "",
      *(["> **This run was degraded; it does not measure the full system.** It is saved separately and does not replace `docs/evaluation.md`.", ""] if degraded else []),
      f"Mode: {mode}; retrieval: {', '.join(type(x).__name__ for x in ret)}.", "",
