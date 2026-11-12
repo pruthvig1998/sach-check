@@ -9,10 +9,15 @@ def clean_text(t: str) -> str:
     """Strip control, zero-width and bidi-override characters (they break matching and can spoof display)."""
     return _INVISIBLE.sub("", t or "")
 
-_SPLIT = re.compile(r"(?<=[.!?।])\s+|\n+|\s*[|•▪●]\s*")
+# Sentence ends: . ! ? and the Devanagari/Bengali/Odia danda । and double danda ॥, the Urdu full stop ۔ and question mark ؟, the Meitei cheikhei ꯫
+_SPLIT = re.compile(r"(?<=[.!?।॥۔؟\uabeb])\s+|\n+|\s*[|•▪●]\s*")
 _BOILER = re.compile(r"forward|share (this|kar)|भेजें|शेयर|ఫార్వర్డ్|షేర్|please|plz|\bgroup\b|जल्दी|త్వరగా|"
                      r"good (morning|night|evening|afternoon)|blessed|have a (nice|great|good|happy)|namaste|सुप्रभात|शुभ|శుభోదయం|శుభ|"
                      r"\bclick\b|\blink\b|\bregister\b|\bhurry\b|\bapply now\b|\bvisit\b|\bdownload\b|\bsubscribe\b|\bwhatsapp\b|क्लिक|लिंक|रजिस्टर|క్లిక్|లింక్|నమోదు|"
+                     # NOT NATIVE-REVIEWED: share / forward / click / link in the other supported scripts (the same call-to-action filter as above)
+                     r"শেয়ার|ফরওয়ার্ড|ক্লিক|লিংক|शेअर|फॉरवर्ड|ஷேர்|ஃபார்வர்டு|கிளிக்|லிங்க்|"
+                     r"શેર કરો|ફોરવર્ડ|ક્લિક|લિંક|ਸ਼ੇਅਰ|ਫਾਰਵਰਡ|ਕਲਿੱਕ|ਲਿੰਕ|ଶେୟାର|ଫରୱାର୍ଡ|କ୍ଲିକ୍|ଲିଙ୍କ|"
+                     r"ಶೇರ್|ಫಾರ್ವರ್ಡ್|ಕ್ಲಿಕ್|ಲಿಂಕ್|ഷെയർ|ഫോർവേഡ്|ക്ലിക്ക്|ലിങ്ക്|شیئر|فارورڈ|کلک|لنک|"
                      r"^[\W\d_]*$", re.I)
 _DOMAINS = {
     "scheme": r"yojana|scheme|subsid|pension|ration|aadhaar|aadhar|pm[- ]?kisan|ayushman|rupees|₹|rs\.?\s?\d|lakh|crore|"
@@ -29,7 +34,9 @@ def classify_domain(text: str) -> str:
             return d
     return "other"
 
-_ABBR = re.compile(r"(\b(?:Rs|Re|Dr|Mr|Mrs|Ms|Shri|Smt|No|Nos|approx|vs|etc|St|Govt|Min)|రూ|రు|रु|रू)\.", re.I)
+# Abbreviation dots that must not end a sentence: Rs. and friends, plus the rupee abbreviation in Telugu, Hindi/Marathi, Tamil, Gujarati,
+# Kannada and Malayalam. Left out on purpose (not sure enough, or too ambiguous): Bengali "টা." (also the common classifier -টা), Odia, Punjabi.
+_ABBR = re.compile(r"(\b(?:Rs|Re|Dr|Mr|Mrs|Ms|Shri|Smt|No|Nos|approx|vs|etc|St|Govt|Min)|రూ|రు|रु|रू|ரூ|રૂ|ರೂ|രൂ)\.", re.I)
 _DOT = "\u2024"   # one-dot leader: stands in for the full stop of an abbreviation while we split sentences
 
 def extract_claims(forward: str, max_claims: int = 8) -> list[Claim]:

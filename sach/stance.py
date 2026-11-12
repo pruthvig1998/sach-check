@@ -6,6 +6,8 @@ With ANTHROPIC_API_KEY set, an LLM judges stance (see llm.py)."""
 from __future__ import annotations
 import re
 from .pib import DEBUNK_MARKERS
+from .lang import to_ascii_digits
+from .langwords import DEBUNK_RE, NEGATION_RE
 
 _STOP = set("the a an and or of to in on for is are was were be been this that it with as by at from will has have "
             "not no all your you we they their our new get free".split())
@@ -27,23 +29,27 @@ for _canon, _words in {
     for _w in _words.split():
         _SYN[_w] = _canon
 
+# Word characters: \w plus every Indic block (Devanagari, Bengali, Gurmukhi, Gujarati, Odia, Tamil, Telugu, Kannada, Malayalam: their vowel signs are
+# not \w), Meitei Mayek, and the Arabic-script marks (Urdu letters are already \w).
+_WORD = r"[\w\u0900-\u0D7F\uABC0-\uABFF\u064B-\u065F\u0670\u06D6-\u06ED]+"
+
 def tokens(text: str) -> set[str]:
-    text = re.sub(r"(?<=\d),(?=\d)", "", text.lower())            # 2,000 == 2000 (and Indian 1,20,579) before splitting into words
-    ws = [_SYN.get(w, w) for w in re.findall(r"[\w\u0900-\u097F\u0C00-\u0C7F]+", text)]
+    text = re.sub(r"(?<=\d),(?=\d)", "", to_ascii_digits(text).lower())   # native digits -> 0-9; 2,000 == 2000 (and Indian 1,20,579) before splitting into words
+    ws = [_SYN.get(w, w) for w in re.findall(_WORD, text)]
     ws = [w for w in ws if w not in _STOP and len(w) > 1]
     return {_stem(w) for w in ws}
 
 def numbers(text: str) -> set[str]:
     """Numbers with thousands separators removed, so 19,800 == 19800 and Indian 1,20,579 == 120579."""
-    return {n.replace(",", "") for n in re.findall(r"\d[\d,]*(?:\.\d+)?", text)}
+    return {n.replace(",", "") for n in re.findall(r"\d[\d,]*(?:\.\d+)?", to_ascii_digits(text))}      # 2000 == ২০০০ == २००० == ٢٠٠٠
 
 def overlap(claim: str, page: str) -> float:
     c = tokens(claim)
     return len(c & tokens(page)) / len(c) if c else 0.0
 
 _STRICT_DEBUNK = re.compile(r"\b(fake|false|misleading|baseless|fabricated|hoax|busts?|no such|not true)\b|"
-                            r"फर्जी|फ़र्ज़ी|झूठ|भ्रामक|నకిలీ|అబద్ధ|తప్పుడు", re.I)
-_NEGATION = re.compile(r"\b(no|not|never|nahi|nahin|none|without|cannot|won't|isn't|aren't)\b|नहीं|नही|न |లేదు|కాదు|లేవు", re.I)
+                            r"फर्जी|फ़र्ज़ी|झूठ|भ्रामक|నకిలీ|అబద్ధ|తప్పుడు|" + DEBUNK_RE, re.I)       # + the other supported languages (NOT NATIVE-REVIEWED, langwords.py)
+_NEGATION = re.compile(r"\b(no|not|never|nahi|nahin|none|without|cannot|won't|isn't|aren't)\b|नहीं|नही|न |లేదు|కాదు|లేవు|" + NEGATION_RE, re.I)
 
 _GENERIC = set("""government govt central union state cabinet approved approve approves approval announced announces announce declared declare
 declaring declares will give gives giving every all new scheme schemes yojana minister ministry department national india indian day days month months
@@ -122,7 +128,7 @@ def heuristic_stance(claim: str, title: str, text: str, tier: str) -> str:
 
 _DENIAL = re.compile(r"\b(fake|false|fictitious|fabricated|forged|fraudulent|scam|hoax|baseless|misleading|misinformation|"
                       r"no such|not true|not been issued|has not issued|denies|denied|clarif\w+|no proposal|not giving|"
-                      r"does not exist|incorrect)\b|फर्जी|झूठ|भ्रामक|నకిలీ|అబద్ధ|తప్పుడు", re.I)
+                      r"does not exist|incorrect)\b|फर्जी|झूठ|भ्रामक|నకిలీ|అబద్ధ|తప్పుడు|" + DEBUNK_RE, re.I)
 
 # A debunk page quotes the rumour in order to refute it. Such a page, or a quote that only REPORTS a claim, can never confirm it.
 _PAGE_DEBUNK = re.compile(r"\b(is|are|was|were) (completely |totally |entirely )?(fake|false|fictitious|fabricated|baseless|misleading|a hoax)\b|"

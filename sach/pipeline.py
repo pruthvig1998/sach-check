@@ -4,8 +4,8 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as _Timeout, wai
 from . import ledger
 from .card import render_card
 from .extract import clean_text, extract_claims
-from .i18n import LABEL, NOCLAIM, NOCLAIM_LABEL
-from .lang import detect_language
+from .i18n import NOCLAIM, NOCLAIM_LABEL, tr
+from .lang import SUPPORTED, detect_language
 from . import cache
 from .models import Claim, ClaimVerdict, UNVERIFIED, build_trace, overall_rule
 from .retrieve import canonical_key
@@ -79,10 +79,10 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float) -> C
 
 def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | None = None,
                   use_cache: bool = True) -> dict:
-    """reply_lang: 'en' | 'hi' | 'te' | 'tl' to force the reply language; None/'auto' matches the forward.
+    """reply_lang: any code in lang.SUPPORTED to force the reply language; None/'auto' matches the forward.
     The INPUT language always drives translation and search; only the reply changes."""
     text = clean_text(text)
-    rl = reply_lang if reply_lang in LABEL else None
+    rl = reply_lang if reply_lang in SUPPORTED else None
     use = cache.enabled(use_cache, log)
     if use:
         hit = cache.lookup(text, rl)
@@ -93,11 +93,11 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
             ledger.record_check(out, cached=True)
             return out
     lang = detect_language(text)                                   # input language
-    out_lang = reply_lang if reply_lang in LABEL else lang          # reply language
+    out_lang = reply_lang if reply_lang in SUPPORTED else lang          # reply language
     claims = extract_claims(text, max_claims=MAX_CLAIMS)
     if not claims:        # greeting, emoji, bare URL, numbers: nothing checkable. Say so instead of implying a search failed.
         out = {"language": out_lang, "input_language": lang, "verdict": "UNVERIFIED", "no_claims": True, "claims": [],
-               "checked_at": ledger.now(), "card": f"{NOCLAIM_LABEL[out_lang]}\n{NOCLAIM[out_lang]}"}
+               "checked_at": ledger.now(), "card": f"{tr(NOCLAIM_LABEL, out_lang)}\n{tr(NOCLAIM, out_lang)}"}
         if out_lang != "en":
             out["card_en"] = f"{NOCLAIM_LABEL['en']}\n{NOCLAIM['en']}"
         out["trace"] = {"claims_extracted": 0, "overall_rule": overall_rule([]), "degraded": False}

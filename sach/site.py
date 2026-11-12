@@ -3,7 +3,8 @@ from __future__ import annotations
 import html, json, os
 from urllib.parse import quote
 from . import ledger, pwa
-from .i18n import LABEL
+from .i18n import LABEL, text_lang
+from .lang import SUPPORTED, NAMES, NATIVE, RTL, INDIAN_LANGS, html_lang
 from .report import report_html, card_data_script
 from .ocr import OCR_BLOCK
 from .scamsigns import CSS as SIGNS_CSS, signs_html
@@ -13,7 +14,8 @@ from .voice import VOICE_JS, VOICE_CSS, voice_controls, progress_panel, listen_b
 REPO = "https://github.com/pruthvig1998/sach-check"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MAX_CHARS = 4000
-REPLY_LANGS = ("auto", "en", "hi", "te", "tl")
+REPLY_LANGS = ("auto",) + SUPPORTED      # "auto" (match the forward) or any language code in lang.SUPPORTED
+N_INDIAN = len(INDIAN_LANGS)          # "English and N Indian languages" in the hero and meta lines: always computed, never typed
 
 # Verified forwards (each checked against the live pipeline before being listed here).
 EXAMPLES = [
@@ -34,19 +36,25 @@ FAQ = [
     ("Why does it so often say “unverified”?", "Because guessing is worse. If we cannot find an official source that confirms or denies a claim, we say so plainly. “Unverified” is a respectable answer; wrongly calling something false is the one failure we refuse to ship."),
     ("What is the difference between false and misleading?", "False means an official source directly contradicts the claim. Misleading means the core fact is real, but the forward gets the numbers, dates or framing wrong, for example the right scheme with the wrong amount."),
     ("Can fact-checkers like BOOM or Newschecker decide a verdict?", "No. They are shown as secondary evidence and clearly labelled “not official”. Only PIB or an official source can make a claim false or true."),
-    ("Which languages work?", "English, Hindi, Telugu, Hinglish and Tinglish (Telugu in English letters). The verdict card is written in the language of the forward; Tinglish gets a Tinglish card. Hindi and Telugu wording is human-written but still awaiting native-speaker review."),
+    ("Which languages work?", f"English and {N_INDIAN} Indian languages: " + ", ".join(NAMES[c] for c in INDIAN_LANGS) + ", plus Hinglish and Tinglish (Telugu in English letters). The verdict card is written in the language of the forward, or in the language you pick under “Reply in”, with the English meaning beside it. The wording in every language except English is AI-written and still awaiting native-speaker review. The full list is in the Languages section above."),
     ("What happens to what I paste?", "Only the individual claims (not the whole message, and nothing about you) are added to the public ledger, with their verdicts and sources."),
     ("A verdict looks wrong. What do I do?", "Use the “Report a wrong verdict” link under any result. It opens a pre-filled issue on GitHub so we can look at the exact sources used."),
 ]
 
 FONTS = ("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,700;0,9..144,900;1,9..144,500"
          "&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500"
-         "&family=Noto+Sans+Devanagari:wght@400;600&family=Noto+Sans+Telugu:wght@400;600&display=swap")
+         "&family=Noto+Sans+Devanagari:wght@400;600&family=Noto+Sans+Telugu:wght@400;600"
+         # Other Indian scripts and Urdu. Google Fonts serves each as unicode-range subsets, so a browser downloads a face only when a
+         # character of that script is on the page: nothing extra is fetched for English, Hindi or Telugu pages.
+         "&family=Noto+Sans+Bengali:wght@400;600&family=Noto+Sans+Gurmukhi:wght@400;600&family=Noto+Sans+Gujarati:wght@400;600"
+         "&family=Noto+Sans+Oriya:wght@400;600&family=Noto+Sans+Tamil:wght@400;600&family=Noto+Sans+Kannada:wght@400;600"
+         "&family=Noto+Sans+Malayalam:wght@400;600&family=Noto+Sans+Meetei+Mayek:wght@400;600&family=Noto+Nastaliq+Urdu:wght@400;600&family=Noto+Sans+Arabic:wght@400;600"
+         "&display=swap")
 
 CSS = """
 :root{--paper:#f2ebdb;--paper2:#e9e0cb;--card:#fffdf6;--field:#fff;--ink:#17140f;--mute:#5d564a;--rule:#17140f;--dot:rgba(23,20,15,.06);
 --false:#c2321f;--true:#1f7a45;--mis:#c9780a;--unv:#6b6558;--wa:#dcf8c6;--wa-ink:#17140f;
---serif:'Fraunces','Noto Serif Devanagari',Georgia,serif;--sans:'Instrument Sans','Noto Sans Devanagari','Noto Sans Telugu',sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace}
+--serif:'Fraunces','Noto Serif Devanagari','Noto Sans Bengali','Noto Sans Gurmukhi','Noto Sans Gujarati','Noto Sans Oriya','Noto Sans Tamil','Noto Sans Kannada','Noto Sans Malayalam','Noto Sans Meetei Mayek','Noto Sans Arabic',Georgia,serif;--sans:'Instrument Sans','Noto Sans Devanagari','Noto Sans Telugu','Noto Sans Bengali','Noto Sans Gurmukhi','Noto Sans Gujarati','Noto Sans Oriya','Noto Sans Tamil','Noto Sans Kannada','Noto Sans Malayalam','Noto Sans Meetei Mayek','Noto Sans Arabic',sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]){--paper:#15130f;--paper2:#201d17;--card:#1b1914;--field:#12100d;--ink:#f1eadb;--mute:#a79f8d;--rule:#f1eadb;--dot:rgba(241,234,219,.06);
 --false:#ef6a55;--true:#4fbf80;--mis:#e8a23b;--unv:#9a9383;--wa:#1f4d32;--wa-ink:#eaf6ea}}
 :root[data-theme=dark]{--paper:#15130f;--paper2:#201d17;--card:#1b1914;--field:#12100d;--ink:#f1eadb;--mute:#a79f8d;--rule:#f1eadb;--dot:rgba(241,234,219,.06);
@@ -162,6 +170,16 @@ dialog img{display:block;background:#fff;padding:8px;border:2px solid var(--rule
 @media print{header.nav,footer,.chips,.row,#busy{display:none}body{background:#fff;color:#000}}
 """
 CSS += SIGNS_CSS
+# ---- Indian-language scripts, Urdu (right-to-left) and the "Reply in" selector (LANG work package) ----
+CSS += """
+#lang{min-height:44px;max-width:100%;min-width:0;flex:1 1 14em}
+.bubble[dir=rtl]{text-align:right}.bubble[dir=rtl] small{text-align:left}
+[lang=ur]{font-family:'Instrument Sans','Noto Nastaliq Urdu','Noto Sans Arabic',sans-serif;line-height:2.1}     /* Latin (PIB, URLs) in the site font, Urdu in Nastaliq */
+[lang=ml],[lang=kn],[lang=ta],[lang=or],[lang=te],[lang=bn],[lang=as],[lang=pa],[lang=gu],[lang=mni]{line-height:1.75}
+.langlist{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,140px),1fr));gap:8px 12px}
+.langlist li{border:1.5px solid var(--rule);background:var(--card);padding:8px 12px;border-radius:3px;display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline;min-width:0}
+.langlist b{font-weight:600;font-size:18px}.langlist span{font-size:13px;color:var(--mute)}
+"""
 
 JS = """
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
@@ -214,7 +232,7 @@ const q=$('#q');if(q){q.addEventListener('input',apply);apply()}
 """
 
 esc = html.escape
-LANG_NAME = {'en': 'English', 'hi': 'हिन्दी', 'te': 'తెలుగు', 'tl': 'Tinglish'}
+LANG_NAME = dict(NATIVE)      # the name of each language in its own script (shown in the result's 'reply language' line)
 
 # ---- Tip jar (UPI). Off unless SACH_UPI_ID is set in the environment; the ID is never stored in the repository. ----
 import re as _re
@@ -367,8 +385,8 @@ def eval_stats_html(d: dict | None) -> str:
             f'<a href="{esc(EVAL_DOC)}" rel="noopener">Full table with every claim and failure →</a></p>')
 
 
-DESC = "Paste a WhatsApp forward. Sach checks it against PIB and official sources and returns a cited verdict in English, Hindi or Telugu."
-OG_DESC = "Got a forward? Get the receipts. PIB-first fact-checking in English, Hindi and Telugu."
+DESC = f"Paste a WhatsApp forward. Sach checks it against PIB and official sources and returns a cited verdict in English and {N_INDIAN} Indian languages."
+OG_DESC = f"Got a forward? Get the receipts. PIB-first fact-checking in English and {N_INDIAN} Indian languages."
 OG_ALT = "Sach: a red S mark beside four tilted verdict stamps for true, false, misleading and unverified."
 ROBOTS_INDEX, ROBOTS_NOINDEX = "index,follow", "noindex,follow"
 
@@ -488,7 +506,9 @@ window.sachBindCard=function(){
 const dl=document.querySelector('#dl'),de=document.querySelector('#sach-card-data'),sh=document.querySelector('#img-share');
 if(!dl||!de)return;let D;try{D=JSON.parse(de.textContent)}catch(e){return}
 const W=1080,H=1350,P=84,FB={FALSE:'#c2321f',TRUE:'#1f7a45',MISLEADING:'#c9780a',UNVERIFIED:'#6b6558'};
-const SANS="'Instrument Sans','Noto Sans Devanagari','Noto Sans Telugu',sans-serif",SERIF="'Fraunces','Noto Sans Devanagari','Noto Sans Telugu',Georgia,serif",MONO="'IBM Plex Mono',ui-monospace,monospace";
+const SCR=['Noto Sans Devanagari','Noto Sans Telugu','Noto Sans Bengali','Noto Sans Gurmukhi','Noto Sans Gujarati','Noto Sans Oriya','Noto Sans Tamil','Noto Sans Kannada','Noto Sans Malayalam','Noto Sans Meetei Mayek','Noto Sans Arabic'],SCRQ=SCR.map(f=>"'"+f+"'").join(',');
+const SANS="'Instrument Sans',"+SCRQ+",sans-serif",SERIF="'Fraunces',"+SCRQ+",Georgia,serif",MONO="'IBM Plex Mono',ui-monospace,monospace";
+const isR=t=>/[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.test(t||'');
 const cv=(n,f)=>{try{return getComputedStyle(document.documentElement).getPropertyValue(n).trim()||f}catch(e){return f}};
 const gr=s=>window.Intl&&Intl.Segmenter?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(s),x=>x.segment):Array.from(s);
 const clip=(t,n)=>{t=(t||'').replace(/\s+/g,' ').trim();if(t.length<=n)return t;const i=t.lastIndexOf(' ',n-1);return t.slice(0,i>n/2?i:n-1).trim()+'…'};
@@ -498,7 +518,7 @@ if(ln)out.push(ln);return out}
 function fit(x,t,w,max){let L=wrap(x,t,w);if(L.length<=max)return L;L=L.slice(0,max);let l=L[max-1];
 while(l&&x.measureText(l+'…').width>w){const i=l.lastIndexOf(' ');l=i>0?l.slice(0,i):gr(l).slice(0,-1).join('')}L[max-1]=(l||'')+'…';return L}
 const fonts=async()=>{const all=D.word+D.why+D.claim+D.source;try{await Promise.race([Promise.all([document.fonts.load("900 100px Fraunces",D.word_en),document.fonts.load("400 40px 'Instrument Sans'",all),document.fonts.load("600 40px 'Instrument Sans'",all),
-document.fonts.load("600 40px 'Noto Sans Devanagari'",all),document.fonts.load("600 40px 'Noto Sans Telugu'",all),document.fonts.load("500 30px 'IBM Plex Mono'",'Sach')]),new Promise(r=>setTimeout(r,2500))])}catch(e){}};
+...SCR.map(f=>document.fonts.load("600 40px '"+f+"'",all)),document.fonts.load("500 30px 'IBM Plex Mono'",'Sach')]),new Promise(r=>setTimeout(r,2500))])}catch(e){}};
 async function render(){await fonts();const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d'),col=cv('--'+({MISLEADING:'mis',UNVERIFIED:'unv'}[D.verdict]||D.verdict.toLowerCase()),FB[D.verdict]||'#6b6558');
 const paper=cv('--paper','#f2ebdb'),ink=cv('--ink','#17140f'),mute=cv('--mute','#5d564a'),card=cv('--card','#fffdf6'),MW=W-2*P;x.textBaseline='alphabetic';
 x.fillStyle=paper;x.fillRect(0,0,W,H);x.fillStyle=col;x.fillRect(0,0,W,30);
@@ -507,9 +527,10 @@ let size=170,L;const bw=MW-70;for(;size>=60;size-=6){x.font='900 '+size+'px '+SE
 const lh=size*1.12,bh=L.length*lh+56,by=230;x.save();x.translate(W/2,by+bh/2);x.rotate(-0.045);x.strokeStyle=col;x.lineWidth=12;x.beginPath();x.roundRect?x.roundRect(-MW/2+10,-bh/2,MW-20,bh,22):x.rect(-MW/2+10,-bh/2,MW-20,bh);x.stroke();
 x.fillStyle=col;x.textAlign='center';x.font='900 '+size+'px '+SERIF;L.forEach((l,i)=>x.fillText(l,0,-bh/2+28+size*0.9+i*lh));x.restore();x.textAlign='left';
 let y=by+bh+(L.length>1?66:86);if(D.lang!=='en'&&D.word_en){x.fillStyle=col;x.font='500 40px '+MONO;x.textAlign='center';x.fillText('In English: '+D.word_en,W/2,y);x.textAlign='left';y+=L.length>1?80:96}
-x.fillStyle=ink;x.font='600 46px '+SANS;fit(x,D.why,MW,L.length>1?2:3).forEach(l=>{x.fillText(l,P,y);y+=64});y+=L.length>1?34:44;
+const put=(t,x0,w,yy)=>{if(isR(t)){x.direction='rtl';x.textAlign='right';x.fillText(t,x0+w,yy);x.direction='ltr';x.textAlign='left'}else x.fillText(t,x0,yy)};
+x.fillStyle=ink;x.font='600 46px '+SANS;fit(x,D.why,MW,L.length>1?2:3).forEach(l=>{put(l,P,MW,y);y+=64});y+=L.length>1?34:44;
 x.fillStyle=card;x.font='400 38px '+SANS;const ml=Math.max(2,Math.min(6,Math.floor((H-190-y-(D.source?86:0)-92)/54))),cl=fit(x,'“'+clip(D.claim,240)+'”',MW-48,ml),ch=cl.length*54+92;x.fillRect(P,y,MW,ch);x.fillStyle=col;x.fillRect(P,y,10,ch);
-x.fillStyle=mute;x.font='500 24px '+MONO;x.fillText('THE CLAIM',P+36,y+44);x.fillStyle=ink;x.font='400 38px '+SANS;cl.forEach((l,i)=>x.fillText(l,P+36,y+98+i*54));y+=ch+(ml>2?46:40);
+x.fillStyle=mute;x.font='500 24px '+MONO;x.fillText('THE CLAIM',P+36,y+44);x.fillStyle=ink;x.font='400 38px '+SANS;cl.forEach((l,i)=>put(l,P+36,MW-72,y+98+i*54));y+=ch+(ml>2?46:40);
 if(D.source){x.fillStyle=mute;x.font='400 32px '+SANS;fit(x,'Source: '+D.source+(D.date?' · '+D.date:''),MW,ml>2?2:1).forEach(l=>{x.fillText(l,P,y);y+=46})}
 x.fillStyle=ink;x.fillRect(P,H-190,MW,3);x.font='700 46px '+SANS;x.fillText('Checked with Sach',P,H-120);x.fillStyle=mute;x.font='500 32px '+MONO;fit(x,location.origin,MW,1).forEach(l=>x.fillText(l,P,H-68));
 return new Promise((ok,no)=>c.toBlob(b=>b?ok(b):no(new Error('blob')),'image/png'))}
@@ -525,11 +546,18 @@ document.addEventListener('sach:result',()=>{window.sachBindReport();window.sach
 """
 
 
+def card_attrs(code: str) -> str:
+    """lang (and dir="rtl" for Urdu) for the verdict-card bubble. The lang is the language the card text is really written in: a Manipuri
+    reply is the English card until a native speaker supplies Meitei wording (see i18n.ENGLISH_ONLY), so it is marked lang="en"."""
+    real = text_lang(code)
+    return f' lang="{html_lang(real)}"' + (' dir="rtl"' if real in RTL else "")
+
+
 def result_block(res: dict, chosen: bool = False) -> str:
     v = res["verdict"]
     if res.get("no_claims"):
         return (f'<div class="result" id="result"><div><div class="stamp big UNVERIFIED">No claim</div></div>'
-                f'<div><p class="kicker">Nothing to check</p><div class="bubble"><span id="cardtext">{esc(res["card"])}</span></div>'
+                f'<div><p class="kicker">Nothing to check</p><div class="bubble"{card_attrs(res.get("language", "en"))}><span id="cardtext">{esc(res["card"])}</span></div>'
                 f'<p class="note" style="margin-top:14px">Greetings, links, emoji and bare numbers are not factual claims. Paste the sentence that makes the claim.</p>'
                 f'{signs_html(res.get("warning_signs"), res.get("language", "en"))}</div></div>')
     rows = ""
@@ -571,7 +599,7 @@ def result_block(res: dict, chosen: bool = False) -> str:
              quote("Claim(s):\n" + "\n".join("- " + c["claim"]["text"] for c in res["claims"]) + f"\n\nSach said: {v}\nWhat is wrong:\n"))
     return f"""<div class="result" id="result"><div><div class="stamp big {v}">{LABEL['en'][v]}</div></div>
 <div><p class="kicker">Forward this card back to the group · reply language: {esc(LANG_NAME.get(res['language'], res['language'].upper()))}{' (your choice)' if chosen else ' (matched to the forward)'}</p>
-{cachednote}<div class="bubble"><span id="cardtext">{card}</span><small>Sach ✓✓</small></div>
+{cachednote}<div class="bubble"{card_attrs(res.get('language', 'en'))}><span id="cardtext">{card}</span><small dir="ltr">Sach ✓✓</small></div>
 <div class="row actions" role="group" aria-label="Share this verdict"><a class="btn wa" href="{esc(wa)}" rel="noopener">Share on WhatsApp</a><button class="btn ghost" id="copy" type="button">Copy card</button>
 <button class="btn ghost" id="dl" type="button">Download image</button><button class="btn ghost" id="img-share" type="button" hidden>Share image</button>{listen_buttons(res.get('language', 'en'), bool(res.get('card_en')))}</div>
 {signs_html(res.get("warning_signs"), res.get("language", "en"))}{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
@@ -579,10 +607,20 @@ def result_block(res: dict, chosen: bool = False) -> str:
 {tr}<p class="note" style="margin-top:14px">Checked {esc(res['checked_at'][:16].replace('T',' '))} UTC. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
 
 
+def lang_options(reply: str = "auto") -> str:
+    """The "Reply in" <select> options: Auto and English first, then the Indian languages by number of speakers (each as "native name · English
+    name"), then Tinglish. Every code in REPLY_LANGS appears exactly once."""
+    def opt(v, label):
+        return f'<option value="{v}"{" selected" if v == reply else ""}>{esc(label)}</option>'
+    def group(title, codes):
+        return f'<optgroup label="{esc(title)}">' + "".join(opt(c, f"{NATIVE[c]} · {NAMES[c]}") for c in codes) + "</optgroup>"
+    return (opt("auto", "Auto (match the forward)") + opt("en", "English") + group("Indian languages", INDIAN_LANGS)
+            + f'<optgroup label="Written in English letters">{opt("tl", "Tinglish · Telugu in English letters")}</optgroup>')
+
+
 def home(result: str = "", prefill: str = "", error: str = "", reply: str = "auto", noindex: bool = False) -> bytes:
     chips = "".join(f'<button type="button" class="chip" data-text="{esc(e["text"])}"><b class="{e["verdict"]}">{e["verdict"]}</b>{esc(e["title"])} · {e["lang"]}</button>' for e in EXAMPLES)
-    opts = "".join(f'<option value="{v}"{" selected" if v == reply else ""}>{esc(t)}</option>' for v, t in
-                   (("auto", "Auto (match the forward)"), ("en", "English"), ("hi", "हिन्दी"), ("te", "తెలుగు"), ("tl", "Tinglish")))
+    opts = lang_options(reply)
     ev = eval_display()                      # None = "Evaluation pending" (old format, degraded or missing file)
     stats = eval_stats_html(ev)
     cfg = tip_config()
@@ -636,7 +674,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <p class="kicker">A corrections desk for your family group</p>
 <h1>Got a forward? Get the <em>receipts.</em></h1>
 <p class="lede">Paste a WhatsApp message. Sach splits it into claims, checks each against PIB and official sources, and hands back a verdict card you can forward straight into the group, with the link.</p>
-<p class="scripts">English · हिन्दी · తెలుగు · Hinglish · Tinglish</p>
+<p class="scripts">English and {N_INDIAN} Indian languages · हिन्दी · বাংলা · తెలుగు · தமிழ் · मराठी · <a href="#languages">see all</a></p>
 <p class="note" style="margin-top:6px"><b>Sach</b> (सच, Hindi) and <b>nijam</b> (నిజం, Telugu) both mean <b>“truth”</b>.</p>
 <div class="row"><a class="btn" href="#check">Check a forward</a><a class="btn ghost" href="#how">How it works</a></div></div>
 <div class="stampbox" aria-hidden="true">{stamp('FALSE')}{stamp('TRUE')}{stamp('MISLEADING')}{stamp('UNVERIFIED')}</div></div></div>
@@ -646,7 +684,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <textarea id="text" name="text" placeholder="Paste the message here…" required maxlength="{MAX_CHARS}">{esc(prefill)}</textarea>{voice_controls()}
 {OCR_BLOCK}
 <div class="chips" role="group" aria-label="Try an example"><span class="note" style="align-self:center">Try:</span>{chips}</div>
-<div class="row"><label for="lang" class="note" style="margin-right:-4px">Reply in:</label><select id="lang" name="lang" aria-label="Reply language">{opts}</select>
+<div class="row"><label for="lang" class="note" style="margin-right:-4px">Reply in</label><select id="lang" name="lang">{opts}</select>
 <button class="btn" id="go" type="submit">Check it</button><button class="btn ghost" id="paste" type="button">Paste</button><button class="btn ghost" id="clear" type="button">Clear</button>
 <span id="count" aria-live="off"></span></div>
 <p class="note" style="margin:10px 0 0">Tip: press Ctrl/Cmd + Enter to check. Only the individual claims (never your name) go to the public ledger.</p>
@@ -682,12 +720,14 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <li>Hindi and Telugu verdict wording is human-written but still awaiting native-speaker review.</li></ul>
 <p class="note" style="margin:10px 0 0"><a href="{EVAL_DOC}" rel="noopener">Full table with every claim and failure →</a></p></div></div></section>
 
-{tip_section}<section id="faq"><div class="wrap"><h2>Questions</h2><p class="sub">Short, honest answers.</p>{faq}</div></section>
+{tip_section}<section id="languages"><div class="wrap"><h2>Languages</h2><p class="sub">English and {N_INDIAN} Indian languages, plus Tinglish. Paste a forward in any of them; pick “Reply in” to get the card in another. The wording is AI-written and awaiting native-speaker review.</p>
+<ul class="langlist">{"".join(f'<li lang="{html_lang(c)}"><b>{esc(NATIVE[c])}</b> <span>{esc(NAMES[c])}</span></li>' for c in SUPPORTED if c != "en")}</ul></div></section>
+<section id="faq"><div class="wrap"><h2>Questions</h2><p class="sub">Short, honest answers.</p>{faq}</div></section>
 
 <section id="api"><div class="wrap"><h2>Use it from code</h2><p class="sub">The same checker is available as JSON. Be kind: each call reads live sources and usually takes 10 to 30 seconds.</p>
 <pre class="code">curl -s -X POST "{esc(site_url())}/?format=json" \\
   --data-urlencode "text=Government is giving Rs 1000 under Corona Sahayata Yojana" \\
-  --data-urlencode "lang=te"      # optional reply language: auto (default), en, hi, te, tl
+  --data-urlencode "lang=te"      # optional reply language: auto (default) or one of {", ".join(SUPPORTED)}
 
 → {{"verdict":"FALSE","language":"en","card":"…","claims":[{{"verdict":"FALSE","citations":[{{"url":"https://pib.gov.in/…"}}]}}]}}</pre>
 <div class="row"><a class="btn ghost" href="/?view=ledger">Open the public ledger →</a><a class="btn ghost" href="{REPO}" rel="noopener">Source on GitHub →</a></div></div></section>"""

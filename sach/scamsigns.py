@@ -340,7 +340,7 @@ def signs_html(signs, lang: str = "en") -> str:
     Empty string when there is nothing to show. Everything user-controlled is escaped."""
     if not signs:
         return ""
-    lang = lang if lang in UI else "en"
+    lang = lang if lang in UI else "en"      # only en, hi and te are translated; every other language shows the English box (NOT translated yet)
     ordered = sorted((s for s in signs if isinstance(s, dict)), key=lambda s: 0 if s.get("severity") == "high" else 1)
     if not ordered:
         return ""
@@ -350,6 +350,6 @@ def signs_html(signs, lang: str = "en") -> str:
     if len(ordered) > VISIBLE:
         rest = (f'<details class="sg-all"><summary>{html.escape(ui["all"].format(n=len(ordered)))}</summary>'
                 f'<ul>{"".join(_item(s, tx) for s in ordered[VISIBLE:])}</ul></details>')
-    return (f'<section class="signs" id="signs" aria-labelledby="signs-h"><h3 id="signs-h">{html.escape(ui["title"])}</h3>'
+    return (f'<section class="signs" id="signs" lang="{lang}" aria-labelledby="signs-h"><h3 id="signs-h">{html.escape(ui["title"])}</h3>'
             f'<p class="sg-sum">{html.escape(_summary(ordered, lang))}</p><ul>{first}</ul>{rest}'
             f'<p class="sg-intro">{html.escape(ui["intro"])}</p><p class="sg-adv">{html.escape(ui["advice"])}</p></section>')

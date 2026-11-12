@@ -101,9 +101,11 @@ def test_spec_wording_is_exact():
 
 
 def test_card_language_map():
-    assert voice.CARD_BCP47 == {"en": "en-IN", "hi": "hi-IN", "te": "te-IN", "tl": "en-IN"}
-    assert {v for v, _ in voice.SPEAK_LANGS} == {"en-IN", "hi-IN", "te-IN"}
-    assert set(LABEL) >= set(voice.CARD_BCP47)
+    # the original four are unchanged; the LANG work package added the other languages (see tests/test_languages.py)
+    assert {k: voice.CARD_BCP47[k] for k in ("en", "hi", "te", "tl")} == {"en": "en-IN", "hi": "hi-IN", "te": "te-IN", "tl": "en-IN"}
+    assert {"en-IN", "hi-IN", "te-IN"} <= {v for v, _ in voice.SPEAK_LANGS}
+    from sach.i18n import ENGLISH_ONLY
+    assert set(LABEL) | ENGLISH_ONLY >= set(voice.CARD_BCP47)
 
 
 # ---- pure speech helpers (run in node when available) ----

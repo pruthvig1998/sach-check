@@ -8,6 +8,9 @@ Plain client-side JS only: no external scripts, fonts or services.
 import html
 import json
 
+from .i18n import text_lang
+from .lang import BCP47, NAMES, NATIVE
+
 esc = html.escape
 
 # Short UI strings in English, Hindi and Telugu. The server renders the English text; the script swaps in hi/te from the reply-language choice.
@@ -26,6 +29,8 @@ STRINGS = {
         "err_generic": "Speaking did not work this time. You can type the message instead.",
         "listen": "Listen", "listen_stop": "Stop reading", "listen_en": "Listen in English",
         "voice_hi": "This phone has no Hindi voice installed", "voice_te": "This phone has no Telugu voice installed",
+        "voice_missing": "This phone has no {lang} voice installed. Use “Listen in English” instead.",
+        "voice_try": "No {lang} voice was found on this phone. Sach will still try; if you hear nothing, use “Listen in English”.",
         "src_word": "Sources",
         "progress_title": "Checking your forward", "elapsed": "{n} seconds", "step_of": "Step {n} of 4",
         "stage1": "Splitting your message into claims", "stage2": "Searching PIB and official sources",
@@ -49,6 +54,8 @@ STRINGS = {
         "err_generic": "इस बार बोलकर लिखना नहीं चला। आप संदेश टाइप कर सकते हैं।",
         "listen": "सुनें", "listen_stop": "पढ़ना रोकें", "listen_en": "अंग्रेज़ी में सुनें",
         "voice_hi": "इस फ़ोन में हिन्दी आवाज़ नहीं है", "voice_te": "इस फ़ोन में तेलुगु आवाज़ नहीं है",
+        "voice_missing": "इस फ़ोन में {lang} आवाज़ नहीं है। इसकी जगह “अंग्रेज़ी में सुनें” दबाएँ।",
+        "voice_try": "इस फ़ोन में {lang} आवाज़ नहीं मिली। Sach फिर भी कोशिश करेगा; कुछ न सुनाई दे तो “अंग्रेज़ी में सुनें” दबाएँ।",
         "src_word": "स्रोत",
         "progress_title": "आपका फ़ॉरवर्ड जाँच रहे हैं", "elapsed": "{n} सेकंड", "step_of": "चरण {n} / 4",
         "stage1": "संदेश को अलग-अलग दावों में बाँटना", "stage2": "PIB और सरकारी स्रोतों में खोजना",
@@ -72,6 +79,8 @@ STRINGS = {
         "err_generic": "ఈసారి మాట్లాడి రాయడం పని చేయలేదు. మీరు సందేశాన్ని టైప్ చేయవచ్చు.",
         "listen": "వినండి", "listen_stop": "చదవడం ఆపండి", "listen_en": "ఇంగ్లీష్‌లో వినండి",
         "voice_hi": "ఈ ఫోన్‌లో హిందీ వాయిస్ లేదు", "voice_te": "ఈ ఫోన్‌లో తెలుగు వాయిస్ లేదు",
+        "voice_missing": "ఈ ఫోన్‌లో {lang} వాయిస్ లేదు. బదులుగా “ఇంగ్లీష్‌లో వినండి” నొక్కండి.",
+        "voice_try": "ఈ ఫోన్‌లో {lang} వాయిస్ కనిపించలేదు. Sach అయినా ప్రయత్నిస్తుంది; ఏమీ వినిపించకపోతే “ఇంగ్లీష్‌లో వినండి” నొక్కండి.",
         "src_word": "ఆధారాలు",
         "progress_title": "మీ ఫార్వర్డ్‌ను తనిఖీ చేస్తున్నాం", "elapsed": "{n} సెకన్లు", "step_of": "దశ {n} / 4",
         "stage1": "సందేశాన్ని వేర్వేరు వాదనలుగా విడగొట్టడం", "stage2": "PIB, అధికారిక వనరులలో వెతకడం",
@@ -84,8 +93,16 @@ STRINGS = {
     },
 }
 
-SPEAK_LANGS = (("en-IN", "English"), ("hi-IN", "हिन्दी"), ("te-IN", "తెలుగు"))
-CARD_BCP47 = {"en": "en-IN", "hi": "hi-IN", "te": "te-IN", "tl": "en-IN"}
+# Speak-in picker: the languages browsers' speech recognition commonly supports (Chrome/Android). Odia (or-IN) and Assamese (as-IN) are left
+# out because support could not be confirmed here; Konkani, Nepali and Manipuri have no common recognition support either. NOT verified on a device.
+SPEAK_CODES = ("en", "hi", "bn", "mr", "te", "ta", "gu", "ur", "kn", "ml", "pa")
+SPEAK_LANGS = tuple((BCP47[c], NATIVE[c]) for c in SPEAK_CODES)
+# Read-aloud tag per card language: every language is attempted. Tinglish is Latin letters, so the English voice reads it, not te-IN.
+CARD_BCP47 = dict(BCP47, tl="en-IN")
+# Languages for which a missing voice does not disable the Listen button (the phone may still do something with the tag).
+TRY_LISTEN = ("or", "as", "kok", "ne", "mni")
+# reply language -> the speak-in tag to preselect (Tinglish speakers dictate Telugu)
+REC_DEFAULT = {c: BCP47[c] for c in (*SPEAK_CODES, "tl")}
 
 
 def _t(k: str) -> str:
@@ -115,7 +132,7 @@ def progress_panel() -> str:
 
 def listen_buttons(card_lang: str, has_english: bool) -> str:
     """Listen controls for the result card. Hidden until the script finds speechSynthesis (and a usable voice)."""
-    lang = card_lang if card_lang in CARD_BCP47 else "en"
+    lang = text_lang(card_lang) if card_lang in CARD_BCP47 else "en"      # a Manipuri card is English text: read it with the English voice
     out = (f'<button class="btn ghost listen" type="button" hidden data-listen="card" data-lang="{esc(lang)}" aria-pressed="false">'
            f'<span aria-hidden="true">🔊</span> <span class="ll">{_t("listen")}</span></button>')
     if has_english and lang != "en":
@@ -129,10 +146,10 @@ SPEECH_JS = r"""
 function speechClean(s){
   s=String(s==null?'':s).replace(/\r/g,'').replace(/https?:\/\/\S+/gi,' ').replace(/\bwww\.\S+/gi,' ')
     .replace(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:gov\.in|nic\.in|ac\.in|in|com|org|net|int)\b(?:\/\S*)?/gi,' ');
-  s=s.split('\n').map(function(l){l=l.trim();return l&&!/[.!?।]$/.test(l)?l+'.':l}).join(' ');
-  s=s.replace(/[^\p{L}\p{M}\p{N}\s.,;:!?%₹'’()\/&।-]/gu,' ');
-  s=s.replace(/\s[-–—]+(?=\s*(?:[.,;:!?।]|$))/g,'');
-  return s.replace(/\s*\.(?:\s*\.)+/g,'.').replace(/\s+/g,' ').replace(/\s+([.,;:!?।])/g,'$1').trim();
+  s=s.split('\n').map(function(l){l=l.trim();return l&&!/[.!?।॥۔؟]$/.test(l)?l+'.':l}).join(' ');
+  s=s.replace(/[^\p{L}\p{M}\p{N}\s.,;:!?%₹'’()\/&।॥۔؟،-]/gu,' ');
+  s=s.replace(/\s[-–—]+(?=\s*(?:[.,;:!?।॥۔؟،]|$))/g,'');
+  return s.replace(/\s*\.(?:\s*\.)+/g,'.').replace(/\s+/g,' ').replace(/\s+([.,;:!?।॥۔؟،])/g,'$1').trim();
 }
 function buildSpeech(card,sources,srcWord){
   var body=speechClean(card),names=[];
@@ -140,7 +157,7 @@ function buildSpeech(card,sources,srcWord){
   return names.length?body+' '+srcWord+': '+names.join(', ')+'.':body;
 }
 function chunkSpeech(text,max){
-  max=max||180;var parts=String(text).match(/[^.!?।]+[.!?।]*\s*/g)||[],out=[],cur='';
+  max=max||180;var parts=String(text).match(/[^.!?।॥۔؟]+[.!?।॥۔؟]*\s*/g)||[],out=[],cur='';
   parts.forEach(function(p){
     while(p.length>max){var cut=p.lastIndexOf(' ',max);if(cut<1)cut=max;if(cur){out.push(cur);cur=''}out.push(p.slice(0,cut).trim());p=p.slice(cut)}
     if((cur+p).length>max&&cur){out.push(cur.trim());cur=p}else cur+=p;
@@ -155,7 +172,7 @@ function pickVoice(voices,bcp){
 """
 
 VOICE_JS_BODY = r"""
-const S=__STRINGS__,CARD={en:'en-IN',hi:'hi-IN',te:'te-IN',tl:'en-IN'};
+const S=__STRINGS__,CARD=__CARD__,NAMES=__NAMES__,REC=__REC__,TRY=__TRY__;
 const $=s=>document.querySelector(s),$$=s=>Array.from(document.querySelectorAll(s));
 const lg=$('#lang'),ta=$('#text'),form=$('#form'),box=$('#results');
 const reduced=()=>!!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -168,7 +185,7 @@ const say=(el,msg)=>{if(el)el.textContent=msg};
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const vbox=$('#voicebox'),spk=$('#speak'),vl=$('#vlang'),vst=$('#vstatus'),spl=$('#speaklabel');
 let rec=null,listening=false,vtouched=false;
-const defVlang=()=>({hi:'hi-IN',te:'te-IN'}[lg&&lg.value])||'en-IN';
+const defVlang=()=>REC[lg&&lg.value]||'en-IN';
 const spkUi=()=>{if(!spk)return;spk.setAttribute('aria-pressed',listening?'true':'false');spk.classList.toggle('on',listening);say(spl,listening?t('stop'):t('speak'))};
 const ERR={'not-allowed':'err_not_allowed','service-not-allowed':'err_not_allowed','no-speech':'err_no_speech','network':'err_network','audio-capture':'err_audio','language-not-supported':'err_lang'};
 function startSpeak(){
@@ -197,15 +214,17 @@ const cardLangOf=()=>{const c=$('.listen[data-listen=card]');return c?(c.dataset
 const lbl=(b,on)=>{const ll=b.querySelector('.ll');if(!ll)return;const en=b.dataset.listen==='en',l=en?'en':(b.dataset.lang||'en');
   ll.textContent=on?tr('listen_stop',l):(en?tr('listen_en',cardLangOf()):tr('listen',l))};
 const stopReading=()=>{if(SS)try{SS.cancel()}catch(_){}if(speakingBtn){const b=speakingBtn;speakingBtn=null;b.setAttribute('aria-pressed','false');lbl(b,false)}};
+const voiceMsg=(l,tryit)=>{const own=S[l]&&S[l]['voice_'+l];return own&&!tryit?own:tr(tryit?'voice_try':'voice_missing',l,{lang:NAMES[l]||l})};
 function refreshListen(){
   $$('.listen').forEach(b=>{
     if(!SS){b.hidden=true;return}
     b.hidden=false;const lang=b.dataset.lang||'en',note=b.parentNode.querySelector('.listen-note');
     if(b!==speakingBtn)lbl(b,false);
-    const voices=SS.getVoices?SS.getVoices():[],need=(lang==='hi'||lang==='te');
-    const missing=need&&voices.length>0&&!pickVoice(voices,CARD[lang]);       // an empty list means voices have not loaded yet: stay enabled, speak by lang only
+    const voices=SS.getVoices?SS.getVoices():[],need=(lang!=='en'&&lang!=='tl'),tryit=TRY.indexOf(lang)>=0;
+    const none=need&&voices.length>0&&!pickVoice(voices,CARD[lang]);          // an empty list means voices have not loaded yet: stay enabled, speak by lang only
+    const missing=none&&!tryit;                                               // a language we only attempt (Odia, Assamese, ...) stays enabled
     b.disabled=!!missing;b.setAttribute('aria-disabled',missing?'true':'false');
-    if(note&&b.dataset.listen==='card')note.textContent=missing?tr('voice_'+lang,lang):'';
+    if(note&&b.dataset.listen==='card')note.textContent=none?voiceMsg(lang,tryit):'';
   });
 }
 function bindListen(){
@@ -288,7 +307,12 @@ function applyLang(){
 if(lg){lg.addEventListener('change',applyLang)}applyLang();
 """
 
-VOICE_JS = "(()=>{'use strict';" + SPEECH_JS + VOICE_JS_BODY.replace("__STRINGS__", json.dumps(STRINGS, ensure_ascii=False).replace("</", "<\\/")) + "})();"
+def _js(obj) -> str:
+    return json.dumps(obj, ensure_ascii=False).replace("</", "<\\/")
+
+
+VOICE_JS = ("(()=>{'use strict';" + SPEECH_JS + VOICE_JS_BODY.replace("__STRINGS__", _js(STRINGS)).replace("__CARD__", _js(CARD_BCP47))
+            .replace("__NAMES__", _js(NAMES)).replace("__REC__", _js(REC_DEFAULT)).replace("__TRY__", _js(list(TRY_LISTEN))) + "})();")
 
 VOICE_CSS = """
 [hidden]{display:none!important}

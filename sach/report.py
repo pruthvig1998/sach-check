@@ -16,7 +16,7 @@ PIB Fact Check channels, verified from official PIB pages on 2026-11-12 (fetched
 from __future__ import annotations
 import html, json, unicodedata
 from urllib.parse import quote
-from .i18n import LABEL
+from .i18n import LABEL, text_lang
 from .models import AUTHORITATIVE
 from .siteurl import site_url
 
@@ -134,7 +134,7 @@ def card_data(res: dict) -> dict:
     claims = res.get("claims") or []
     cites = [x for c in claims for x in (c.get("citations") or [])]
     lead = ([x for x in cites if x.get("tier") in AUTHORITATIVE] or cites or [None])[0]
-    return {"verdict": v, "word": labels.get(v, v), "word_en": LABEL["en"].get(v, v), "lang": lang,
+    return {"verdict": v, "word": labels.get(v, v), "word_en": LABEL["en"].get(v, v), "lang": text_lang(lang),
             "why": lines[1] if len(lines) > 1 else "",
             "claim": _clean(claims[0]["claim"]["text"]) if claims else "",
             "source": _clean(lead.get("source", "")) if lead else "",
