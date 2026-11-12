@@ -185,3 +185,21 @@ def test_ledger_merges_seed_and_live(tmp_path, monkeypatch):
     L.append({"claim": "live"})
     assert [r["claim"] for r in L.load()] == ["seeded", "live"]
     assert [r["claim"] for r in json.load(open(L.path()))] == ["live"]   # seed never written into live file
+
+# --- web surface (imported + exercised, so syntax/routing breaks are caught)
+def test_web_routes_work_with_query_and_any_post_path():
+    import threading, urllib.request, urllib.parse
+    from http.server import ThreadingHTTPServer
+    from sach.web import Handler
+    Handler.retrievers = [FakeRetriever([])]; Handler.llm = None
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler); port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        get = lambda p: urllib.request.urlopen(f"http://127.0.0.1:{port}{p}").read().decode()
+        assert "Evidence ledger" in get("/?view=ledger") and "Public evidence ledger" in get("/?view=ledger")
+        assert get("/?view=health") == "ok"
+        body = urllib.parse.urlencode({"text": "Drinking hot water cures cancer in three days."}).encode()
+        out = urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}/api/index", body)).read().decode()
+        assert "UNVERIFIED" in out
+    finally:
+        srv.shutdown()

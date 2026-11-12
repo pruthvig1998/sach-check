@@ -2,7 +2,7 @@
 from __future__ import annotations
 import html, os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 from . import ledger
 from .llm import get_llm
 from .pipeline import check_forward
@@ -17,10 +17,10 @@ CSS = ("body{font-family:system-ui,sans-serif;max-width:720px;margin:2rem auto;p
 def page(body: str) -> bytes:
     return (f"<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
             f"<title>Sach</title><style>{CSS}</style><h1>Sach <small>सच · నిజం</small></h1>"
-            f"<nav><a href='/'>Check a forward</a> · <a href='/ledger'>Evidence ledger</a></nav>{body}").encode()
+            f"<nav><a href='/'>Check a forward</a> · <a href='/?view=ledger'>Evidence ledger</a></nav>{body}").encode()
 
 def form(prefill="") -> str:
-    return ("<form method=post action=/check><p>Paste a forward (English, हिन्दी, తెలుగు or Hinglish):</p>"
+    return ("<form method=post action=/><p>Paste a forward (English, हिन्दी, తెలుగు or Hinglish):</p>"
             f"<textarea name=text>{html.escape(prefill)}</textarea><p><button>Check</button></p></form>")
 
 def result_html(res: dict) -> str:
@@ -47,16 +47,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
 
     def do_GET(self):
-        if self.path == "/ledger":
+        u = urlparse(self.path)
+        view = parse_qs(u.query).get("view", [""])[0]
+        if view == "ledger" or u.path == "/ledger":      # query form survives Vercel's rewrite; path form works locally
             self._send(page(ledger_html()))
-        elif self.path == "/healthz":
+        elif view == "health" or u.path == "/healthz":
             self._send(b"ok", ctype="text/plain")
         else:
             self._send(page(form()))
 
     def do_POST(self):
-        if self.path != "/check":
-            return self._send(b"not found", 404, "text/plain")
+        # single POST route: accept any path (Vercel rewrites hide the original one)
         n = min(int(self.headers.get("Content-Length", 0)), 20000)
         text = parse_qs(self.rfile.read(n).decode("utf-8", "replace")).get("text", [""])[0].strip()
         if not text:
