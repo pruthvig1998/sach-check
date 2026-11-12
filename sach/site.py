@@ -568,6 +568,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <p class="note" style="margin:10px 0 0">Tip: press Ctrl/Cmd + Enter to check. Only the individual claims (never your name) go to the public ledger.</p>
 <div id="busy" role="status"><i></i>Reading PIB and official pages… this usually takes 10 to 30 seconds.</div>{progress_panel()}</form>
 <div id="results">{f'<p role="alert" style="color:var(--false);font-weight:600;margin-top:14px">{esc(error)}</p>' if error else ''}{result}</div></div></div></section>
+{pwa.HOME_HTML}
 
 <section id="how"><div class="wrap"><h2>How it works</h2><p class="sub">Four steps, all visible. Nothing is invented: a citation appears only if we actually fetched that page.</p>
 <div class="grid4">
