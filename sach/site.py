@@ -130,8 +130,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-bet
 .tipcard:hover{transform:rotate(-1.2deg) translateY(-2px);box-shadow:4px 4px 0 var(--rule)}
 .tipcard .amt{font-family:var(--serif);font-weight:900;font-size:34px;line-height:1;color:var(--false)}
 .tipcard b{display:block;margin-top:6px}.tipcard span.d{font-size:13px;color:var(--mute)}
-.tipbox{display:flex;flex-wrap:wrap;gap:22px;align-items:center}#upiqr{background:#fff;padding:10px;border:2px solid var(--rule);border-radius:4px;min-width:150px;min-height:150px;display:grid;place-items:center}
-#upiqr svg{display:block;width:150px;height:150px}.softtip{margin-top:12px;font-size:14px}.softtip a{font-weight:600}
+.tipbox{display:flex;flex-wrap:wrap;gap:22px;align-items:center}#upiqr{background:#fff;padding:8px;border:2px solid var(--rule);border-radius:4px;width:170px;height:170px;display:block}
+.tipmeter{margin:18px 0;display:flex;flex-wrap:wrap;gap:12px 18px;align-items:center}.tipmeter select{max-width:100%}.tipmeter b#fwamt{font-family:var(--serif);font-size:26px;color:var(--false)}.softtip{margin-top:12px;font-size:14px}.softtip a{font-weight:600}
 @media print{.tipcard,#upiqr{display:none}}
 @media print{header.nav,footer,.chips,.row,#busy{display:none}body{background:#fff;color:#000}}
 """
@@ -155,8 +155,7 @@ const dl=$('#dl');if(dl)dl.addEventListener('click',()=>{const lines=$('#cardtex
 const c=document.createElement('canvas');c.width=W;c.height=pad*2+lines.length*lh+60;const x=c.getContext('2d');x.fillStyle='#dcf8c6';x.fillRect(0,0,W,c.height);
 x.fillStyle='#17140f';x.font='600 30px sans-serif';let y=pad+30;lines.forEach(l=>{x.fillText(l.slice(0,70),pad,y);y+=lh});x.font='20px monospace';x.fillStyle='#555';x.fillText('Sach · checked '+new Date().toISOString().slice(0,10),pad,c.height-24);
 const a=document.createElement('a');a.download='sach-verdict.png';a.href=c.toDataURL('image/png');a.click()});
-const qb=$('#upiqr');if(qb){const draw=()=>{try{const q=qrcode(0,'M');q.addData(qb.dataset.link);q.make();qb.innerHTML=q.createSvgTag({cellSize:5,margin:0,scalable:true})}catch(e){qb.textContent='Use the amount buttons or copy the UPI ID'}};if(window.qrcode)draw();else window.addEventListener('load',draw)}
-const cu=$('#copyupi');if(cu)cu.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(cu.dataset.vpa);cu.textContent='UPI ID copied ✓'}catch(e){cu.textContent=cu.dataset.vpa}});
+const fw=$('#fw');if(fw){const go=$('#fwgo'),amt=$('#fwamt');const upd2=()=>{const n=parseInt(fw.value,10)||1,a=n*10;amt.textContent='₹'+a;go.href='/?go=tip&amt='+a;go.textContent='Chip in ₹'+a};fw.addEventListener('change',upd2);upd2()}
 const r=$('#result');if(r)r.scrollIntoView({behavior:'smooth',block:'start'});
 let fv='ALL';const apply=()=>{const q=($('#q')?.value||'').toLowerCase();let n=0;$$('tbody tr[data-v]').forEach(tr=>{const ok=(fv==='ALL'||tr.dataset.v===fv)&&tr.innerText.toLowerCase().includes(q);tr.style.display=ok?'':'none';if(ok)n++});const s=$('#shown');if(s)s.textContent=n+' shown';const e=$('#empty');if(e)e.style.display=n?'none':''};
 $$('.filters button').forEach(b=>b.addEventListener('click',()=>{$$('.filters button').forEach(x=>x.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true');fv=b.dataset.v;apply()}));
@@ -170,10 +169,33 @@ LANG_NAME = {'en': 'English', 'hi': 'हिन्दी', 'te': 'తెలుగ
 import re as _re
 from urllib.parse import quote as _q
 _VPA = _re.compile(r"^[A-Za-z0-9._-]{2,64}@[A-Za-z]{2,32}$")
-QR_SRC = "https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"
-QR_SRI = "sha512-ZDSPMa/JM1D+7kdg2x3BsruQ6T/JpJo3jWDWkCZsP+5yVyp1KfESqLI+7RqB5k24F7p2cV7i2YHh/890y6P6Sw=="   # verified against cdnjs
-TIP_TIERS = [(20, "A cutting chai", "keeps the lights on for one more check"), (50, "One forward verified", "pays for a few live checks"),
-             (100, "Ten checks", "a family group's worth of corrections"), (500, "A week of receipts", "funds the desk for a week")]
+TIP_TIERS = [(20, "A cutting chai", "powers one forward through the desk"), (50, "Samosa for the fact-checker", "debunking is hungry work"),
+             (100, "Bust ten forwards", "a whole family group's worth"), (500, "Sponsor a family-group intervention", "funds the desk for a week")]
+TIP_HEADLINES = ["Fact-checking is free. Chai is not.", "Be the “Verified” in your family group.", "This desk runs on free tiers and strong chai.",
+                 "WhatsApp University has no refund policy. We do the homework.", "Every tip is one fewer “Forwarded many times”.",
+                 "Your uncle's forwards can't be fixed. This desk can be funded."]
+TIP_QUIPS = {"FALSE": "Fake caught. Your family group thanks you.", "TRUE": "A real one! Celebrate with a samosa for the desk 🥟",
+             "MISLEADING": "Half-truths are twice the work. Chai helps."}
+PER_FORWARD = 10      # the "forwards saved" picker: ₹10 a forward
+
+def tip_headline() -> str:
+    import datetime
+    return TIP_HEADLINES[datetime.date.today().toordinal() % len(TIP_HEADLINES)]       # one per day: stable within a visit
+
+def tip_amount(raw) -> int | None:
+    """A tip amount from a query string: a whole number of rupees, 1..10000. Anything else means 'any amount'."""
+    raw = (raw or "").strip()
+    return int(raw) if raw.isascii() and raw.isdigit() and 1 <= int(raw) <= 10000 else None      # ASCII digits only (not "٥٠")
+
+def tip_qr_svg(cfg: dict) -> bytes | None:
+    """The 'pay any amount' QR, drawn on the server so the UPI address never appears in the page's HTML."""
+    try:
+        import io, segno
+        buf = io.BytesIO()
+        segno.make(upi_link(cfg, None, "Sach tip"), error="m").save(buf, kind="svg", scale=5, border=2, xmldecl=False, svgns=True)
+        return buf.getvalue()
+    except Exception:
+        return None
 
 def tip_config():
     """Returns {'vpa','name'} when SACH_UPI_ID is a valid UPI address, else None (tip jar hidden)."""
@@ -197,7 +219,6 @@ def eval_summary() -> dict:
 
 def layout(body: str, title="Sach — cited verdicts for viral forwards") -> bytes:
     cfg = tip_config()
-    qr_script = f'<script src="{QR_SRC}" integrity="{QR_SRI}" crossorigin="anonymous" referrerpolicy="no-referrer"></script>' if cfg and "id=\"upiqr\"" in body else ""
     tip_link = ' · <a href="/#tip">Tip jar ☕</a>' if cfg else ""
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)}</title><meta name="description" content="Paste a WhatsApp forward. Sach checks it against PIB and official sources and returns a cited verdict in English, Hindi or Telugu.">
@@ -212,7 +233,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <main id="main">{body}</main>
 <footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Bharat Agentic-AI Hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
 <div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/#api">API</a>{tip_link}</div></div></footer>
-{qr_script}<script>{JS}</script></body></html>""".encode()
+<script>{JS}</script></body></html>""".encode()
 
 
 def stamp(v: str, cls="") -> str:
@@ -237,8 +258,8 @@ def result_block(res: dict, chosen: bool = False) -> str:
                  f'<td><span class="tag {c["verdict"]}">{c["verdict"]}</span></td><td>{cites}</td></tr>')
     card = esc(res["card"])
     softtip = ""
-    if tip_config() and v in ("TRUE", "FALSE", "MISLEADING"):
-        softtip = '<p class="softtip note">Did this save you from a bad forward? <a href="/#tip">Chip in for the corrections desk ☕</a> (optional; never affects a verdict).</p>'
+    if tip_config() and v in TIP_QUIPS:
+        softtip = f'<p class="softtip note">{esc(TIP_QUIPS[v])} <a href="/#tip">Chip in for the corrections desk ☕</a> (optional; never affects a verdict).</p>'
     notice = ""
     if res.get("degraded"):
         notice = ('<div class="honest" style="margin-top:18px" role="status"><b>Limited mode.</b> Our AI checker is unavailable or at capacity right now, '
@@ -277,20 +298,22 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <div class="card"><div class="num g">{ev['abstained_wrong']}</div><p>wrong TRUE or FALSE verdicts</p></div>
 <div class="card"><div class="num" style="color:var(--ink)">{ev['abstained']}</div><p>times it said “unverified” instead of guessing</p></div></div>"""
     cfg = tip_config()
-    faq_items = list(FAQ) + ([("Do tips change what Sach says?", "Never. Verdicts come only from PIB and official sources and the rules above. Tips are optional, go straight from your UPI app to the person who runs Sach, and Sach never sees who paid or how much.")] if cfg else [])
+    faq_items = list(FAQ) + ([("Do tips change what Sach says?", "Never. Verdicts come only from PIB and official sources and the rules above. Tips are optional, go straight from your UPI app to the person who runs Sach, and Sach never sees who paid or how much. Your UPI app will show you who you are paying before you confirm, as it does for every UPI payment.")] if cfg else [])
     faq = "".join(f"<details><summary>{esc(q)}</summary><p>{esc(a)}</p></details>" for q, a in faq_items)
     tip_section = ""
     if cfg:
-        cards = "".join(f'<a class="tipcard" href="{esc(upi_link(cfg, amt, "Sach tip - " + title))}" rel="noopener"><div class="amt">₹{amt}</div><b>{esc(title)}</b><span class="d">{esc(desc)}</span></a>'
-                        for amt, title, desc in TIP_TIERS)
-        any_link = esc(upi_link(cfg))
-        tip_section = f'''<section id="tip"><div class="wrap"><h2>Chip in for the corrections desk ☕</h2>
-<p class="sub">Sach is free, has no ads and never will. Every check reads live government pages and uses a free AI quota. If a verdict saved you from forwarding something false, a small tip keeps the desk open. <b>Tips never change a verdict.</b></p>
+        cards = "".join(f'<a class="tipcard" href="/?go=tip&amp;amt={amt}" rel="nofollow"><div class="amt">₹{amt}</div><b>{esc(t)}</b><span class="d">{esc(d)}</span></a>'
+                        for amt, t, d in TIP_TIERS)
+        opts_fw = "".join(f'<option value="{n}"{" selected" if n == 3 else ""}>{n}</option>' for n in (1, 3, 5, 10, 20))
+        tip_section = f'''<section id="tip"><div class="wrap"><p class="kicker">Nobody asked, but…</p><h2>{esc(tip_headline())} ☕</h2>
+<p class="sub">Sach has no ads, no paywall and no “forward this to 10 groups or bad luck”. If a verdict saved you an awkward family-group moment, a small tip keeps the corrections coming. <b>Tips never change a verdict.</b></p>
+<div class="tipmeter card"><label for="fw">You were about to forward</label><select id="fw" aria-label="Forwards we stopped">{opts_fw}</select><span>messages. At ₹{PER_FORWARD} a forward that's <b id="fwamt">₹{3 * PER_FORWARD}</b></span>
+<a class="btn" id="fwgo" href="/?go=tip&amp;amt={3 * PER_FORWARD}" rel="nofollow" style="text-decoration:none">Chip in ₹{3 * PER_FORWARD}</a></div>
 <div class="tipgrid">{cards}</div>
-<div class="tipbox"><div id="upiqr" data-link="{any_link}" role="img" aria-label="UPI QR code for tips"></div>
+<div class="tipbox"><img id="upiqr" src="/?view=tipqr" width="170" height="170" alt="UPI QR code for tips">
 <div><p style="margin:0 0 8px"><b>On a phone:</b> tap an amount and your UPI app (GPay, PhonePe, Paytm…) opens with it filled in.<br><b>On a computer:</b> scan the QR code with any UPI app and enter any amount.</p>
-<div class="row"><a class="btn" href="{any_link}" style="text-decoration:none">Pay any amount</a><button class="btn ghost" id="copyupi" type="button" data-vpa="{esc(cfg['vpa'])}">Copy UPI ID</button></div>
-<p class="note" style="margin:10px 0 0">Payments go from your UPI app straight to {esc(cfg['vpa'])}. Sach does not see or store anything about them.</p></div></div></div></section>'''
+<div class="row"><a class="btn" href="/?go=tip" rel="nofollow" style="text-decoration:none">Pay any amount</a></div>
+<p class="note" style="margin:10px 0 0">Your UPI app shows who you're paying before you confirm; that's UPI's own safety check. Tips are optional and go straight from your app to the person who runs Sach. Sach never sees who paid or how much.</p></div></div></div></section>'''
     body = f"""<div class="wrap"><div class="hero"><div>
 <p class="kicker">A corrections desk for your family group</p>
 <h1>Got a forward? Get the <em>receipts.</em></h1>

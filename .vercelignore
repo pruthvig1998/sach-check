@@ -13,3 +13,4 @@ docs/
 data/ledger.json
 data/eval_ledger.json
 data/checkpoint_ledger.json
+.venv/

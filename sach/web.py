@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 from .llm import get_llm
 from .pipeline import check_forward
 from .retrieve import default_retrievers
-from .site import MAX_CHARS, REPLY_LANGS, home, ledger_page, result_block
+from .site import MAX_CHARS, REPLY_LANGS, home, ledger_page, result_block, tip_amount, tip_config, tip_qr_svg, upi_link
 
 RATE_LIMIT, RATE_WINDOW = 8, 60          # best-effort per-IP checks per minute (serverless instances don't share state)
 _hits: dict = {}
@@ -49,7 +49,30 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
-        view = parse_qs(u.query).get("view", [""])[0]
+        qs = parse_qs(u.query)
+        view = qs.get("view", [""])[0]
+        if qs.get("go", [""])[0] == "tip":                 # tip buttons: the UPI address lives only in this redirect, never in page HTML
+            cfg = tip_config()
+            if not cfg:
+                return self._send(b"not found", 404, "text/plain")
+            self.send_response(302)
+            self.send_header("Location", upi_link(cfg, tip_amount(qs.get("amt", [""])[0]), "Sach tip"))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Robots-Tag", "noindex, nofollow")
+            self.send_header("Content-Length", "0")
+            return self.end_headers()
+        if view == "tipqr":                                  # QR drawn on the server (pay-any-amount link)
+            cfg = tip_config()
+            svg = tip_qr_svg(cfg) if cfg else None
+            if not svg:
+                return self._send(b"not found", 404, "text/plain")
+            self.send_response(200)
+            self.send_header("Content-Type", "image/svg+xml")
+            self.send_header("Content-Length", str(len(svg)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Robots-Tag", "noindex")
+            self.end_headers()
+            return self.wfile.write(svg)
         if view == "ledger" or u.path == "/ledger":      # query form survives Vercel's rewrite; path form works locally
             self._send(ledger_page())
         elif view == "health" or u.path == "/healthz":

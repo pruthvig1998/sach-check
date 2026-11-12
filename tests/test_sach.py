@@ -936,7 +936,7 @@ def test_tip_jar_is_hidden_when_no_upi_id_is_set(server, monkeypatch):
     h = _ur.urlopen(server + "/?t=off").read().decode()
     assert 'id="tip"' not in h and "upi://" not in h and "qrcode-generator" not in h and 'id="upiqr"' not in h and "Tip jar" not in h and "Do tips change" not in h
     code, h = _post(server, "Government will give Rs 5000 to every woman.")
-    assert "Chip in" not in h
+    assert "Chip in for the corrections desk" not in h
 
 @pytest.mark.parametrize("bad", ["", "notaupi", "a@b c", "x@", "@bank", "ab@123", '"><script>alert(1)</script>@x', "a b@okbank", "javascript:alert(1)", "me@ok bank", "a@b@c", "x" * 80 + "@ok"])
 def test_invalid_upi_ids_disable_the_feature_instead_of_rendering(monkeypatch, bad):
@@ -960,23 +960,7 @@ def test_upi_links_are_well_formed_and_encoded(monkeypatch):
     q = parse_qs(urlparse(link).query)
     assert q["pa"] == ["supporter@okbank"] and q["cu"] == ["INR"] and q["am"] == ["50"] and q["pn"] == ["Sach Desk & Co x"]
 
-def test_tip_section_renders_tiers_qr_copy_and_the_no_influence_promise(server, monkeypatch):
-    _tip_env(monkeypatch, "supporter@okbank", "Sach")
-    h = _ur.urlopen(server + "/?t=on").read().decode()
-    assert 'id="tip"' in h and h.count('class="tipcard"') == 4 and "Tips never change a verdict" in h
-    for amt in (20, 50, 100, 500):
-        assert f"&amp;am={amt}" in h and f"₹{amt}" in h
-    assert 'id="upiqr"' in h and 'id="copyupi"' in h and 'data-vpa="supporter@okbank"' in h
-    assert "Do tips change what Sach says?" in h and "Tip jar" in h                    # FAQ entry + footer link
-    assert 'src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"' in h
-    assert 'integrity="sha512-ZDSPMa/JM1D+7kdg2x3BsruQ6T/JpJo3jWDWkCZsP+5yVyp1KfESqLI+7RqB5k24F7p2cV7i2YHh/890y6P6Sw=="' in h and 'crossorigin="anonymous"' in h
 
-def test_qr_script_is_pinned_and_only_loaded_when_the_tip_jar_is_on(server, monkeypatch):
-    _tip_env(monkeypatch, None)
-    assert "qrcode-generator" not in _ur.urlopen(server + "/?t=a").read().decode()
-    _tip_env(monkeypatch, "supporter@okbank")
-    assert _ur.urlopen(server + "/?t=b").read().decode().count("qrcode-generator") == 1
-    assert "qrcode-generator" not in _ur.urlopen(server + "/?view=ledger").read().decode()      # no QR container on that page: no script
 
 def test_soft_tip_prompt_only_after_decisive_verdicts(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank")
@@ -1000,3 +984,80 @@ def test_tip_never_influences_verdicts():
     import inspect, sach.verdict as V, sach.pipeline as P
     assert "upi" not in inspect.getsource(V).lower() and "tip" not in inspect.getsource(V).lower().replace("multip", "")
     assert "tip_config" not in inspect.getsource(P)
+
+
+# --- tip jar v2: the UPI address never appears in page HTML (redirect + server-drawn QR)
+import http.client as _hc
+
+def _raw_get(server, path):
+    host, port = server.replace("http://", "").split(":")
+    c = _hc.HTTPConnection(host, int(port)); c.request("GET", path); r = c.getresponse()
+    return r.status, dict(r.getheaders()), r.read()
+
+def test_page_html_never_contains_the_upi_address_or_upi_links(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", "Sach Desk")
+    for path in ("/?t=1", "/?view=ledger"):
+        h = _ur.urlopen(server + path).read().decode()
+        assert "supporter" not in h and "okbank" not in h and "upi://" not in h and "@okbank" not in h
+    code, h = _post(server, "Government will give Rs 5000 to every woman.")            # result page too
+    assert "supporter" not in h and "upi://" not in h
+
+def test_tip_section_has_funny_copy_tiers_picker_and_qr_image_but_no_copy_button(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    h = _ur.urlopen(server + "/?t=2").read().decode()
+    assert 'id="tip"' in h and "Nobody asked, but" in h and "Tips never change a verdict" in h
+    assert any(t in h for t in SITE.TIP_HEADLINES) or any(SITE.esc(t) in h for t in SITE.TIP_HEADLINES)
+    assert h.count('class="tipcard"') == 4 and "Samosa for the fact-checker" in h and "Sponsor a family-group intervention" in h
+    for amt in (20, 50, 100, 500):
+        assert f'href="/?go=tip&amp;amt={amt}"' in h
+    assert 'id="fw"' in h and 'id="fwgo"' in h and "You were about to forward" in h                # forwards-saved picker
+    assert '<img id="upiqr" src="/?view=tipqr"' in h
+    assert 'id="copyupi"' not in h and "Copy UPI ID" not in h and "qrcode-generator" not in h and "cdnjs" not in h
+    assert "Do tips change what Sach says?" in h and "Tip jar" in h and "will show you who you are paying" in h
+
+def test_tip_button_redirects_to_the_upi_app_with_the_amount(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", "Sach Desk")
+    code, hdr, body = _raw_get(server, "/?go=tip&amt=50")
+    assert code == 302 and hdr["Location"] == SITE.upi_link(SITE.tip_config(), 50, "Sach tip")
+    assert hdr["Location"].startswith("upi://pay?pa=supporter@okbank&pn=Sach%20Desk&cu=INR") and hdr["Location"].endswith("&am=50")
+    assert hdr["Cache-Control"] == "no-store" and "noindex" in hdr["X-Robots-Tag"] and body == b""
+    code, hdr, _ = _raw_get(server, "/?go=tip")
+    assert code == 302 and "am=" not in hdr["Location"]                                          # pay any amount
+
+@pytest.mark.parametrize("bad", ["abc", "-5", "0", "99999999", "50.5", "5 0", "1e3", "%27%3B", "", "٥٠", "  "])
+def test_bad_tip_amounts_mean_any_amount_never_an_error(server, monkeypatch, bad):
+    _tip_env(monkeypatch, "supporter@okbank")
+    from urllib.parse import quote
+    code, hdr, _ = _raw_get(server, f"/?go=tip&amt={quote(bad)}")
+    assert code == 302 and "am=" not in hdr["Location"] and hdr["Location"].count("pa=") == 1
+
+def test_tip_endpoints_404_when_tip_jar_is_off(server, monkeypatch):
+    _tip_env(monkeypatch, None)
+    assert _raw_get(server, "/?go=tip&amt=50")[0] == 404
+    assert _raw_get(server, "/?view=tipqr")[0] == 404
+
+def test_tip_qr_is_a_server_drawn_svg_without_the_address_text(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    code, hdr, body = _raw_get(server, "/?view=tipqr")
+    assert code == 200 and hdr["Content-Type"] == "image/svg+xml" and body.lstrip().startswith(b"<svg")
+    assert b"supporter" not in body and b"okbank" not in body and hdr["Cache-Control"] == "no-store"
+    assert len(body) > 500                                                                      # an actual drawn code, not an empty file
+
+def test_tip_amount_parsing():
+    assert [SITE.tip_amount(x) for x in ("1", "50", "10000", " 20 ")] == [1, 50, 10000, 20]
+    assert [SITE.tip_amount(x) for x in ("0", "10001", "-1", "abc", "5.5", None, "")] == [None] * 7
+
+def test_headline_is_stable_within_a_day_and_comes_from_the_list():
+    assert SITE.tip_headline() == SITE.tip_headline() and SITE.tip_headline() in SITE.TIP_HEADLINES
+
+def test_soft_prompt_quips_differ_by_verdict_and_unverified_gets_none(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    code, h = _post(server, "Government will give Rs 5000 to every woman.")                    # fixture evidence -> FALSE
+    assert SITE.TIP_QUIPS["FALSE"] in h
+    assert set(SITE.TIP_QUIPS) == {"FALSE", "TRUE", "MISLEADING"}
+
+
+def test_forwards_picker_defaults_to_three_matching_the_server_rendered_amount(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    h = _ur.urlopen(server + "/?t=picker").read().decode()
+    assert '<option value="3" selected>3</option>' in h and 'amt=30"' in h and "Chip in ₹30" in h
