@@ -4,6 +4,7 @@ import html, json, os
 from urllib.parse import quote
 from . import ledger
 from .i18n import LABEL
+from .report import report_html, card_data_script
 
 REPO = "https://github.com/pruthvig1998/sach-check"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -171,10 +172,7 @@ const f=$('#form');if(f)f.addEventListener('submit',e=>{if(!ta.value.trim()){e.p
 window.addEventListener('pageshow',()=>{const g=$('#go');if(g){g.disabled=false;g.textContent='Check it';$('#busy').classList.remove('on')}});
 const cp=$('#copy');if(cp)cp.addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('#cardtext').innerText);cp.textContent='Copied ✓'}catch(e){const r=document.createRange();r.selectNodeContents($('#cardtext'));getSelection().removeAllRanges();getSelection().addRange(r);cp.textContent='Selected — press Ctrl/Cmd+C'}});
 const c2=$('#copy2');if(c2)c2.addEventListener('click',async()=>{const t=$('#cardtext').innerText+'\\n\\n—— English ——\\n'+$('#cardtext_en').innerText;try{await navigator.clipboard.writeText(t);c2.textContent='Copied ✓'}catch(e){c2.textContent='Select & copy manually'}});
-const dl=$('#dl');if(dl)dl.addEventListener('click',()=>{const lines=$('#cardtext').innerText.split('\\n'),W=900,pad=40,lh=44;
-const c=document.createElement('canvas');c.width=W;c.height=pad*2+lines.length*lh+60;const x=c.getContext('2d');x.fillStyle='#dcf8c6';x.fillRect(0,0,W,c.height);
-x.fillStyle='#17140f';x.font='600 30px sans-serif';let y=pad+30;lines.forEach(l=>{x.fillText(l.slice(0,70),pad,y);y+=lh});x.font='20px monospace';x.fillStyle='#555';x.fillText('Sach · checked '+new Date().toISOString().slice(0,10),pad,c.height-24);
-const a=document.createElement('a');a.download='sach-verdict.png';a.href=c.toDataURL('image/png');a.click()});
+/* #dl: see the 'Shareable verdict image' block below (before result_block) */
 let alt=false;const qsAlt=()=>alt?'&alt=1':'';
 $$('.altswap').forEach(b=>b.addEventListener('click',()=>{alt=!alt;
 $$('.qrimg').forEach(i=>{i.src='/?view=tipqr&fmt=png'+qsAlt()});$$('.dlpng').forEach(a=>{a.href='/?view=tipqr&fmt=png'+qsAlt()});
@@ -377,6 +375,61 @@ def trace_block(res: dict) -> str:
     return f'<details class="trace"><summary>How this verdict was reached</summary>{"".join(parts)}</details>'
 
 
+# ======== Report-to-PIB + shareable verdict image: CSS and JS (package F) ========
+CSS += """
+details.report{margin-top:20px;border:2px solid var(--rule);border-radius:4px;background:var(--card);padding:0 14px}
+details.report summary{display:block;min-height:44px;padding:12px 0;font-size:17px}
+details.report .rpt-scope{display:block;font-weight:400;font-size:14px;color:var(--mute);margin-top:2px}
+details.report .rpt-text{font-size:14px;line-height:1.45;min-height:230px;margin:6px 0 4px}
+details.report .rpt-row .btn,#img-share,#dl{min-height:44px;display:inline-flex;align-items:center;justify-content:center;text-align:center}
+#img-share[hidden]{display:none}.result>div{min-width:0}details.report p.note{margin:8px 0}details.report{padding-bottom:6px}
+@media print{details.report{display:none}}
+"""
+JS += r"""
+/* ---- Report to PIB: copy button (ids prefixed rpt-) ---- */
+(function(){const b=document.querySelector('#rpt-copy'),t=document.querySelector('#rpt-text');if(!b||!t)return;
+t.addEventListener('focus',()=>t.select());
+b.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(t.value);b.textContent='Copied ✓'}catch(e){t.focus();t.select();b.textContent='Selected — press Ctrl/Cmd+C'}})})();
+/* ---- Shareable verdict image: 1080x1350 canvas, real verdict data from #sach-card-data ---- */
+(function(){
+const dl=document.querySelector('#dl'),de=document.querySelector('#sach-card-data'),sh=document.querySelector('#img-share');
+if(!dl||!de)return;let D;try{D=JSON.parse(de.textContent)}catch(e){return}
+const W=1080,H=1350,P=84,FB={FALSE:'#c2321f',TRUE:'#1f7a45',MISLEADING:'#c9780a',UNVERIFIED:'#6b6558'};
+const SANS="'Instrument Sans','Noto Sans Devanagari','Noto Sans Telugu',sans-serif",SERIF="'Fraunces','Noto Sans Devanagari','Noto Sans Telugu',Georgia,serif",MONO="'IBM Plex Mono',ui-monospace,monospace";
+const cv=(n,f)=>{try{return getComputedStyle(document.documentElement).getPropertyValue(n).trim()||f}catch(e){return f}};
+const gr=s=>window.Intl&&Intl.Segmenter?Array.from(new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(s),x=>x.segment):Array.from(s);
+const clip=(t,n)=>{t=(t||'').replace(/\s+/g,' ').trim();if(t.length<=n)return t;const i=t.lastIndexOf(' ',n-1);return t.slice(0,i>n/2?i:n-1).trim()+'…'};
+function wrap(x,t,w){const out=[];let ln='';for(const wd of (t||'').split(/\s+/).filter(Boolean)){const tr=ln?ln+' '+wd:wd;if(x.measureText(tr).width<=w){ln=tr;continue}
+if(ln){out.push(ln);ln=''}if(x.measureText(wd).width<=w){ln=wd;continue}let pc='';for(const g of gr(wd)){if(pc&&x.measureText(pc+g).width>w){out.push(pc);pc=g}else pc+=g}ln=pc}
+if(ln)out.push(ln);return out}
+function fit(x,t,w,max){let L=wrap(x,t,w);if(L.length<=max)return L;L=L.slice(0,max);let l=L[max-1];
+while(l&&x.measureText(l+'…').width>w){const i=l.lastIndexOf(' ');l=i>0?l.slice(0,i):gr(l).slice(0,-1).join('')}L[max-1]=(l||'')+'…';return L}
+const fonts=async()=>{const all=D.word+D.why+D.claim+D.source;try{await Promise.race([Promise.all([document.fonts.load("900 100px Fraunces",D.word_en),document.fonts.load("400 40px 'Instrument Sans'",all),document.fonts.load("600 40px 'Instrument Sans'",all),
+document.fonts.load("600 40px 'Noto Sans Devanagari'",all),document.fonts.load("600 40px 'Noto Sans Telugu'",all),document.fonts.load("500 30px 'IBM Plex Mono'",'Sach')]),new Promise(r=>setTimeout(r,2500))])}catch(e){}};
+async function render(){await fonts();const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d'),col=cv('--'+({MISLEADING:'mis',UNVERIFIED:'unv'}[D.verdict]||D.verdict.toLowerCase()),FB[D.verdict]||'#6b6558');
+const paper=cv('--paper','#f2ebdb'),ink=cv('--ink','#17140f'),mute=cv('--mute','#5d564a'),card=cv('--card','#fffdf6'),MW=W-2*P;x.textBaseline='alphabetic';
+x.fillStyle=paper;x.fillRect(0,0,W,H);x.fillStyle=col;x.fillRect(0,0,W,30);
+x.fillStyle=ink;x.font='900 64px '+SERIF;x.fillText('Sach',P,142);x.font='500 26px '+MONO;x.fillStyle=mute;x.textAlign='right';x.fillText('VERDICT CARD',W-P,138);x.textAlign='left';
+let size=170,L;const bw=MW-70;for(;size>=60;size-=6){x.font='900 '+size+'px '+SERIF;L=wrap(x,D.word,bw);if(L.length<=2&&D.word.split(/\s+/).every(w=>x.measureText(w).width<=bw))break}
+const lh=size*1.12,bh=L.length*lh+56,by=230;x.save();x.translate(W/2,by+bh/2);x.rotate(-0.045);x.strokeStyle=col;x.lineWidth=12;x.beginPath();x.roundRect?x.roundRect(-MW/2+10,-bh/2,MW-20,bh,22):x.rect(-MW/2+10,-bh/2,MW-20,bh);x.stroke();
+x.fillStyle=col;x.textAlign='center';x.font='900 '+size+'px '+SERIF;L.forEach((l,i)=>x.fillText(l,0,-bh/2+28+size*0.9+i*lh));x.restore();x.textAlign='left';
+let y=by+bh+(L.length>1?66:86);if(D.lang!=='en'&&D.word_en){x.fillStyle=col;x.font='500 40px '+MONO;x.textAlign='center';x.fillText('In English: '+D.word_en,W/2,y);x.textAlign='left';y+=L.length>1?80:96}
+x.fillStyle=ink;x.font='600 46px '+SANS;fit(x,D.why,MW,L.length>1?2:3).forEach(l=>{x.fillText(l,P,y);y+=64});y+=L.length>1?34:44;
+x.fillStyle=card;x.font='400 38px '+SANS;const ml=Math.max(2,Math.min(6,Math.floor((H-190-y-(D.source?86:0)-92)/54))),cl=fit(x,'“'+clip(D.claim,240)+'”',MW-48,ml),ch=cl.length*54+92;x.fillRect(P,y,MW,ch);x.fillStyle=col;x.fillRect(P,y,10,ch);
+x.fillStyle=mute;x.font='500 24px '+MONO;x.fillText('THE CLAIM',P+36,y+44);x.fillStyle=ink;x.font='400 38px '+SANS;cl.forEach((l,i)=>x.fillText(l,P+36,y+98+i*54));y+=ch+(ml>2?46:40);
+if(D.source){x.fillStyle=mute;x.font='400 32px '+SANS;fit(x,'Source: '+D.source+(D.date?' · '+D.date:''),MW,ml>2?2:1).forEach(l=>{x.fillText(l,P,y);y+=46})}
+x.fillStyle=ink;x.fillRect(P,H-190,MW,3);x.font='700 46px '+SANS;x.fillText('Checked with Sach',P,H-120);x.fillStyle=mute;x.font='500 32px '+MONO;fit(x,location.origin,MW,1).forEach(l=>x.fillText(l,P,H-68));
+return new Promise((ok,no)=>c.toBlob(b=>b?ok(b):no(new Error('blob')),'image/png'))}
+let pre=null;const get=()=>pre||(pre=render().catch(e=>{pre=null;throw e}));const name='sach-'+D.verdict.toLowerCase()+'.png';
+const save=b=>{const a=document.createElement('a'),u=URL.createObjectURL(b);a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000)};
+dl.addEventListener('click',async()=>{try{save(await get())}catch(e){dl.textContent='Could not draw the image'}});
+const th=document.querySelector('#theme');if(th)th.addEventListener('click',()=>{pre=null});
+try{if(sh&&navigator.share&&navigator.canShare&&navigator.canShare({files:[new File([new Blob()],name,{type:'image/png'})]})){sh.hidden=false;get().catch(()=>{});
+sh.addEventListener('click',async()=>{try{const b=await get();await navigator.share({files:[new File([b],name,{type:'image/png'})],title:'Sach verdict',text:'Checked with Sach '+location.origin})}catch(e){if(e&&e.name!=='AbortError')try{save(await get())}catch(_){}}})}}catch(e){}
+})();
+"""
+
+
 def result_block(res: dict, chosen: bool = False) -> str:
     v = res["verdict"]
     if res.get("no_claims"):
@@ -421,8 +474,8 @@ def result_block(res: dict, chosen: bool = False) -> str:
 <div><p class="kicker">Forward this card back to the group · reply language: {esc(LANG_NAME.get(res['language'], res['language'].upper()))}{' (your choice)' if chosen else ' (matched to the forward)'}</p>
 {cachednote}<div class="bubble"><span id="cardtext">{card}</span><small>Sach ✓✓</small></div>
 <div class="row"><button class="btn ghost" id="copy" type="button">Copy card</button><a class="btn" href="{esc(wa)}" rel="noopener">Share on WhatsApp</a>
-<button class="btn ghost" id="dl" type="button">Download image</button></div>
-{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
+<button class="btn ghost" id="dl" type="button">Download image</button><button class="btn" id="img-share" type="button" hidden>Share image</button></div>
+{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
 <div style="overflow-x:auto"><table><thead><tr><th>Claim</th><th>Verdict</th><th>Citations</th></tr></thead><tbody>{rows}</tbody></table></div>
 {tr}<p class="note" style="margin-top:14px">Checked {esc(res['checked_at'][:16].replace('T',' '))} UTC. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
 
