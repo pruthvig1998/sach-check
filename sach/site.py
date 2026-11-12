@@ -132,6 +132,9 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-bet
 .tipcard b{display:block;margin-top:6px}.tipcard span.d{font-size:13px;color:var(--mute)}
 .tipbox{display:flex;flex-wrap:wrap;gap:22px;align-items:center}#upiqr{background:#fff;padding:8px;border:2px solid var(--rule);border-radius:4px;width:170px;height:170px;display:block}
 .tipmeter{margin:18px 0;display:flex;flex-wrap:wrap;gap:12px 18px;align-items:center}.tipmeter select{max-width:100%}.tipmeter b#fwamt{font-family:var(--serif);font-size:26px;color:var(--false)}.softtip{margin-top:12px;font-size:14px}.softtip a{font-weight:600}
+.appbtn{display:flex;flex-direction:column;gap:2px;text-decoration:none;background:var(--card);border:2px solid var(--rule);border-radius:4px;padding:14px 16px;margin:10px 0;transition:transform .12s}
+.appbtn:hover,.appbtn:focus-visible{transform:translateX(4px);box-shadow:4px 4px 0 var(--rule)}.appbtn b{font-family:var(--serif);font-size:22px}.appbtn span{font-size:13px;color:var(--mute)}
+.paywrap{max-width:560px;margin:0 auto;padding:30px 0 50px}
 @media print{.tipcard,#upiqr{display:none}}
 @media print{header.nav,footer,.chips,.row,#busy{display:none}body{background:#fff;color:#000}}
 """
@@ -155,7 +158,7 @@ const dl=$('#dl');if(dl)dl.addEventListener('click',()=>{const lines=$('#cardtex
 const c=document.createElement('canvas');c.width=W;c.height=pad*2+lines.length*lh+60;const x=c.getContext('2d');x.fillStyle='#dcf8c6';x.fillRect(0,0,W,c.height);
 x.fillStyle='#17140f';x.font='600 30px sans-serif';let y=pad+30;lines.forEach(l=>{x.fillText(l.slice(0,70),pad,y);y+=lh});x.font='20px monospace';x.fillStyle='#555';x.fillText('Sach · checked '+new Date().toISOString().slice(0,10),pad,c.height-24);
 const a=document.createElement('a');a.download='sach-verdict.png';a.href=c.toDataURL('image/png');a.click()});
-const fw=$('#fw');if(fw){const go=$('#fwgo'),amt=$('#fwamt');const upd2=()=>{const n=parseInt(fw.value,10)||1,a=n*10;amt.textContent='₹'+a;go.href='/?go=tip&amt='+a;go.textContent='Chip in ₹'+a};fw.addEventListener('change',upd2);upd2()}
+const fw=$('#fw');if(fw){const go=$('#fwgo'),amt=$('#fwamt');const upd2=()=>{const n=parseInt(fw.value,10)||1,a=n*10;amt.textContent='₹'+a;go.href='/?view=pay&amt='+a;go.textContent='Chip in ₹'+a};fw.addEventListener('change',upd2);upd2()}
 const r=$('#result');if(r)r.scrollIntoView({behavior:'smooth',block:'start'});
 let fv='ALL';const apply=()=>{const q=($('#q')?.value||'').toLowerCase();let n=0;$$('tbody tr[data-v]').forEach(tr=>{const ok=(fv==='ALL'||tr.dataset.v===fv)&&tr.innerText.toLowerCase().includes(q);tr.style.display=ok?'':'none';if(ok)n++});const s=$('#shown');if(s)s.textContent=n+' shown';const e=$('#empty');if(e)e.style.display=n?'none':''};
 $$('.filters button').forEach(b=>b.addEventListener('click',()=>{$$('.filters button').forEach(x=>x.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true');fv=b.dataset.v;apply()}));
@@ -178,6 +181,13 @@ TIP_QUIPS = {"FALSE": "Fake caught. Your family group thanks you.", "TRUE": "A r
              "MISLEADING": "Half-truths are twice the work. Chai helps."}
 PER_FORWARD = 10      # the "forwards saved" picker: ₹10 a forward
 
+# Each UPI app's own link scheme. The generic upi:// scheme is claimed by many apps; on iPhone iOS then picks one at random
+# (e.g. WhatsApp). App-specific schemes let the payer choose. Built on the server so the UPI address stays out of the HTML.
+UPI_APPS = {"gpay": ("Google Pay", "gpay://upi/pay", "opens Google Pay"),
+            "phonepe": ("PhonePe", "phonepe://pay", "opens PhonePe"),
+            "paytm": ("Paytm", "paytmmp://pay", "opens Paytm"),
+            "upi": ("Any other UPI app", "upi://pay", "your phone decides which app opens")}
+
 def tip_headline() -> str:
     import datetime
     return TIP_HEADLINES[datetime.date.today().toordinal() % len(TIP_HEADLINES)]       # one per day: stable within a visit
@@ -187,12 +197,12 @@ def tip_amount(raw) -> int | None:
     raw = (raw or "").strip()
     return int(raw) if raw.isascii() and raw.isdigit() and 1 <= int(raw) <= 10000 else None      # ASCII digits only (not "٥٠")
 
-def tip_qr_svg(cfg: dict) -> bytes | None:
-    """The 'pay any amount' QR, drawn on the server so the UPI address never appears in the page's HTML."""
+def tip_qr_svg(cfg: dict, amount: int | None = None) -> bytes | None:
+    """A QR (generic upi:// so every UPI scanner reads it), drawn on the server so the address never appears in the page's HTML."""
     try:
         import io, segno
         buf = io.BytesIO()
-        segno.make(upi_link(cfg, None, "Sach tip"), error="m").save(buf, kind="svg", scale=5, border=2, xmldecl=False, svgns=True)
+        segno.make(upi_link(cfg, amount, "Sach tip"), error="m").save(buf, kind="svg", scale=5, border=2, xmldecl=False, svgns=True)
         return buf.getvalue()
     except Exception:
         return None
@@ -205,9 +215,10 @@ def tip_config():
     name = _re.sub(r"[^A-Za-z0-9 .&'-]", "", os.environ.get("SACH_UPI_NAME") or "Sach")[:40].strip() or "Sach"
     return {"vpa": vpa, "name": name}
 
-def upi_link(cfg: dict, amount: int | None = None, note: str = "Sach tip") -> str:
+def upi_link(cfg: dict, amount: int | None = None, note: str = "Sach tip", app: str = "upi") -> str:
+    base = UPI_APPS.get(app, UPI_APPS["upi"])[1]                     # unknown app name -> the generic scheme, never an error
     q = f"pa={_q(cfg['vpa'], safe='@.-_')}&pn={_q(cfg['name'])}&cu=INR&tn={_q(note)}"
-    return "upi://pay?" + q + (f"&am={int(amount)}" if amount else "")
+    return base + "?" + q + (f"&am={int(amount)}" if amount else "")
 
 
 def eval_summary() -> dict:
@@ -302,17 +313,17 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
     faq = "".join(f"<details><summary>{esc(q)}</summary><p>{esc(a)}</p></details>" for q, a in faq_items)
     tip_section = ""
     if cfg:
-        cards = "".join(f'<a class="tipcard" href="/?go=tip&amp;amt={amt}" rel="nofollow"><div class="amt">₹{amt}</div><b>{esc(t)}</b><span class="d">{esc(d)}</span></a>'
+        cards = "".join(f'<a class="tipcard" href="/?view=pay&amp;amt={amt}" rel="nofollow"><div class="amt">₹{amt}</div><b>{esc(t)}</b><span class="d">{esc(d)}</span></a>'
                         for amt, t, d in TIP_TIERS)
         opts_fw = "".join(f'<option value="{n}"{" selected" if n == 3 else ""}>{n}</option>' for n in (1, 3, 5, 10, 20))
         tip_section = f'''<section id="tip"><div class="wrap"><p class="kicker">Nobody asked, but…</p><h2>{esc(tip_headline())} ☕</h2>
 <p class="sub">Sach has no ads, no paywall and no “forward this to 10 groups or bad luck”. If a verdict saved you an awkward family-group moment, a small tip keeps the corrections coming. <b>Tips never change a verdict.</b></p>
 <div class="tipmeter card"><label for="fw">You were about to forward</label><select id="fw" aria-label="Forwards we stopped">{opts_fw}</select><span>messages. At ₹{PER_FORWARD} a forward that's <b id="fwamt">₹{3 * PER_FORWARD}</b></span>
-<a class="btn" id="fwgo" href="/?go=tip&amp;amt={3 * PER_FORWARD}" rel="nofollow" style="text-decoration:none">Chip in ₹{3 * PER_FORWARD}</a></div>
+<a class="btn" id="fwgo" href="/?view=pay&amp;amt={3 * PER_FORWARD}" rel="nofollow" style="text-decoration:none">Chip in ₹{3 * PER_FORWARD}</a></div>
 <div class="tipgrid">{cards}</div>
 <div class="tipbox"><img id="upiqr" src="/?view=tipqr" width="170" height="170" alt="UPI QR code for tips">
-<div><p style="margin:0 0 8px"><b>On a phone:</b> tap an amount and your UPI app (GPay, PhonePe, Paytm…) opens with it filled in.<br><b>On a computer:</b> scan the QR code with any UPI app and enter any amount.</p>
-<div class="row"><a class="btn" href="/?go=tip" rel="nofollow" style="text-decoration:none">Pay any amount</a></div>
+<div><p style="margin:0 0 8px"><b>On a phone:</b> tap an amount, then pick your UPI app (Google Pay, PhonePe, Paytm…). It opens with the amount filled in and you confirm there.<br><b>On a computer:</b> scan the QR code with any UPI app and enter any amount.</p>
+<div class="row"><a class="btn" href="/?view=pay" rel="nofollow" style="text-decoration:none">Pay any amount</a></div>
 <p class="note" style="margin:10px 0 0">Your UPI app shows who you're paying before you confirm; that's UPI's own safety check. Tips are optional and go straight from your app to the person who runs Sach. Sach never sees who paid or how much.</p></div></div></div></section>'''
     body = f"""<div class="wrap"><div class="hero"><div>
 <p class="kicker">A corrections desk for your family group</p>
@@ -372,6 +383,24 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 → {{"verdict":"FALSE","language":"en","card":"…","claims":[{{"verdict":"FALSE","citations":[{{"url":"https://pib.gov.in/…"}}]}}]}}</pre>
 <div class="row"><a class="btn ghost" href="/?view=ledger">Open the public ledger →</a><a class="btn ghost" href="{REPO}" rel="noopener">Source on GitHub →</a></div></div></section>"""
     return layout(body)
+
+
+def pay_page(amount: int | None = None) -> bytes:
+    """Pick-your-UPI-app page. Every button is a server redirect, so the UPI address is not in this page's HTML."""
+    amt_q = f"&amp;amt={amount}" if amount else ""
+    shown = f"₹{amount}" if amount else "any amount"
+    buttons = "".join(f'<a class="appbtn" href="/?go=tip{amt_q}&amp;app={k}" rel="nofollow"><b>{esc(name)}</b><span>{esc(hint)}</span></a>'
+                      for k, (name, _scheme, hint) in UPI_APPS.items())
+    body = f"""<div class="wrap"><div class="paywrap"><p class="kicker">Chip in for the corrections desk ☕</p>
+<h1 style="font-size:clamp(34px,8vw,54px);margin:6px 0 10px">Pay {esc(shown)}</h1>
+<p class="sub" style="margin-bottom:14px">Pick the app you use. Your phone may ask “open another application?”; say yes. The amount is filled in and <b>you confirm the payment inside that app</b>.</p>
+{buttons}
+<p class="note">iPhone tip: if you choose “Any other UPI app”, iOS decides which app opens and it may not be the one you wanted (for example WhatsApp). Choosing your app above avoids that. App not installed? Use the QR below or go back.</p>
+<h2 style="font-size:24px;margin:26px 0 8px">On a computer?</h2>
+<div class="tipbox"><img id="upiqr" src="/?view=tipqr{amt_q}" width="170" height="170" alt="UPI QR code for tips">
+<p class="note" style="margin:0;max-width:22em">Scan this with any UPI app{f" (it already has {esc(shown)} filled in)" if amount else " and enter any amount"}. Tips are optional and never change a verdict.</p></div>
+<p style="margin-top:24px"><a class="btn ghost" href="/#tip" style="text-decoration:none">← Back to the tip jar</a></p></div></div>"""
+    return layout(body, "Chip in — Sach")
 
 
 def ledger_page() -> bytes:

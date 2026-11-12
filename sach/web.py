@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 from .llm import get_llm
 from .pipeline import check_forward
 from .retrieve import default_retrievers
-from .site import MAX_CHARS, REPLY_LANGS, home, ledger_page, result_block, tip_amount, tip_config, tip_qr_svg, upi_link
+from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_svg, upi_link
 
 RATE_LIMIT, RATE_WINDOW = 8, 60          # best-effort per-IP checks per minute (serverless instances don't share state)
 _hits: dict = {}
@@ -56,14 +56,20 @@ class Handler(BaseHTTPRequestHandler):
             if not cfg:
                 return self._send(b"not found", 404, "text/plain")
             self.send_response(302)
-            self.send_header("Location", upi_link(cfg, tip_amount(qs.get("amt", [""])[0]), "Sach tip"))
+            app = qs.get("app", ["upi"])[0].lower()
+            app = app if app in UPI_APPS else "upi"          # unknown app name: generic scheme, never an error
+            self.send_header("Location", upi_link(cfg, tip_amount(qs.get("amt", [""])[0]), "Sach tip", app=app))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Robots-Tag", "noindex, nofollow")
             self.send_header("Content-Length", "0")
             return self.end_headers()
+        if view == "pay":                                    # choose your UPI app (avoids iOS picking WhatsApp for you)
+            if not tip_config():
+                return self._send(b"not found", 404, "text/plain")
+            return self._send(pay_page(tip_amount(qs.get("amt", [""])[0])))
         if view == "tipqr":                                  # QR drawn on the server (pay-any-amount link)
             cfg = tip_config()
-            svg = tip_qr_svg(cfg) if cfg else None
+            svg = tip_qr_svg(cfg, tip_amount(qs.get("amt", [""])[0])) if cfg else None
             if not svg:
                 return self._send(b"not found", 404, "text/plain")
             self.send_response(200)

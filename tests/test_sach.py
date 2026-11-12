@@ -1009,7 +1009,7 @@ def test_tip_section_has_funny_copy_tiers_picker_and_qr_image_but_no_copy_button
     assert any(t in h for t in SITE.TIP_HEADLINES) or any(SITE.esc(t) in h for t in SITE.TIP_HEADLINES)
     assert h.count('class="tipcard"') == 4 and "Samosa for the fact-checker" in h and "Sponsor a family-group intervention" in h
     for amt in (20, 50, 100, 500):
-        assert f'href="/?go=tip&amp;amt={amt}"' in h
+        assert f'href="/?view=pay&amp;amt={amt}"' in h
     assert 'id="fw"' in h and 'id="fwgo"' in h and "You were about to forward" in h                # forwards-saved picker
     assert '<img id="upiqr" src="/?view=tipqr"' in h
     assert 'id="copyupi"' not in h and "Copy UPI ID" not in h and "qrcode-generator" not in h and "cdnjs" not in h
@@ -1061,3 +1061,71 @@ def test_forwards_picker_defaults_to_three_matching_the_server_rendered_amount(s
     _tip_env(monkeypatch, "supporter@okbank")
     h = _ur.urlopen(server + "/?t=picker").read().decode()
     assert '<option value="3" selected>3</option>' in h and 'amt=30"' in h and "Chip in ₹30" in h
+
+
+# --- UPI app chooser (iPhone: the generic upi:// link opened WhatsApp instead of letting the payer choose)
+def test_tier_buttons_open_the_chooser_not_a_random_app(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    h = _ur.urlopen(server + "/?t=choose").read().decode()
+    assert 'href="/?view=pay&amp;amt=20"' in h and 'href="/?view=pay"' in h and 'href="/?view=pay&amp;amt=30"' in h
+    assert "?go=tip" not in h.split('id="tip"')[1].split("</section>")[0]                 # nothing in the tip section jumps straight to an app
+    assert "then pick your UPI app" in h
+
+def test_chooser_page_lists_apps_amount_and_qr_without_the_address(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", "Sach")
+    code, hdr, body = _raw_get(server, "/?view=pay&amt=50")
+    h = body.decode()
+    assert code == 200 and "Pay ₹50" in h
+    for name in ("Google Pay", "PhonePe", "Paytm", "Any other UPI app"):
+        assert name in h
+    for app in ("gpay", "phonepe", "paytm", "upi"):
+        assert f'href="/?go=tip&amp;amt=50&amp;app={app}"' in h
+    assert '<img id="upiqr" src="/?view=tipqr&amp;amt=50"' in h and "WhatsApp" in h                  # iPhone tip explains the WhatsApp surprise
+    assert "supporter" not in h and "okbank" not in h and "upi://" not in h and "gpay://" not in h        # no address, no scheme links in HTML
+
+def test_chooser_without_amount_says_any_amount(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    code, _, body = _raw_get(server, "/?view=pay")
+    h = body.decode()
+    assert code == 200 and "Pay any amount" in h and 'href="/?go=tip&amp;app=gpay"' in h and "amt=" not in h.split("<h1")[1].split("</h1>")[0]
+
+@pytest.mark.parametrize("app,prefix", [("gpay", "gpay://upi/pay?"), ("phonepe", "phonepe://pay?"), ("paytm", "paytmmp://pay?"), ("upi", "upi://pay?")])
+def test_each_app_gets_its_own_link_scheme_with_the_same_payee_and_amount(server, monkeypatch, app, prefix):
+    _tip_env(monkeypatch, "supporter@okbank", "Sach")
+    code, hdr, _ = _raw_get(server, f"/?go=tip&amt=100&app={app}")
+    loc = hdr["Location"]
+    assert code == 302 and loc.startswith(prefix) and "pa=supporter@okbank" in loc and loc.endswith("&am=100") and "cu=INR" in loc
+
+@pytest.mark.parametrize("bad", ["bhim", "WhatsApp", "javascript:alert(1)", "", "gpay://evil", "../x", "G P A Y"])
+def test_unknown_app_falls_back_to_generic_scheme_never_an_open_redirect(server, monkeypatch, bad):
+    from urllib.parse import quote
+    _tip_env(monkeypatch, "supporter@okbank")
+    code, hdr, _ = _raw_get(server, f"/?go=tip&amt=20&app={quote(bad)}")
+    assert code == 302 and hdr["Location"].startswith("upi://pay?pa=supporter@okbank")
+
+def test_app_name_is_case_insensitive(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    assert _raw_get(server, "/?go=tip&app=GPay")[1]["Location"].startswith("gpay://upi/pay?")
+
+def test_amount_qr_differs_from_any_amount_qr_and_leaks_nothing(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    a = _raw_get(server, "/?view=tipqr")[2]; b = _raw_get(server, "/?view=tipqr&amt=50")[2]
+    assert a != b and b.lstrip().startswith(b"<svg") and b"supporter" not in b
+    assert _raw_get(server, "/?view=tipqr&amt=abc")[2] == a                                          # bad amount -> any-amount QR
+
+def test_chooser_is_hidden_when_tip_jar_is_off(server, monkeypatch):
+    _tip_env(monkeypatch, None)
+    assert _raw_get(server, "/?view=pay&amt=50")[0] == 404
+
+def test_chooser_escapes_and_ignores_hostile_amounts(server, monkeypatch):
+    from urllib.parse import quote
+    _tip_env(monkeypatch, "supporter@okbank")
+    code, _, body = _raw_get(server, "/?view=pay&amt=" + quote('"><script>alert(1)</script>'))
+    h = body.decode()
+    assert code == 200 and "alert(1)" not in h and "Pay any amount" in h
+
+def test_upi_link_builder_supports_apps_and_falls_back():
+    cfg = {"vpa": "supporter@okbank", "name": "Sach"}
+    assert SITE.upi_link(cfg, 20, app="phonepe").startswith("phonepe://pay?pa=supporter@okbank")
+    assert SITE.upi_link(cfg, 20, app="nope").startswith("upi://pay?")
+    assert SITE.upi_link(cfg, 20).startswith("upi://pay?")                                           # default unchanged
