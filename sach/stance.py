@@ -13,8 +13,24 @@ _STOP = set("the a an and or of to in on for is are was were be been this that i
 def _stem(w: str) -> str:
     return w[:5] if w.isascii() and w.isalpha() and len(w) > 5 else w   # crude stem: reduce~reduction
 
+# Same-meaning words that official pages and forwards phrase differently. Only used to decide whether two texts are about the same
+# thing (relevance thresholds); it never decides a stance, and the number, quote, denial, direction and injection checks are untouched.
+_SYN = {}
+for _canon, _words in {
+    "payment": "payments payment transactions transaction transfers transfer",
+    "levy": "levy levied levying levies charged charging imposed imposing impose",
+    "above": "above over exceeding exceeds exceed beyond",
+    "rs": "rs rupee rupees inr",
+    "raise": "hike hiked hikes raise raised raises increase increased increases",
+    "ban": "ban banned bans banning prohibited prohibit prohibits",
+}.items():
+    for _w in _words.split():
+        _SYN[_w] = _canon
+
 def tokens(text: str) -> set[str]:
-    ws = [w for w in re.findall(r"[\w\u0900-\u097F\u0C00-\u0C7F]+", text.lower()) if w not in _STOP and len(w) > 1]
+    text = re.sub(r"(?<=\d),(?=\d)", "", text.lower())            # 2,000 == 2000 (and Indian 1,20,579) before splitting into words
+    ws = [_SYN.get(w, w) for w in re.findall(r"[\w\u0900-\u097F\u0C00-\u0C7F]+", text)]
+    ws = [w for w in ws if w not in _STOP and len(w) > 1]
     return {_stem(w) for w in ws}
 
 def numbers(text: str) -> set[str]:
