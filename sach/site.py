@@ -141,7 +141,11 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-bet
 .tipcard[data-amt]{cursor:pointer}.tipcard.on{background:var(--paper2);box-shadow:4px 4px 0 var(--rule)}.tipcard:focus-visible{outline:3px solid var(--mis);outline-offset:2px}
 .tipcard.other{grid-column:1/-1;cursor:default}.tipcard.other:hover{transform:none;box-shadow:none}
 .logonote{font-size:12px;color:var(--mute);margin-top:18px}
-@media print{.tipcard,#upiqr{display:none}}
+dialog{border:2px solid var(--rule);border-radius:6px;background:var(--card);color:var(--ink);width:min(92vw,460px);padding:22px 22px 18px;box-shadow:8px 8px 0 var(--rule)}
+dialog::backdrop{background:rgba(20,16,10,.55)}
+dialog form.x{position:absolute;top:6px;right:8px;margin:0}dialog form.x button{font:inherit;font-size:22px;background:none;border:0;color:var(--ink);cursor:pointer;padding:6px 10px}
+dialog img{display:block;background:#fff;padding:8px;border:2px solid var(--rule);border-radius:4px;margin:10px 0}
+@media print{.tipcard,#upiqr,dialog{display:none}}
 @media print{header.nav,footer,.chips,.row,#busy{display:none}body{background:#fff;color:#000}}
 """
 
@@ -164,10 +168,17 @@ const dl=$('#dl');if(dl)dl.addEventListener('click',()=>{const lines=$('#cardtex
 const c=document.createElement('canvas');c.width=W;c.height=pad*2+lines.length*lh+60;const x=c.getContext('2d');x.fillStyle='#dcf8c6';x.fillRect(0,0,W,c.height);
 x.fillStyle='#17140f';x.font='600 30px sans-serif';let y=pad+30;lines.forEach(l=>{x.fillText(l.slice(0,70),pad,y);y+=lh});x.font='20px monospace';x.fillStyle='#555';x.fillText('Sach · checked '+new Date().toISOString().slice(0,10),pad,c.height-24);
 const a=document.createElement('a');a.download='sach-verdict.png';a.href=c.toDataURL('image/png');a.click()});
-const want=$('#want');const setAmt=a=>{if(want)want.textContent=a?('₹'+a):'any amount';$$('.tipcard[data-amt]').forEach(c=>c.classList.toggle('on',String(c.dataset.amt)===String(a)))};
-$$('.tipcard[data-amt]').forEach(c=>{c.addEventListener('click',()=>setAmt(c.dataset.amt));c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setAmt(c.dataset.amt)}})});
-const fw=$('#fw');if(fw){const upd2=()=>{const a=(parseInt(fw.value,10)||1)*10;$('#fwamt').textContent='₹'+a;setAmt(a)};fw.addEventListener('change',upd2)}
-const oa=$('#oa');if(oa)oa.addEventListener('input',()=>{const v=parseInt(oa.value,10);setAmt(v>=1&&v<=10000?v:null)});
+const want=$('#want'),dlg=$('#paydlg');
+const setAmt=a=>{if(want)want.textContent=a?('₹'+a):'any amount';$$('.tipcard[data-amt]').forEach(c=>c.classList.toggle('on',String(c.dataset.amt)===String(a)))};
+const openPay=a=>{setAmt(a);if(!dlg)return;$('#dlgamt').textContent='₹'+a;$('#dlgamt2').textContent='₹'+a;$('#dlgapps').href='/?view=pay&amt='+a;
+if(typeof dlg.showModal==='function'){if(!dlg.open)dlg.showModal()}else{$('#upiqr').scrollIntoView({behavior:'smooth',block:'center'})}};
+$$('.tipcard[data-amt]').forEach(c=>{const go=()=>openPay(c.dataset.amt);c.addEventListener('click',go);c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}})});
+const fw=$('#fw'),fwgo=$('#fwgo');
+if(fw&&fwgo){const fwa=()=>(parseInt(fw.value,10)||1)*10;fw.addEventListener('change',()=>{const a=fwa();$('#fwamt').textContent='₹'+a;fwgo.textContent='Chip in ₹'+a;setAmt(a)});fwgo.addEventListener('click',()=>openPay(fwa()))}
+const oa=$('#oa'),oago=$('#oago'),oaerr=$('#oaerr');
+if(oa&&oago){const val=()=>{const v=parseInt(oa.value,10);return v>=1&&v<=10000?v:null};oa.addEventListener('input',()=>{oaerr.textContent='';setAmt(val())});
+const go=()=>{const v=val();if(!v){oaerr.textContent='Enter a whole number from 1 to 10,000.';oa.focus();return}openPay(v)};oago.addEventListener('click',go);oa.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();go()}})}
+if(dlg)dlg.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
 const r=$('#result');if(r)r.scrollIntoView({behavior:'smooth',block:'start'});
 let fv='ALL';const apply=()=>{const q=($('#q')?.value||'').toLowerCase();let n=0;$$('tbody tr[data-v]').forEach(tr=>{const ok=(fv==='ALL'||tr.dataset.v===fv)&&tr.innerText.toLowerCase().includes(q);tr.style.display=ok?'':'none';if(ok)n++});const s=$('#shown');if(s)s.textContent=n+' shown';const e=$('#empty');if(e)e.style.display=n?'none':''};
 $$('.filters button').forEach(b=>b.addEventListener('click',()=>{$$('.filters button').forEach(x=>x.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true');fv=b.dataset.v;apply()}));
@@ -369,16 +380,26 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
         opts_fw = "".join(f'<option value="{n}"{" selected" if n == 3 else ""}>{n}</option>' for n in (1, 3, 5, 10, 20))
         tip_section = f'''<section id="tip"><div class="wrap"><p class="kicker">Nobody asked, but…</p><h2>{esc(tip_headline())} ☕</h2>
 <p class="sub">Sach has no ads, no paywall and no “forward this to 10 groups or bad luck”. If a verdict saved you an awkward family-group moment, a small tip keeps the corrections coming. <b>Tips never change a verdict.</b></p>
-<div class="tipmeter card"><label for="fw">You were about to forward</label><select id="fw" aria-label="Forwards we stopped">{opts_fw}</select><span>messages. At ₹{PER_FORWARD} a forward that's <b id="fwamt">₹{3 * PER_FORWARD}</b></span></div>
+<div class="tipmeter card"><label for="fw">You were about to forward</label><select id="fw" aria-label="Forwards we stopped">{opts_fw}</select><span>messages. At ₹{PER_FORWARD} a forward that's <b id="fwamt">₹{3 * PER_FORWARD}</b></span><button class="btn" type="button" id="fwgo">Chip in ₹{3 * PER_FORWARD}</button></div>
 <p class="note" style="margin:0 0 8px">Pick a suggestion (or type your own), then scan the code below and enter that amount in your UPI app.</p>
 <div class="tipgrid">{cards}<div class="tipcard other"><div class="amt" style="font-size:24px">Other amount</div><span class="d">Any amount from ₹1 to ₹10,000</span>
-<div class="otheramt"><label for="oa"><b>Amount</b> (₹)</label><input id="oa" type="number" inputmode="numeric" min="1" max="10000" step="1" placeholder="e.g. 75"></div></div></div>
+<div class="otheramt"><label for="oa"><b>Amount</b> (₹)</label><input id="oa" type="number" inputmode="numeric" min="1" max="10000" step="1" placeholder="e.g. 75"><button class="btn" type="button" id="oago">Continue</button></div><div id="oaerr" class="note" role="alert" style="color:var(--false);min-height:1.3em"></div></div></div>
 <div class="tipbox"><img id="upiqr" src="/?view=tipqr&amp;fmt=png" width="190" height="190" alt="UPI QR code for tips">
 <div><p style="margin:0 0 8px"><b>Scan this code</b> with Google Pay, PhonePe, Paytm or BHIM and enter <b id="want">₹{3 * PER_FORWARD}</b> when asked.</p>
 <p style="margin:0 0 8px"><b>On a computer:</b> scan it with the UPI app on your phone.<br><b>On a phone:</b> save the image (tap Download, or press and hold it), then open your UPI app, choose <i>Scan QR</i> and pick the image from your gallery.</p>
 <div class="row"><a class="btn" href="/?view=tipqr&amp;fmt=png" download="sach-tip-qr.png" style="text-decoration:none">Download QR image</a></div>
 <p class="note" style="margin:10px 0 0">Your UPI app shows who you're paying before you confirm; that's UPI's own safety check. Tips are optional and go straight from your app to the person who runs Sach. Sach never sees who paid or how much.</p>
-<p class="note" style="margin:8px 0 0">Prefer a button? <a href="/?view=pay" rel="nofollow">Try opening your UPI app directly</a>. It works on some phones, but many banks block payments started from a link and show a “limit exceeded” message even for ₹20. If that happens, use the QR code above.</p></div></div></div></section>'''
+<p class="note" style="margin:8px 0 0">Prefer a button? <a href="/?view=pay" rel="nofollow">Try opening your UPI app directly</a>. It works on some phones, but many banks block payments started from a link and show a “limit exceeded” message even for ₹20. If that happens, use the QR code above.</p></div></div>
+<dialog id="paydlg" aria-labelledby="paytitle"><form method="dialog" class="x"><button aria-label="Close">✕</button></form>
+<p class="kicker">Chip in for the corrections desk ☕</p>
+<h3 id="paytitle" style="font-family:var(--serif);font-size:36px;margin:4px 0 6px">Pay <span id="dlgamt">₹{3 * PER_FORWARD}</span></h3>
+<img src="/?view=tipqr&amp;fmt=png" width="190" height="190" alt="UPI QR code for tips">
+<p style="margin:0 0 8px"><b>Scan this code</b> with Google Pay, PhonePe, Paytm or BHIM and enter <b id="dlgamt2">₹{3 * PER_FORWARD}</b> when asked.</p>
+<p class="note" style="margin:0 0 10px"><b>On a phone:</b> tap Download, then in your UPI app choose <i>Scan QR</i> and pick the image from your gallery.</p>
+<div class="row"><a class="btn" href="/?view=tipqr&amp;fmt=png" download="sach-tip-qr.png" style="text-decoration:none">Download QR image</a>
+<a class="btn ghost" id="dlgapps" href="/?view=pay&amp;amt={3 * PER_FORWARD}" rel="nofollow" style="text-decoration:none">Open my UPI app instead</a></div>
+<p class="note" style="margin:10px 0 0">The app button works on some phones; many banks block payments started from a link. If it fails, use the QR code.</p></dialog>
+</div></section>'''
     body = f"""<div class="wrap"><div class="hero"><div>
 <p class="kicker">A corrections desk for your family group</p>
 <h1>Got a forward? Get the <em>receipts.</em></h1>

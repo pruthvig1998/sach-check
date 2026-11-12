@@ -1218,7 +1218,7 @@ def test_tip_section_other_amount_is_a_plain_input_not_a_form(server, monkeypatc
     _tip_env(monkeypatch, "supporter@okbank")
     tip = _tip_part(_ur.urlopen(server + "/?t=other2").read().decode())
     assert 'class="tipcard other"' in tip and 'id="oa"' in tip and 'type="number"' in tip and 'min="1" max="10000"' in tip and "₹1 to ₹10,000" in tip
-    assert "<form" not in tip                                                              # typing an amount never navigates away
+    assert '<form method="get"' not in tip and 'name="amt"' not in tip                      # typing an amount never submits or navigates away
 
 def test_tip_section_demotes_app_buttons_with_an_honest_warning(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank")
@@ -1258,3 +1258,35 @@ def test_diagnostics_page_and_experimental_variants_are_gone(server, monkeypatch
     assert loc.startswith("upi://pay?") and loc.endswith("&am=20")                                  # tez / dec are ignored now
     import inspect
     assert not hasattr(SITE, "diag_page") and "decimals" not in inspect.signature(SITE.upi_link).parameters
+
+
+# --- tiles open a "Pay ₹N" panel (a <dialog>) instead of doing nothing visible
+def test_tip_section_has_a_pay_panel_for_tiles_picker_and_other_amount(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    h = _ur.urlopen(server + "/?t=dlg").read().decode()
+    tip = _tip_part(h)
+    assert '<dialog id="paydlg"' in tip and '<form method="dialog" class="x">' in tip and 'aria-label="Close"' in tip
+    dlg = tip.split('<dialog id="paydlg"')[1].split("</dialog>")[0]
+    assert 'id="dlgamt">₹30' in dlg and 'id="dlgamt2">₹30' in dlg and 'src="/?view=tipqr&amp;fmt=png"' in dlg
+    assert 'download="sach-tip-qr.png"' in dlg and 'id="dlgapps" href="/?view=pay&amp;amt=30"' in dlg and "Open my UPI app instead" in dlg
+    assert "On a phone:" in dlg and "gallery" in dlg and "many banks block payments started from a link" in dlg
+    assert 'id="fwgo"' in tip and "Chip in ₹30" in tip                                      # picker has a button that opens the panel
+    assert 'id="oago"' in tip and 'id="oaerr"' in tip and 'role="alert"' in tip              # other amount: Continue button + inline error
+    assert '<a class="tipcard"' not in tip and 'role="button"' in tip and tip.count('data-amt=') == 4
+
+def test_pay_panel_script_wires_every_entry_point(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    h = _ur.urlopen(server + "/?t=dlgjs").read().decode()
+    for needle in ("const openPay=", "dlg.showModal()", "'#dlgapps'", "$$('.tipcard[data-amt]').forEach", "fwgo.addEventListener('click'", "oago.addEventListener('click'",
+                   "Enter a whole number from 1 to 10,000.", "if(e.target===dlg)dlg.close()"):
+        assert needle in h, needle
+
+def test_pay_panel_and_page_leak_nothing(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", "Sach Desk")
+    h = _ur.urlopen(server + "/?t=dlgleak").read().decode()
+    assert "supporter" not in h and "okbank" not in h and "Sach Desk" not in h and "upi://pay" not in h and "gpay://" not in h
+
+def test_pay_panel_markup_absent_when_tip_jar_is_off(server, monkeypatch):
+    _tip_env(monkeypatch, None)
+    h = _ur.urlopen(server + "/?t=dlgoff").read().decode()
+    assert 'id="paydlg"' not in h and 'id="fwgo"' not in h and 'id="oago"' not in h
