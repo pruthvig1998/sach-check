@@ -1,0 +1,8 @@
+.env
+cache/
+data/ledger.json
+data/eval_ledger.json
+__pycache__/
+.vercel/
+.pytest_cache/
+*.pyc

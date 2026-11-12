@@ -1,0 +1,47 @@
+[
+ {
+  "claim": "Central Government will reduce the retirement age of employees to 50 years.",
+  "label": "FALSE",
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1618590"
+ },
+ {
+  "claim": "Government has ordered the closure of Ministries.",
+  "label": "FALSE",
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1616896"
+ },
+ {
+  "claim": "Air India passengers from Chicago were made to pay three times the fare.",
+  "label": "FALSE",
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1622056"
+ },
+ {
+  "claim": "WHO doctors are advising against wearing masks and social distancing.",
+  "label": "FALSE",
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1616527"
+ },
+ {
+  "claim": "PIB Fact-Check Unit has issued over 2,900 fact checks.",
+  "label": "TRUE",
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2247720"
+ },
+ {
+  "claim": "Government will give free laptops to all students.",
+  "label": "UNVERIFIED",
+  "source": "control: no source expected"
+ },
+ {
+  "claim": "Government is giving Rs 1000 to everyone under Corona Sahayata Yojana, click the link to register.",
+  "label": "FALSE",
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1618314"
+ },
+ {
+  "claim": "Union Minister Sarbananda Sonowal's office has issued a letter on this matter.",
+  "label": "FALSE",
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2216041"
+ },
+ {
+  "claim": "A Health Ministry office memorandum on state holidays has been issued.",
+  "label": "FALSE",
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1606395"
+ }
+]
