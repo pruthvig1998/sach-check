@@ -908,3 +908,95 @@ def test_claims_about_fact_checking_itself_are_exempt_from_the_debunk_page_rule(
     title = "Government Counters Misinformation; PIB Fact-Check Unit Issues Over 2,900 Fact Checks"
     page = title + ". The PIB Fact-Check Unit has issued over 2,900 fact checks in total."
     assert validate_stance("confirms", "The PIB Fact-Check Unit has issued over 2,900 fact checks in total", claim, title, page) == "confirms"
+
+
+def test_numbers_ignore_thousands_separators_including_indian_grouping():
+    from sach.stance import numbers
+    assert numbers("19,800 posts; 1,20,579 vacancies; Rs 37,500 crore; 99.8%; 2,900.") == {"19800", "120579", "37500", "99.8", "2900"}
+    assert numbers("recruitment of 19800 posts and 120579 vacancies") >= {"19800", "120579"}
+
+def test_comma_formatted_claim_matches_plain_number_in_debunk_title_degraded_mode():
+    from sach.stance import degraded_stance
+    c = "Railways has issued a recruitment notification for 19,800 Constable posts in RPF."
+    t = "Clarification regarding fake recruitment notification for 19800 post of Constable in RPF in Social Media"
+    x = "A fictitious message is being circulated on social media regarding recruitment of 19800 posts of Constable in RPF."
+    assert degraded_stance(c, t, x, TIER_PIB) == "contradicts"
+
+# --- tip jar (UPI): off by default, env-configured, safe
+import sach.site as SITE
+
+def _tip_env(monkeypatch, vpa="supporter@okbank", name=None):
+    if vpa is None: monkeypatch.delenv("SACH_UPI_ID", raising=False)
+    else: monkeypatch.setenv("SACH_UPI_ID", vpa)
+    if name is None: monkeypatch.delenv("SACH_UPI_NAME", raising=False)
+    else: monkeypatch.setenv("SACH_UPI_NAME", name)
+
+def test_tip_jar_is_hidden_when_no_upi_id_is_set(server, monkeypatch):
+    _tip_env(monkeypatch, None)
+    h = _ur.urlopen(server + "/?t=off").read().decode()
+    assert 'id="tip"' not in h and "upi://" not in h and "qrcode-generator" not in h and 'id="upiqr"' not in h and "Tip jar" not in h and "Do tips change" not in h
+    code, h = _post(server, "Government will give Rs 5000 to every woman.")
+    assert "Chip in" not in h
+
+@pytest.mark.parametrize("bad", ["", "notaupi", "a@b c", "x@", "@bank", "ab@123", '"><script>alert(1)</script>@x', "a b@okbank", "javascript:alert(1)", "me@ok bank", "a@b@c", "x" * 80 + "@ok"])
+def test_invalid_upi_ids_disable_the_feature_instead_of_rendering(monkeypatch, bad):
+    _tip_env(monkeypatch, bad)
+    assert SITE.tip_config() is None
+    assert b"upi://" not in SITE.home() and b'id="tip"' not in SITE.home()
+
+@pytest.mark.parametrize("good", ["name@okhdfcbank", "first.last-1@ybl", "9876543210@paytm", "shop_name@oksbi", "a1@upi"])
+def test_valid_upi_ids_are_accepted(monkeypatch, good):
+    _tip_env(monkeypatch, good)
+    assert SITE.tip_config()["vpa"] == good
+
+def test_upi_links_are_well_formed_and_encoded(monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", "Sach Desk & Co <x>")
+    cfg = SITE.tip_config()
+    assert cfg["name"] == "Sach Desk & Co x"                                   # unsafe characters stripped from the display name
+    link = SITE.upi_link(cfg, 50, "Sach tip - One forward verified")
+    assert link.startswith("upi://pay?pa=supporter@okbank&pn=Sach%20Desk%20%26%20Co%20x&cu=INR&tn=Sach%20tip%20-%20One%20forward%20verified&am=50")
+    assert "am=" not in SITE.upi_link(cfg)                                     # "any amount": no am parameter
+    from urllib.parse import urlparse, parse_qs
+    q = parse_qs(urlparse(link).query)
+    assert q["pa"] == ["supporter@okbank"] and q["cu"] == ["INR"] and q["am"] == ["50"] and q["pn"] == ["Sach Desk & Co x"]
+
+def test_tip_section_renders_tiers_qr_copy_and_the_no_influence_promise(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", "Sach")
+    h = _ur.urlopen(server + "/?t=on").read().decode()
+    assert 'id="tip"' in h and h.count('class="tipcard"') == 4 and "Tips never change a verdict" in h
+    for amt in (20, 50, 100, 500):
+        assert f"&amp;am={amt}" in h and f"₹{amt}" in h
+    assert 'id="upiqr"' in h and 'id="copyupi"' in h and 'data-vpa="supporter@okbank"' in h
+    assert "Do tips change what Sach says?" in h and "Tip jar" in h                    # FAQ entry + footer link
+    assert 'src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"' in h
+    assert 'integrity="sha512-ZDSPMa/JM1D+7kdg2x3BsruQ6T/JpJo3jWDWkCZsP+5yVyp1KfESqLI+7RqB5k24F7p2cV7i2YHh/890y6P6Sw=="' in h and 'crossorigin="anonymous"' in h
+
+def test_qr_script_is_pinned_and_only_loaded_when_the_tip_jar_is_on(server, monkeypatch):
+    _tip_env(monkeypatch, None)
+    assert "qrcode-generator" not in _ur.urlopen(server + "/?t=a").read().decode()
+    _tip_env(monkeypatch, "supporter@okbank")
+    assert _ur.urlopen(server + "/?t=b").read().decode().count("qrcode-generator") == 1
+    assert "qrcode-generator" not in _ur.urlopen(server + "/?view=ledger").read().decode()      # no QR container on that page: no script
+
+def test_soft_tip_prompt_only_after_decisive_verdicts(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    code, h = _post(server, "Government will give Rs 5000 to every woman.")            # fixture evidence -> FALSE
+    assert "Chip in for the corrections desk" in h and "never affects a verdict" in h
+    code, h = _post(server, "Good morning 🙏")                                         # no claim
+    assert "Chip in" not in h.split('id="tip"')[0]                                       # no prompt in the result block
+
+def test_json_api_is_unaffected_by_tips(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    code, body = _post(server, "Government will give Rs 5000 to every woman.", "/?format=json")
+    assert code == 200 and "upi" not in body.lower() and _json.loads(body)["verdict"] == "FALSE"
+
+def test_malicious_display_name_cannot_inject_html(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", '"><script>alert(1)</script>')
+    h = _ur.urlopen(server + "/?t=xss").read().decode()
+    assert "<script>alert(1)" not in h and "alert(1)" not in h.split('id="tip"')[1].split("</section>")[0]
+
+def test_tip_never_influences_verdicts():
+    from sach.verdict import decide
+    import inspect, sach.verdict as V, sach.pipeline as P
+    assert "upi" not in inspect.getsource(V).lower() and "tip" not in inspect.getsource(V).lower().replace("multip", "")
+    assert "tip_config" not in inspect.getsource(P)

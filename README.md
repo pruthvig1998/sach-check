@@ -44,6 +44,9 @@ curl -s -X POST "https://sach-check-lilac.vercel.app/?format=json" \
 ```
 Checks read live sources and usually take 10 to 30 seconds (the function runs in Vercel's Mumbai region, close to the government sites). There is a best-effort rate limit (8 checks per minute per IP) and a 4000-character input cap.
 
+## Tip jar (optional)
+Set `SACH_UPI_ID` (and optionally `SACH_UPI_NAME`) as environment variables and the site shows a "Chip in for the corrections desk" section: amount buttons that open the payer's UPI app, a QR code, and a copy-UPI-ID button, plus a soft prompt under decisive results. Payments go straight from the payer's UPI app to your UPI ID; the app never sees or stores them, and tips never affect verdicts (covered by tests). The ID is read from the environment, never committed, and an invalid ID simply hides the section. The QR library is pinned by its published SRI hash.
+
 ## Evaluation (honest version)
 31 claims: real PIB debunks (FALSE), real government announcements (TRUE), and invented controls (UNVERIFIED). Latest full run: **26/31 exactly right, 0 overclaimed FALSE, 0 wrong TRUE/FALSE**; all 5 misses were safe "unverified" abstentions. Full table including every miss: [`docs/evaluation.md`](docs/evaluation.md).
 

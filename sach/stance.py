@@ -18,7 +18,8 @@ def tokens(text: str) -> set[str]:
     return {_stem(w) for w in ws}
 
 def numbers(text: str) -> set[str]:
-    return set(re.findall(r"\d[\d,]*(?:\.\d+)?", text))
+    """Numbers with thousands separators removed, so 19,800 == 19800 and Indian 1,20,579 == 120579."""
+    return {n.replace(",", "") for n in re.findall(r"\d[\d,]*(?:\.\d+)?", text)}
 
 def overlap(claim: str, page: str) -> float:
     c = tokens(claim)
@@ -54,12 +55,12 @@ def heuristic_stance(claim: str, title: str, text: str, tier: str) -> str:
     if _META.search(claim):      # a claim ABOUT fake news ("send suspected fake news to ...") matches every debunk-themed title
         return "none"
     page = f"{title} {text}"
-    if overlap(claim, page) < 0.6 or subject_coverage(claim, f"{title} {text}") < 0.7:
+    if overlap(claim, page) < 0.5 or subject_coverage(claim, f"{title} {text}") < 0.7:
         return "none"
     cn = numbers(claim)
     if cn and not cn <= numbers(page):
         return "mixed" if tier == "official" and not _STRICT_DEBUNK.search(title) else "none"
-    if tier == "pib_debunk" and _STRICT_DEBUNK.search(title) and overlap(claim, title) >= 0.6:
+    if tier == "pib_debunk" and _STRICT_DEBUNK.search(title) and subject_coverage(claim, title) >= 0.6 and overlap(claim, title) >= 0.4:
         return "contradicts"
     return "confirms" if overlap(claim, page) >= 0.8 and tier == "official" and not _STRICT_DEBUNK.search(page) else "none"
 

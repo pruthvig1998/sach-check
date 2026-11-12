@@ -124,6 +124,15 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-bet
 .filters button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
 @media(max-width:860px){.hero{grid-template-columns:1fr;padding:34px 0 10px}.stampbox{gap:22px;padding:6px}.stampbox .stamp{font-size:clamp(18px,5vw,26px);padding:4px 12px;border-width:3px}h1{font-size:clamp(40px,11vw,64px)}}
 @media(max-width:560px){.nav .wrap{gap:0 12px;padding-top:4px;padding-bottom:4px;min-height:0}.logo{font-size:22px}.logo small{font-size:12px}.nav nav{gap:4px 8px;font-size:12.5px;width:100%;margin-left:0;justify-content:space-between;white-space:nowrap}#theme{width:28px;height:28px;flex:none}.wrap{padding:0 16px}}
+#tip .tipgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0}
+@media(max-width:900px){#tip .tipgrid{grid-template-columns:1fr 1fr}}
+.tipcard{display:block;text-decoration:none;background:var(--card);border:2px solid var(--rule);border-radius:4px;padding:14px;transition:transform .12s}
+.tipcard:hover{transform:rotate(-1.2deg) translateY(-2px);box-shadow:4px 4px 0 var(--rule)}
+.tipcard .amt{font-family:var(--serif);font-weight:900;font-size:34px;line-height:1;color:var(--false)}
+.tipcard b{display:block;margin-top:6px}.tipcard span.d{font-size:13px;color:var(--mute)}
+.tipbox{display:flex;flex-wrap:wrap;gap:22px;align-items:center}#upiqr{background:#fff;padding:10px;border:2px solid var(--rule);border-radius:4px;min-width:150px;min-height:150px;display:grid;place-items:center}
+#upiqr svg{display:block;width:150px;height:150px}.softtip{margin-top:12px;font-size:14px}.softtip a{font-weight:600}
+@media print{.tipcard,#upiqr{display:none}}
 @media print{header.nav,footer,.chips,.row,#busy{display:none}body{background:#fff;color:#000}}
 """
 
@@ -146,6 +155,8 @@ const dl=$('#dl');if(dl)dl.addEventListener('click',()=>{const lines=$('#cardtex
 const c=document.createElement('canvas');c.width=W;c.height=pad*2+lines.length*lh+60;const x=c.getContext('2d');x.fillStyle='#dcf8c6';x.fillRect(0,0,W,c.height);
 x.fillStyle='#17140f';x.font='600 30px sans-serif';let y=pad+30;lines.forEach(l=>{x.fillText(l.slice(0,70),pad,y);y+=lh});x.font='20px monospace';x.fillStyle='#555';x.fillText('Sach · checked '+new Date().toISOString().slice(0,10),pad,c.height-24);
 const a=document.createElement('a');a.download='sach-verdict.png';a.href=c.toDataURL('image/png');a.click()});
+const qb=$('#upiqr');if(qb){const draw=()=>{try{const q=qrcode(0,'M');q.addData(qb.dataset.link);q.make();qb.innerHTML=q.createSvgTag({cellSize:5,margin:0,scalable:true})}catch(e){qb.textContent='Use the amount buttons or copy the UPI ID'}};if(window.qrcode)draw();else window.addEventListener('load',draw)}
+const cu=$('#copyupi');if(cu)cu.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(cu.dataset.vpa);cu.textContent='UPI ID copied ✓'}catch(e){cu.textContent=cu.dataset.vpa}});
 const r=$('#result');if(r)r.scrollIntoView({behavior:'smooth',block:'start'});
 let fv='ALL';const apply=()=>{const q=($('#q')?.value||'').toLowerCase();let n=0;$$('tbody tr[data-v]').forEach(tr=>{const ok=(fv==='ALL'||tr.dataset.v===fv)&&tr.innerText.toLowerCase().includes(q);tr.style.display=ok?'':'none';if(ok)n++});const s=$('#shown');if(s)s.textContent=n+' shown';const e=$('#empty');if(e)e.style.display=n?'none':''};
 $$('.filters button').forEach(b=>b.addEventListener('click',()=>{$$('.filters button').forEach(x=>x.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true');fv=b.dataset.v;apply()}));
@@ -154,6 +165,27 @@ const q=$('#q');if(q){q.addEventListener('input',apply);apply()}
 
 esc = html.escape
 LANG_NAME = {'en': 'English', 'hi': 'हिन्दी', 'te': 'తెలుగు', 'tl': 'Tinglish'}
+
+# ---- Tip jar (UPI). Off unless SACH_UPI_ID is set in the environment; the ID is never stored in the repository. ----
+import re as _re
+from urllib.parse import quote as _q
+_VPA = _re.compile(r"^[A-Za-z0-9._-]{2,64}@[A-Za-z]{2,32}$")
+QR_SRC = "https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"
+QR_SRI = "sha512-ZDSPMa/JM1D+7kdg2x3BsruQ6T/JpJo3jWDWkCZsP+5yVyp1KfESqLI+7RqB5k24F7p2cV7i2YHh/890y6P6Sw=="   # verified against cdnjs
+TIP_TIERS = [(20, "A cutting chai", "keeps the lights on for one more check"), (50, "One forward verified", "pays for a few live checks"),
+             (100, "Ten checks", "a family group's worth of corrections"), (500, "A week of receipts", "funds the desk for a week")]
+
+def tip_config():
+    """Returns {'vpa','name'} when SACH_UPI_ID is a valid UPI address, else None (tip jar hidden)."""
+    vpa = (os.environ.get("SACH_UPI_ID") or "").strip()
+    if not _VPA.match(vpa):
+        return None
+    name = _re.sub(r"[^A-Za-z0-9 .&'-]", "", os.environ.get("SACH_UPI_NAME") or "Sach")[:40].strip() or "Sach"
+    return {"vpa": vpa, "name": name}
+
+def upi_link(cfg: dict, amount: int | None = None, note: str = "Sach tip") -> str:
+    q = f"pa={_q(cfg['vpa'], safe='@.-_')}&pn={_q(cfg['name'])}&cu=INR&tn={_q(note)}"
+    return "upi://pay?" + q + (f"&am={int(amount)}" if amount else "")
 
 
 def eval_summary() -> dict:
@@ -164,6 +196,9 @@ def eval_summary() -> dict:
 
 
 def layout(body: str, title="Sach — cited verdicts for viral forwards") -> bytes:
+    cfg = tip_config()
+    qr_script = f'<script src="{QR_SRC}" integrity="{QR_SRI}" crossorigin="anonymous" referrerpolicy="no-referrer"></script>' if cfg and "id=\"upiqr\"" in body else ""
+    tip_link = ' · <a href="/#tip">Tip jar ☕</a>' if cfg else ""
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)}</title><meta name="description" content="Paste a WhatsApp forward. Sach checks it against PIB and official sources and returns a cited verdict in English, Hindi or Telugu.">
 <meta property="og:title" content="Sach — cited verdicts for viral forwards"><meta property="og:description" content="Got a forward? Get the receipts. PIB-first fact-checking in English, Hindi and Telugu.">
@@ -176,8 +211,8 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <a href="/?view=ledger">Ledger</a><a class="opt" href="{REPO}" rel="noopener">GitHub</a><button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button></nav></div></header>
 <main id="main">{body}</main>
 <footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Bharat Agentic-AI Hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
-<div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/#api">API</a></div></div></footer>
-<script>{JS}</script></body></html>""".encode()
+<div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/#api">API</a>{tip_link}</div></div></footer>
+{qr_script}<script>{JS}</script></body></html>""".encode()
 
 
 def stamp(v: str, cls="") -> str:
@@ -201,6 +236,9 @@ def result_block(res: dict, chosen: bool = False) -> str:
         rows += (f'<tr><td>{esc(c["claim"]["text"])}<br><span class="note">{esc(c["claim"]["domain"])} · {esc(c["reason_code"].replace("_"," "))}</span></td>'
                  f'<td><span class="tag {c["verdict"]}">{c["verdict"]}</span></td><td>{cites}</td></tr>')
     card = esc(res["card"])
+    softtip = ""
+    if tip_config() and v in ("TRUE", "FALSE", "MISLEADING"):
+        softtip = '<p class="softtip note">Did this save you from a bad forward? <a href="/#tip">Chip in for the corrections desk ☕</a> (optional; never affects a verdict).</p>'
     notice = ""
     if res.get("degraded"):
         notice = ('<div class="honest" style="margin-top:18px" role="status"><b>Limited mode.</b> Our AI checker is unavailable or at capacity right now, '
@@ -221,7 +259,7 @@ def result_block(res: dict, chosen: bool = False) -> str:
 <div class="bubble"><span id="cardtext">{card}</span><small>Sach ✓✓</small></div>
 <div class="row"><button class="btn ghost" id="copy" type="button">Copy card</button><a class="btn" href="{esc(wa)}" rel="noopener">Share on WhatsApp</a>
 <button class="btn ghost" id="dl" type="button">Download image</button></div>
-{notice}{english}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
+{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
 <div style="overflow-x:auto"><table><thead><tr><th>Claim</th><th>Verdict</th><th>Citations</th></tr></thead><tbody>{rows}</tbody></table></div>
 <p class="note" style="margin-top:14px">Checked {esc(res['checked_at'][:16].replace('T',' '))} UTC. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
 
@@ -238,7 +276,21 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <div class="card"><div class="num g">{ev['overclaimed_false']}</div><p>overclaimed FALSE: the failure we refuse to ship</p></div>
 <div class="card"><div class="num g">{ev['abstained_wrong']}</div><p>wrong TRUE or FALSE verdicts</p></div>
 <div class="card"><div class="num" style="color:var(--ink)">{ev['abstained']}</div><p>times it said “unverified” instead of guessing</p></div></div>"""
-    faq = "".join(f"<details><summary>{esc(q)}</summary><p>{esc(a)}</p></details>" for q, a in FAQ)
+    cfg = tip_config()
+    faq_items = list(FAQ) + ([("Do tips change what Sach says?", "Never. Verdicts come only from PIB and official sources and the rules above. Tips are optional, go straight from your UPI app to the person who runs Sach, and Sach never sees who paid or how much.")] if cfg else [])
+    faq = "".join(f"<details><summary>{esc(q)}</summary><p>{esc(a)}</p></details>" for q, a in faq_items)
+    tip_section = ""
+    if cfg:
+        cards = "".join(f'<a class="tipcard" href="{esc(upi_link(cfg, amt, "Sach tip - " + title))}" rel="noopener"><div class="amt">₹{amt}</div><b>{esc(title)}</b><span class="d">{esc(desc)}</span></a>'
+                        for amt, title, desc in TIP_TIERS)
+        any_link = esc(upi_link(cfg))
+        tip_section = f'''<section id="tip"><div class="wrap"><h2>Chip in for the corrections desk ☕</h2>
+<p class="sub">Sach is free, has no ads and never will. Every check reads live government pages and uses a free AI quota. If a verdict saved you from forwarding something false, a small tip keeps the desk open. <b>Tips never change a verdict.</b></p>
+<div class="tipgrid">{cards}</div>
+<div class="tipbox"><div id="upiqr" data-link="{any_link}" role="img" aria-label="UPI QR code for tips"></div>
+<div><p style="margin:0 0 8px"><b>On a phone:</b> tap an amount and your UPI app (GPay, PhonePe, Paytm…) opens with it filled in.<br><b>On a computer:</b> scan the QR code with any UPI app and enter any amount.</p>
+<div class="row"><a class="btn" href="{any_link}" style="text-decoration:none">Pay any amount</a><button class="btn ghost" id="copyupi" type="button" data-vpa="{esc(cfg['vpa'])}">Copy UPI ID</button></div>
+<p class="note" style="margin:10px 0 0">Payments go from your UPI app straight to {esc(cfg['vpa'])}. Sach does not see or store anything about them.</p></div></div></div></section>'''
     body = f"""<div class="wrap"><div class="hero"><div>
 <p class="kicker">A corrections desk for your family group</p>
 <h1>Got a forward? Get the <em>receipts.</em></h1>
@@ -287,7 +339,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <li>Hindi and Telugu verdict wording is human-written but still awaiting native-speaker review.</li></ul>
 <p class="note" style="margin:10px 0 0"><a href="{REPO}/blob/main/docs/evaluation.md" rel="noopener">Full table with every claim and failure →</a></p></div></div></section>
 
-<section id="faq"><div class="wrap"><h2>Questions</h2><p class="sub">Short, honest answers.</p>{faq}</div></section>
+{tip_section}<section id="faq"><div class="wrap"><h2>Questions</h2><p class="sub">Short, honest answers.</p>{faq}</div></section>
 
 <section id="api"><div class="wrap"><h2>Use it from code</h2><p class="sub">The same checker is available as JSON. Be kind: each call reads live sources and usually takes 10 to 30 seconds.</p>
 <pre class="code">curl -s -X POST "https://sach-check-lilac.vercel.app/?format=json" \\
