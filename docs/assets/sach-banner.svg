@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-labelledby="t d">
+<title id="t">Sach: a WhatsApp forward about free Corona Sahayata money gets a FALSE stamp and a PIB citation</title>
+<desc id="d">A forwarded WhatsApp message promising 1000 rupees to everyone is stamped FALSE in red. A citation slip reads PIB Fact Check, pib.gov.in, checked by Sach. The stamp word changes through Indian languages. Wordmark Sach, tagline Got a forward? Get the receipts, sachcheck.in.</desc>
+<defs>
+<pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.1" fill="#17140f" fill-opacity=".09"/></pattern>
+<filter id="worn" x="-6%" y="-10%" width="112%" height="120%" color-interpolation-filters="sRGB">
+<feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" result="w"/>
+<feDisplacementMap in="SourceGraphic" in2="w" scale="3.2" result="d"/>
+<feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3" result="n"/>
+<feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -6 4.7" result="m"/>
+<feComposite in="d" in2="m" operator="in"/>
+</filter>
+</defs>
+<style>
+text{font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue','Kohinoor Devanagari','Kohinoor Bangla','Kohinoor Telugu','Tamil Sangam MN','Gujarati Sangam MN','Kannada Sangam MN','Malayalam Sangam MN','Gurmukhi Sangam MN','Oriya Sangam MN','Geeza Pro','Nirmala UI',Arial,sans-serif}
+.serif{font-family:Georgia,'Times New Roman','Noto Serif','Kohinoor Devanagari','Kohinoor Bangla','Kohinoor Telugu','Tamil Sangam MN','Gujarati Sangam MN','Kannada Sangam MN','Malayalam Sangam MN','Gurmukhi Sangam MN','Oriya Sangam MN','Noto Naskh Arabic','Geeza Pro','Nirmala UI','Arial Unicode MS',serif}.mono{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Courier New',monospace}
+.lg{font-family:Georgia,'Times New Roman','Noto Serif','Kohinoor Devanagari','Kohinoor Bangla','Kohinoor Telugu','Tamil Sangam MN','Gujarati Sangam MN','Kannada Sangam MN','Malayalam Sangam MN','Gurmukhi Sangam MN','Oriya Sangam MN','Noto Naskh Arabic','Geeza Pro','Nirmala UI','Arial Unicode MS',serif;font-weight:900;font-size:70px;fill:#c2321f;opacity:0}
+.en{font-family:Georgia,'Times New Roman','Noto Serif','Kohinoor Devanagari','Kohinoor Bangla','Kohinoor Telugu','Tamil Sangam MN','Gujarati Sangam MN','Kannada Sangam MN','Malayalam Sangam MN','Gurmukhi Sangam MN','Oriya Sangam MN','Noto Naskh Arabic','Geeza Pro','Nirmala UI','Arial Unicode MS',serif;font-weight:900;font-size:86px;letter-spacing:5px;fill:#c2321f}
+.tk{font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue','Kohinoor Devanagari','Kohinoor Bangla','Kohinoor Telugu','Tamil Sangam MN','Gujarati Sangam MN','Kannada Sangam MN','Malayalam Sangam MN','Gurmukhi Sangam MN','Oriya Sangam MN','Geeza Pro','Nirmala UI',Arial,sans-serif;font-size:16px;fill:#5d564a;font-weight:600}
+/* Everything outside the animations is the FINISHED composition; the animation is an overlay and is switched off for reduced motion. */
+.A{animation-duration:10.0s;animation-iteration-count:infinite;animation-delay:-8.6s;animation-timing-function:ease-out}
+.bub{animation-name:bub}
+.slam{transform-box:fill-box;transform-origin:50% 50%;animation-name:slam;animation-timing-function:cubic-bezier(.2,.9,.25,1)}
+.shake{animation-name:shake;animation-timing-function:linear}
+.ring{transform-box:fill-box;transform-origin:50% 50%;animation-name:ring;opacity:0}
+.slip{animation-name:slip;animation-timing-function:cubic-bezier(.2,.8,.2,1)}
+.enw{animation-name:enw;animation-timing-function:steps(1,end)}
+.lg,.tk{animation-duration:10.0s;animation-iteration-count:infinite;animation-timing-function:steps(1,end)}
+.lg{animation-name:lg}.tk{animation-name:tk}
+.tag{animation-name:tag}
+@keyframes bub{0%{opacity:0;transform:translateY(26px)}5%{opacity:1;transform:none}95%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-10px)}}
+@keyframes slam{0%,10%{opacity:0;transform:scale(2.7) rotate(5deg)}12.4%{opacity:1;transform:scale(.9) rotate(-1deg)}14.5%{opacity:1;transform:scale(1.03)}16%{opacity:1;transform:none}94%{opacity:1;transform:none}98%,100%{opacity:0;transform:none}}
+@keyframes shake{0%,12.3%{transform:none}13%{transform:translate(-5px,3px)}14%{transform:translate(4px,-3px)}15%{transform:translate(-3px,2px)}16%{transform:translate(2px,-1px)}17%,100%{transform:none}}
+@keyframes ring{0%,12.3%{opacity:0;transform:scale(.55)}12.5%{opacity:.55;transform:scale(.7)}20%,100%{opacity:0;transform:scale(1.55)}}
+@keyframes slip{0%,16.9%{opacity:0;transform:translateX(90px)}22%{opacity:1;transform:none}94%{opacity:1;transform:none}98%,100%{opacity:0;transform:none}}
+@keyframes enw{0%{opacity:1}28%{opacity:0}74.4%{opacity:1}100%{opacity:1}}
+@keyframes lg{0%{opacity:1}4.2%{opacity:0}100%{opacity:0}}
+@keyframes tk{0%{fill:#c2321f}4.2%{fill:#5d564a}100%{fill:#5d564a}}
+@keyframes tag{0%,3%{opacity:0;transform:translateY(14px)}9%{opacity:1;transform:none}94%{opacity:1;transform:none}98%,100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.A,.lg,.tk{animation:none !important}.lg{opacity:0}}
+</style>
+
+<rect width="1280" height="640" fill="#f2ebdb"/><rect width="1280" height="640" fill="url(#dots)"/>
+<rect x="0" y="0" width="1280" height="54" fill="#17140f"/>
+<text x="48" y="34" class="mono" font-size="16" letter-spacing="3.2" fill="#f2ebdb" font-weight="700">THE CORRECTIONS DESK</text>
+<text x="1232" y="34" class="mono" font-size="16" letter-spacing="3.2" fill="#f2ebdb" text-anchor="end" opacity=".75">FREE · FOR WHATSAPP FORWARDS · IN YOUR LANGUAGE</text>
+<rect x="0" y="54" width="1280" height="5" fill="#c2321f"/>
+
+<g>
+<rect x="56" y="92" width="600" height="490" rx="16" fill="#17140f"/>
+<rect x="48" y="84" width="600" height="490" rx="16" fill="#e9e0cb" stroke="#17140f" stroke-width="3"/>
+<rect x="48" y="84" width="600" height="490" rx="16" fill="url(#dots)"/>
+<path d="M48 100a16 16 0 0 1 16-16h568a16 16 0 0 1 16 16v38H48z" fill="#1f7a45"/>
+<rect x="48" y="137" width="600" height="3" fill="#17140f"/>
+<circle cx="92" cy="111" r="19" fill="#f2ebdb" stroke="#17140f" stroke-width="2"/>
+<circle cx="92" cy="105" r="6" fill="#17140f"/><path d="M80 123a12 10 0 0 1 24 0z" fill="#17140f"/>
+<text x="124" y="107" font-size="21" font-weight="700" fill="#fffdf6">Sharma Parivar</text>
+<text x="124" y="127" font-size="14" fill="#fffdf6" fill-opacity=".85">Papa, Mummy, Chacha, 38 others</text>
+</g>
+
+<g class="A bub">
+<path d="M96 168a14 14 0 0 1 14-14h482a14 14 0 0 1 14 14v264a14 14 0 0 1-14 14H110a14 14 0 0 1-14-14z" fill="#17140f" transform="translate(5 6)"/>
+<path d="M92 160a14 14 0 0 1 14-14h482a14 14 0 0 1 14 14v264a14 14 0 0 1-14 14H106a14 14 0 0 1-14-14z" fill="#dcf8c6" stroke="#17140f" stroke-width="3"/>
+<g fill="none" stroke="#5d564a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M117 183l9-8v5c-9 0-13 4-15 11 3-5 7-6 15-6v5z"/><path d="M132 183l9-8v5c-9 0-13 4-15 11 3-5 7-6 15-6v5z" opacity=".55"/></g>
+<text x="150" y="186" font-size="17" font-style="italic" fill="#5d564a">Forwarded many times</text>
+<g transform="translate(112 214)"><path d="M3 24a13 13 0 0 1 26 0z" fill="#c2321f" stroke="#17140f" stroke-width="2.2"/><rect x="0" y="24" width="32" height="6" rx="2" fill="#17140f"/>
+<path d="M16 3v-3M3 8 .5 5.5M29 8l2.5-2.5M-3 17h-3M35 17h3" stroke="#c2321f" stroke-width="2.6" stroke-linecap="round" transform="translate(0 3)"/></g>
+<g font-size="25" fill="#17140f"><text x="158" y="244" font-weight="700">Govt is giving ₹1000 to everyone</text>
+<text x="114" y="280" font-weight="700">under Corona Sahayata Yojana!</text>
+<text x="114" y="316">Click the link to register.</text>
+<text x="114" y="352" font-weight="700">Forward to 10 groups!!</text></g>
+<text x="114" y="390" font-size="22" fill="#1a5fb4" text-decoration="underline">bit.ly/c0rona-sahayata</text>
+<text x="570" y="420" font-size="15" fill="#5d564a" text-anchor="end">11:42 am</text>
+<g transform="translate(576 408)" fill="none" stroke="#1a73e8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M0 6l4 4 8-9"/><path d="M6 8l3 2 8-9"/></g>
+</g>
+
+<g class="A slip"><g transform="translate(0 12) rotate(1.6 380 512)">
+<rect x="132" y="478" width="480" height="76" fill="#17140f"/>
+<rect x="128" y="474" width="480" height="76" fill="#fffdf6" stroke="#17140f" stroke-width="3"/>
+<rect x="128" y="474" width="14" height="76" fill="#c2321f"/>
+<text x="160" y="505" class="mono" font-size="14.5" letter-spacing="2" fill="#c2321f" font-weight="700">CITED SOURCE</text>
+<text x="160" y="533" font-size="20" font-weight="700" fill="#17140f">PIB Fact Check · pib.gov.in · checked by Sach</text>
+</g></g>
+
+<g transform="translate(468 414) rotate(-9)">
+<g class="A slam"><g class="A shake">
+<circle class="A ring" cx="0" cy="0" r="170" fill="none" stroke="#c2321f" stroke-width="5"/>
+<g filter="url(#worn)">
+<rect x="-176" y="-72" width="352" height="144" rx="14" fill="#fffdf6" fill-opacity=".55"/>
+<rect x="-176" y="-72" width="352" height="144" rx="14" fill="none" stroke="#c2321f" stroke-width="9"/>
+<rect x="-160" y="-56" width="320" height="112" rx="8" fill="none" stroke="#c2321f" stroke-width="2.6"/>
+<text class="en A enw" x="0" y="30" text-anchor="middle">FALSE</text>
+<text class="lg" x="0" y="24" text-anchor="middle" style="animation-delay:-5.8s">झूठ</text><text class="lg" x="0" y="24" text-anchor="middle" style="animation-delay:-5.38s">মিথ্যা</text><text class="lg" x="0" y="24" text-anchor="middle" style="animation-delay:-4.96s">అబద్ధం</text><text class="lg" x="0" y="24" text-anchor="middle" style="animation-delay:-4.54s">பொய்</text><text class="lg" x="0" y="24" text-anchor="middle" style="animation-delay:-4.12s">खोटे</text><text class="lg" x="0" y="24" text-anchor="middle" style="animation-delay:-3.7s">ખોટું</text><text class="lg" x="0" y="24" text-anchor="middle" style="animation-delay:-3.28s" direction="rtl" unicode-bidi="bidi-override">جھوٹ</text><text class="lg" x="0" y="24" text-anchor="middle" style="animation-delay:-2.86s">ಸುಳ್ಳು</text><text class="lg" x="0" y="24" text-anchor="middle" style="animation-delay:-2.44s">ମିଛ</text><text class="lg" x="0" y="24" text-anchor="middle" style="animation-delay:-2.02s">തെറ്റ്</text><text class="lg" x="0" y="24" text-anchor="middle" style="animation-delay:-1.6s">ਝੂਠ</text>
+</g></g></g></g>
+
+<g><text class="tk" x="98" y="604" text-anchor="middle" style="animation-delay:-5.8s">हिन्दी</text><text class="tk" x="188" y="604" text-anchor="middle" style="animation-delay:-5.38s">বাংলা</text><text class="tk" x="278" y="604" text-anchor="middle" style="animation-delay:-4.96s">తెలుగు</text><text class="tk" x="368" y="604" text-anchor="middle" style="animation-delay:-4.54s">தமிழ்</text><text class="tk" x="458" y="604" text-anchor="middle" style="animation-delay:-4.12s">मराठी</text><text class="tk" x="548" y="604" text-anchor="middle" style="animation-delay:-3.7s">ગુજરાતી</text><text class="tk" x="98" y="626" text-anchor="middle" style="animation-delay:-3.28s">اردو</text><text class="tk" x="188" y="626" text-anchor="middle" style="animation-delay:-2.86s">ಕನ್ನಡ</text><text class="tk" x="278" y="626" text-anchor="middle" style="animation-delay:-2.44s">ଓଡ଼ିଆ</text><text class="tk" x="368" y="626" text-anchor="middle" style="animation-delay:-2.02s">മലയാളം</text><text class="tk" x="458" y="626" text-anchor="middle" style="animation-delay:-1.6s">ਪੰਜਾਬੀ</text></g>
+
+<g class="A tag">
+<text x="716" y="262" class="serif" font-size="206" font-weight="900" fill="#17140f" letter-spacing="-6">Sach</text>
+<path d="M722 286c90-14 190-14 262-4s150 6 214-6" fill="none" stroke="#c2321f" stroke-width="8" stroke-linecap="round"/>
+<text x="722" y="352" class="serif" font-size="40" fill="#17140f">सच <tspan fill="#c2321f">·</tspan> నిజం <tspan fill="#c2321f">·</tspan> truth</text>
+<text x="722" y="420" class="serif" font-size="39" font-style="italic" fill="#17140f">Got a forward?</text>
+<text x="722" y="466" class="serif" font-size="39" font-style="italic" font-weight="700" fill="#c2321f">Get the receipts.</text>
+</g>
+<g class="A tag" style="animation-delay:-8.45s">
+<g class="serif" font-weight="900" font-size="16" letter-spacing="1" text-anchor="middle">
+<g transform="translate(758 524) rotate(-4)"><rect x="-42" y="-22" width="84" height="38" rx="5" fill="none" stroke="#1f7a45" stroke-width="3.5"/><text y="4" fill="#1f7a45">TRUE</text></g>
+<g transform="translate(852 524) rotate(3)"><rect x="-46" y="-22" width="92" height="38" rx="5" fill="none" stroke="#c2321f" stroke-width="3.5"/><text y="4" fill="#c2321f">FALSE</text></g>
+<g transform="translate(982 524) rotate(-3)"><rect x="-76" y="-22" width="152" height="38" rx="5" fill="none" stroke="#c9780a" stroke-width="3.5"/><text y="4" fill="#c9780a">MISLEADING</text></g>
+<g transform="translate(1148 524) rotate(4)"><rect x="-72" y="-22" width="144" height="38" rx="5" fill="none" stroke="#6b6558" stroke-width="3.5"/><text y="4" fill="#6b6558">UNVERIFIED</text></g>
+</g>
+<rect x="716" y="566" width="258" height="46" rx="3" fill="#17140f"/>
+<text x="845" y="598" class="mono" font-size="26" font-weight="700" fill="#f2ebdb" text-anchor="middle">sachcheck.in</text>
+<text x="994" y="596" font-size="19" fill="#5d564a" font-weight="600">PIB first. Every claim cited.</text>
+</g>
+</svg>

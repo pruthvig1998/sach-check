@@ -1,109 +1,213 @@
-# Sach (सच · నిజం)
+<p align="center">
+  <a href="https://sachcheck.in"><img src="docs/assets/sach-banner.svg" alt="Sach: a forwarded WhatsApp message promising Rs 1000 to everyone is stamped FALSE, with a PIB Fact Check citation. Got a forward? Get the receipts. sachcheck.in" width="100%"></a>
+</p>
 
-**Got a forward? Get the receipts.** Paste a viral WhatsApp-style message in English or in 15 Indian languages (Hindi, Bengali, Marathi, Telugu, Tamil, Gujarati, Urdu, Kannada, Odia, Malayalam, Punjabi, Assamese, Konkani, Nepali, Manipuri), plus Hinglish and Tinglish (Telugu in English letters). See [docs/languages.md](docs/languages.md). Sach splits it into claims, checks each against PIB and official sources, and returns a **cited verdict card** in the forward's own language (plus what it means in English), ready to paste back into the group. Every check is logged to a public evidence ledger.
+<p align="center"><b>Paste or share a viral WhatsApp forward. Sach checks every claim against PIB and official government sources and sends back a cited verdict card in the forward's own language, ready to post in the family group.</b></p>
 
-- **Live:** https://sach-check-lilac.vercel.app (an example: the site's address is configurable, see `SACH_SITE_URL` below)
-- **Track:** Governance · **License:** MIT · **Cost to run:** ₹0 (Vercel free, Gemini free tier, Brave free plan)
+<p align="center">
+  <a href="https://sachcheck.in"><img alt="live: sachcheck.in" src="https://img.shields.io/badge/live-sachcheck.in-c2321f"></a>
+  <img alt="English + 15 Indian languages" src="https://img.shields.io/badge/languages-English%20%2B%2015%20Indian-17140f">
+  <img alt="4012 tests" src="https://img.shields.io/badge/tests-4012%20passing-1f7a45">
+  <img alt="cost to run: 0 rupees" src="https://img.shields.io/badge/cost%20to%20run-%E2%82%B90-c9780a">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-6b6558"></a>
+</p>
 
-## Why it exists
-Misleading forwards about government schemes, money and health spread in family groups faster than corrections do. The corrections exist (PIB Fact Check, ministry clarifications) but nobody reads a press release inside WhatsApp. Sach brings the correction to where the forward lives, in the language it was written in, with a link.
+<p align="center">
+  <a href="https://sachcheck.in">Live site</a> ·
+  <a href="https://sachcheck.in/impact">Impact (live numbers)</a> ·
+  <a href="https://sachcheck.in/?view=ledger">Evidence ledger</a> ·
+  <a href="docs/evaluation.md">Evaluation</a> ·
+  <a href="docs/red-team.md">Red team</a> ·
+  <a href="docs/telegram-bot.md">Telegram bot</a> ·
+  <a href="docs/sources.md">Sources</a> ·
+  <a href="docs/languages.md">Languages</a>
+</p>
+
+Built for the Bharat Agentic-AI Hackathon (Governance track). Runs on free tiers. Sach is not a government service and does not speak for PIB or any ministry.
+
+## Why
+
+Misleading forwards about schemes, money and health travel through family groups faster than corrections do. The corrections exist (PIB Fact Check, ministry clarifications), but nobody reads a press release inside WhatsApp. Sach brings the correction to where the forward lives, in the language it was written in, with a link anyone can open.
+
+The design rule is that **"I could not verify this" is a respectable answer, and a wrongly confident FALSE is the one failure we refuse to ship.** Everything below is built around that.
+
+## Try it in 10 seconds
+
+- **Android:** in WhatsApp, long-press the message, Share, **Sach** (install the site as an app first: the browser's "Install" prompt).
+- **iPhone:** long-press the message, Copy, open Sach, tap **Paste and check**.
+- **Anywhere:** paste the text, or upload a screenshot (Sach reads the text and lets you edit it before checking), or speak it.
+- You get a card with the verdict first, one line of why, and the citation. A **WhatsApp-ready reply** (verdict, the claim, and a "Full evidence" link) goes straight back into the group.
+
+Three forwards from the evaluation set (the set's expected verdicts; these are examples, not measured results):
+
+| Forward | Expected verdict |
+|---|---|
+| *Government is giving Rs 1000 to everyone under Corona Sahayata Yojana, click the link to register.* | **FALSE** (a PIB debunk) |
+| *The Union Cabinet has approved a scheme for coal and lignite gasification projects with an outlay of Rs 37,500 crore.* | **TRUE** (a PIB release) |
+| *Every household in India will receive a free solar-powered refrigerator next month.* | **UNVERIFIED** (invented; no official source, so Sach says so) |
+
+Developers can call the same check as JSON:
+
+```bash
+curl -s -X POST "https://sachcheck.in/?format=json" \
+  --data-urlencode "text=Government is giving Rs 1000 under Corona Sahayata Yojana" \
+  --data-urlencode "lang=te"      # optional: auto (default), en, hi, te, ta, bn, ... (see docs/languages.md)
+```
 
 ## How it works
-1. **Split** the forward into atomic, checkable claims and tag each (scheme/money, health, news, other). Call-to-action fragments ("click the link") and abbreviations like `Rs.` / `रु.` / `రూ.` are handled.
-2. **Search**, in priority order: **PIB first** (hand-seeded debunks, a local index of harvested PIB releases in `data/pib_index.jsonl`, the live RSS feed, and a PIB-scoped Brave query) → the wider official pool (`*.gov.in`, `*.nic.in`, `who.int`, `rbi.org.in`, `mygov.in`, `sansad.in`, NPCI) via keyword queries → fact-checkers (BOOM, Vishvas News, Newschecker, Factly and other IFCN-verified outlets) as *secondary* evidence, queried only when nothing authoritative turned up. Duplicate URLs for the same PIB release are merged. Non-English claims are translated to English for search and judging; the ledger keeps the original wording.
-3. **Judge** each fetched source: confirms / contradicts / partial / neither. The judge (Gemini) must **quote the exact sentence** it relies on, and the quote is verified verbatim against the page. A contradiction only counts if the page is itself a debunk or denial; a confirmation must contain the claim's numbers.
-4. **Decide** with hard rules (below) and **reply** with a short card: verdict first, one line of why, the citation link.
 
-### Verdict rules (hard, in code, tested)
-| Verdict | Only when |
-|---|---|
-| **FALSE** | PIB or an official source directly contradicts the claim |
-| **TRUE** | an official source directly confirms it, with the same numbers |
-| **MISLEADING** | the core fact is real but numbers, dates or framing are distorted |
-| **UNVERIFIED** | everything else. No evidence is never "false". Fact-checkers alone never decide a verdict. Conflicting official sources → UNVERIFIED. |
-
-A citation appears only if the page was actually fetched (source, URL, date accessed). Overclaiming FALSE is the one failure we refuse to ship.
-
-## Try these (checked against the live pipeline)
-| Forward | Verdict |
-|---|---|
-| *Government is giving Rs 1000 to everyone under Corona Sahayata Yojana. Click the link to register.* | **FALSE** (PIB debunk, cited) |
-| *The Union Cabinet has approved a scheme for coal and lignite gasification projects with an outlay of Rs 37,500 crore.* | **TRUE** (PIB release, cited) |
-| *The Union Cabinet has approved continuation of the Samagra Shiksha scheme from April 2021 to March 2030.* (real scheme, wrong end date) | **MISLEADING** (PIB release, cited) |
-| *सरकार कोरोना सहायता योजना के तहत सभी को 1000 रुपये दे रही है।* | **FALSE**, card in Hindi |
-| *Central sarkaru employees retirement age ni 50 years ki taggistundi ani message vachindi* (Tinglish) | **FALSE**, card in Tinglish, with an English meaning |
-| *Every household in India will receive a free solar-powered refrigerator next month.* | **UNVERIFIED** (invented; we say so plainly) |
-
-## The website
-Landing page, live checker with one-click examples, a "Reply in" selector (Auto, English, every supported Indian language, Tinglish) that works whatever the forward is written in, WhatsApp-style verdict card with **Copy**, **Share on WhatsApp** and **Download image**, per-claim citation table, public **evidence ledger** (filter + search), FAQ, dark mode, mobile-first layout, keyboard shortcut (Ctrl/Cmd+Enter), and a JSON API:
-
-```bash
-curl -s -X POST "https://sach-check-lilac.vercel.app/?format=json" \
-  --data-urlencode "text=Government is giving Rs 1000 under Corona Sahayata Yojana" \
-  --data-urlencode "lang=te"     # optional: auto (default), en, hi, te, tl
+```mermaid
+flowchart TD
+  A["Forward: text, screenshot or voice"] --> B["Split into atomic claims<br/>tag: scheme or money, health, news, other"]
+  B --> C["Detect language, translate the claim to English for search and judging"]
+  C --> D["Search, PIB first<br/>seeded debunks, local PIB index, live PIB feed, then PIB-scoped web search"]
+  D --> E["Wider official pool<br/>gov.in, nic.in, RBI, WHO, NPCI, Parliament ..."]
+  E --> F["Fact-checkers, only as secondary evidence"]
+  F --> G["Each source fetched and judged by an AI<br/>must quote the page word for word"]
+  G --> H["Validated in code<br/>quote is verbatim, numbers match, subject words match,<br/>denial wording, direction, no embedded instructions,<br/>a second model must agree"]
+  H --> I["Hard verdict rules<br/>pure code, no AI"]
+  I --> J["Cited card in the forward's language<br/>plus English meaning, trace, public ledger"]
 ```
-Checks read live sources and usually take 10 to 30 seconds (the function runs in Vercel's Mumbai region, close to the government sites). There is a best-effort rate limit (8 checks per minute per IP) and a 4000-character input cap.
 
-## Tip jar (optional)
-Tips have two routes. Both are optional and independent; set the environment variables for whichever you want, and the section only shows what is configured.
+1. **Split** the forward into claims. Call-to-action fragments ("click the link") are dropped; `Rs.` / `रु.` / `రూ.` are understood.
+2. **Search in priority order.** PIB first: hand-seeded debunks, a local index of harvested PIB releases (`data/pib_index.jsonl`), PIB's live RSS feed, a PIB-scoped web search. Then the wider official pool. Fact-checkers are queried only when nothing authoritative turned up, and they can never decide a verdict. Web search tries Brave, then fails over to Tavily.
+3. **Judge each source.** The model must return a label and a sentence **copied verbatim from the page**. Code then checks that the quote really is on the page, the claim's numbers appear, subject words match, a "contradiction" is an actual denial or debunk (not a page that merely mentions fake news), direction is not inverted, and the claim or page contains no instruction aimed at the judge. A decisive stance must be confirmed by a **second, different model**; if none can answer, a deterministic title and number check stands in as the second opinion. Disagreement means no stance.
+4. **Decide** with the hard rules below, then render the card. Every citation is a page Sach actually fetched, with the date accessed.
 
-**1. Card / UPI checkout (Razorpay).** Set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` (use the `rzp_test_...` pair while testing, then your `rzp_live_...` pair once Razorpay has activated your account). The pay panel then shows "Pay ₹N by UPI or card". Flow: the browser asks `POST /?api=rzp-order` for an order (amount checked server-side, ₹1 to ₹10,000, converted to paise), Razorpay's `checkout.js` is loaded only when the button is tapped, and on success the browser sends the three returned values to `POST /?api=rzp-verify`, which checks the HMAC-SHA256 signature before anything is called paid. The key secret never leaves the server and never appears in a page. There is no SDK: it is a few stdlib HTTP calls in `sach/razorpay_pay.py`.
-- **Webhook (optional but recommended).** In Razorpay's dashboard add a webhook to `https://<your-site>/?api=rzp-webhook`, choose a secret, and set the same value as `RAZORPAY_WEBHOOK_SECRET`. Events (`payment.captured`, `payment.failed`, `order.paid`, `refund.processed`) are verified against the raw body and acknowledged, so Razorpay stops retrying even if the payer closed the tab. Sach logs one non-personal line per event (event name, payment id, amount); it stores nothing, because the free Vercel deployment has no persistent storage.
-- **Limits.** Tip orders are limited to 6 per minute per IP and verifications to 20, in their own buckets, so tipping never uses up anyone's fact-check allowance.
-- **Cost.** No setup or monthly fee on Razorpay's standard plan; roughly 2% plus 18% GST per payment (check the current pricing page). Razorpay can see who paid, and the pay panel and privacy page say so.
+Judges are free-tier models with automatic failover (default order Groq, Gemini, OpenRouter, Mistral, then Anthropic if you add a paid key). One check has a 48-second budget inside Vercel's 60-second limit; a claim that runs out of time is reported UNVERIFIED, never guessed.
 
-**2. UPI QR code.** Set `SACH_UPI_ID` (and `SACH_UPI_NAME`, which must match the name your bank shows for that UPI ID; optionally `SACH_UPI_ID_ALT`, a second UPI address for the same bank account that payers can switch to with "Code not working? Try code B"). The QR is drawn on the server (PNG and SVG), the payer scans it inside their own UPI app (or, on a phone, saves the PNG and scans it from the gallery), and the money goes straight to your account with no fee. Your UPI ID never appears in the page's HTML or text.
+## Verdict rules (as coded in `sach/verdict.py`)
 
-**Why there are no "open my UPI app" buttons for a personal UPI ID.** In real testing, payment links (`upi://`, `gpay://`, `phonepe://`...) pointing at a personal UPI ID were rejected by the payer's bank or app (Google Pay showed "bank limit exceeded" even for ₹20), while scanning the same ID's QR worked. The cause is NPCI circular OC-76A (12 March 2024, effective 1 April 2024), which tells payer apps to disallow person-to-person payments started from a link ("intent" mode); QR payments are a different, allowed flow, and QR images saved to a gallery are capped at ₹2,000. This is a rule of the UPI network, not a bug in Sach, and no site code can get around it. So for a personal UPI ID the app buttons are hidden, `/?go=tip` and `/?view=pay` redirect to the tip section, and a short note explains why. Link payments only work for a **verified merchant** UPI ID (or through a payment gateway, which is what route 1 is). If you have a verified merchant ID, set `SACH_UPI_MERCHANT=1` to bring the app chooser (`/?view=pay`, with the apps' real icons and a custom-amount box) back.
+Evaluated in this order, per claim, on authoritative evidence only (PIB debunks and official sources):
 
-Tips never affect verdicts (covered by tests), IDs and keys are read from the environment and never committed, and invalid values simply hide that route. Payers' UPI apps do show them your name and UPI ID before they confirm (that is UPI's own safety check).
+| # | Condition | Verdict |
+|---|---|---|
+| 1 | An official source contradicts **and** another official source confirms | **UNVERIFIED** (conflicting official sources) |
+| 2 | An official source confirms **and** another says "partly" (details differ) | **UNVERIFIED** (conflicting official sources) |
+| 3 | An official source contradicts | **FALSE** |
+| 4 | An official source says the core fact is real but numbers, dates or framing differ | **MISLEADING** |
+| 5 | An official source confirms | **TRUE** |
+| 6 | Nothing authoritative | **UNVERIFIED** (`factchecker_only` if only fact-checkers had something, else `no_evidence`) |
 
-**Policy pages.** `/?view=terms`, `/?view=privacy`, `/?view=refund` and `/?view=contact` (linked from every footer) are what payment gateways ask to see on a site. Edit the wording in `sach/legal.py`. Set `SACH_CONTACT_EMAIL` to show an email address; without it people are pointed to GitHub issues.
+For a whole forward: any FALSE claim makes it **FALSE**; otherwise any MISLEADING makes it **MISLEADING**; **TRUE** only if every claim is TRUE; otherwise **UNVERIFIED**. A citation appears only if the page was actually fetched. With no AI judge available ("limited mode") only a clear PIB debunk can produce FALSE, and TRUE and MISLEADING are impossible.
 
-The app logos in the chooser (Google Pay, PhonePe, Paytm, BHIM) are the apps' own App Store icons, shown only so people can recognise which app a button opens. They are trademarks and copyrighted works of their owners, **not** covered by this repository's MIT license, and Sach is not affiliated with those companies; see `sach/assets/app_icons/NOTICE.md`. If an owner objects, delete that file and the tile falls back to a generic icon.
+## Features
 
-## Evaluation (honest version)
-31 claims: real PIB debunks (FALSE), real government announcements (TRUE), and invented controls (UNVERIFIED). Latest full run: **26/31 exactly right, 0 overclaimed FALSE, 0 wrong TRUE/FALSE**; all 5 misses were safe "unverified" abstentions. Full table including every miss: [`docs/evaluation.md`](docs/evaluation.md).
+- **English plus 15 Indian languages** (Hindi, Bengali, Marathi, Telugu, Tamil, Gujarati, Urdu, Kannada, Odia, Malayalam, Punjabi, Assamese, Konkani, Nepali, Manipuri), and Hinglish and Tinglish (Telugu in English letters) as inputs and a Tinglish reply. Cards come in the forward's language, or the language you pick ("Reply in"), always with the English meaning beside it. Urdu is laid out right to left. Details and limits: [docs/languages.md](docs/languages.md).
+- **Voice in and read-aloud** (browser speech, where your device has a voice for the language).
+- **Screenshot reading:** Gemini vision turns an image into text that you review before checking (never stored).
+- **Scam warning signs** (urgency, "forward to 10 groups", suspicious links): advice shown beside the verdict, deterministic, and it never changes a verdict.
+- **Report to PIB Fact Check:** opens PIB's own channels with the claim ready to send. Sach never sends anything for you.
+- **Shareable verdict image** and a WhatsApp-ready text reply with a permanent "Full evidence" link.
+- **Verdict trace:** per claim, every source that was looked at, its stance, and the quote that decided it.
+- **Public evidence ledger** of every check, and a **verdict cache** (7 days for TRUE, FALSE and MISLEADING; 6 hours for UNVERIFIED, because an official source may appear later).
+- **Installable app** with a WhatsApp share target, offline shell and private on-device history.
+- **Telegram bot:** forward a message to the bot, get the same card. Free to run: [docs/telegram-bot.md](docs/telegram-bot.md).
+- **[Impact page](https://sachcheck.in/impact):** live usage numbers and a JSON endpoint; `scripts/snapshot_impact.py` freezes them into `evidence/` so they can be cited later.
+- **Policy pages** (terms, privacy, refund, contact) and an optional **tip jar** (UPI QR, and Razorpay checkout when configured). Tips never affect verdicts; this is covered by tests.
 
-Read before citing: these numbers were measured at commit `dfbdaf2`, before the later hardening (second-opinion judge, subject matching, safe fallback); a fresh LLM-backed run is pending the reset of Gemini's free-tier quota (a fallback-mode run, which can only report clear PIB debunks, scored 0 overclaims and 0 wrong verdicts: [`docs/evaluation-fallback-run.md`](docs/evaluation-fallback-run.md)); the set is small; two labels were corrected after inspecting the evidence (disclosed in the report); many FALSE items paraphrase PIB debunk titles so recall there is optimistic; results move by a claim or two between runs because live search varies; the set contains no true MISLEADING examples (the MISLEADING demo above was checked separately).
+## Evaluation
 
-## Retrieval evaluation (no AI involved)
-Does retrieval put the known source page in front of the judge? For 26 eval claims with a known PIB source page: **24/26 combined**, 23/26 from live Brave search alone, and for the 11 pages that are in neither the hand-seeded list nor the harvested index, Brave alone found **10/11**. The local index (351 PIB releases, 132 of them debunks or clarifications, built with `scripts/harvest_pib.py`) is partly circular for the other items, since it was harvested from searches on the same topics. Details: [`docs/retrieval-evaluation.md`](docs/retrieval-evaluation.md).
+<!-- EVAL:START -->
+**Status: the fresh evaluation is scheduled, and no accuracy figure is published here yet.** It will be one full run of the 79-claim set (English plus 17 language variants) after the free-tier model quota resets. The last full runs were degraded by free-tier limits, so they are labelled as such and are not used as headline numbers.
 
-## Data checkpoint (what actually worked)
-`pib.gov.in` press-release pages (`PressReleasePage.aspx?PRID=`) fetch and parse. `pib.gov.in/factcheck.aspx` is only a Twitter embed and the RSS feed returns just the latest 20 items, so there is no scrapeable debunk archive. Debunks are therefore seeded by hand in `data/seed_debunks.json` (each fetched and parsed) and found live through Brave search of official domains.
+The report in [docs/evaluation.md](docs/evaluation.md) is replaced only by a full, non-degraded run, and the method (including how degraded and partial runs are kept out) is in [docs/evaluation-method.md](docs/evaluation-method.md).
+<!-- EVAL:END -->
+
+**What the set is** (`data/eval_set.json`, counts computed from the file): 79 claims. By expected verdict: 34 FALSE (real PIB or RBI debunks), 34 TRUE (real official announcements) and 11 UNVERIFIED (invented controls that should abstain). By language: English 33, Hindi 6, Telugu 6, Hinglish 3, Marathi 3, Tamil 3, Urdu 3, Tinglish 2, and 2 each for Bengali, Assamese, Manipuri, Konkani, Nepali, Gujarati, Punjabi, Odia, Kannada and Malayalam.
+
+Scoring counts an overclaim (TRUE or FALSE where the label says otherwise) as the failure that matters, an overclaimed FALSE above all. Saying UNVERIFIED where the label is TRUE or FALSE is a "safe miss" and is reported separately. Known weaknesses are listed in the method doc: small groups per language (a language's score is a smoke test, not a measurement), AI-written non-English rows cleaner than real forwards, rows that paraphrase PIB titles flatter recall, live search varies between runs, and there are no true MISLEADING rows yet.
+
+Retrieval is measured separately, with no AI involved: [docs/retrieval-evaluation.md](docs/retrieval-evaluation.md).
+
+## Safety and red team
+
+`data/red_team.json` holds **53 adversarial cases** in six categories: embedded instructions (12), cross-language injection (13), altered real facts (10), fabricated authority such as fake PIB quotes, PRIDs and lookalike URLs (8), bait for a wrong FALSE (6) and opposite-of-a-debunk statements (4). `tests/test_redteam.py` runs every case offline against many scripted judges (obedient, contradicting, quote-copying, wrong-label, translation that obeys an injection) and retrievers (hostile fact-checker pages, hostile official pages), asserting that none produces a verdict listed as forbidden. `scripts/red_team.py` runs them live and exits non-zero on any overclaim. The published run so far was in limited mode (no AI judge), which is said on the report itself; read [docs/red-team.md](docs/red-team.md) for what it does and does not exercise.
+
+The hardening: forwards and fetched pages are treated as data, never instructions; instruction-like text blocks a decisive stance; quotes must be verbatim; official hosts are matched exactly (a lookalike such as `rbi.org.in.evil.com` never counts); and the honesty rules below.
+
+**Honesty rules**
+- UNVERIFIED is a normal answer. No evidence is never "false".
+- Fact-checkers are secondary: shown, labelled, and unable to produce TRUE or FALSE.
+- Conflicting official sources give UNVERIFIED, not a guess.
+- Sach does not judge opinions, predictions, private individuals, or anything with no official source.
+- **All non-English wording is AI-written and awaiting native-speaker review.** The cards say what an official source says; they are a first draft in the language, not a certified translation.
+
+An honest limit of the red team: it is a small hand-written set by the people who built Sach, not an outside audit, and an official-host page that itself asserts something false cannot be caught, because the host is the trust root.
+
+## Sources
+
+| Tier | Who | What it can do |
+|---|---|---|
+| `pib_debunk` | A PIB release whose title is a debunk (PIB Fact Check) | FALSE, MISLEADING or TRUE |
+| `official` | `.gov.in`, `.nic.in`, `who.int`, `.bank.in` banks, and 19 named hosts (PIB, ICMR, RBI, MyGov, NPCI, Parliament, NTA, IRCTC, EPFO, SBI, LIC, AIIMS, PFRDA, AICTE, UGC and others) | FALSE, MISLEADING or TRUE |
+| `factchecker` | 12 entries (6 whole sites and 6 path-scoped) from the IFCN signatory list | Shown as a labelled citation. **Can never produce TRUE or FALSE** |
+
+Every official entry needs recorded evidence of why it is official; widening that list raises the risk of an overclaim, so it grows slowly. Why each host is in or out, and the date it was checked: [docs/sources.md](docs/sources.md). PIB only handles Union government matters, which is why Sach's strength is central schemes, money, health and public notices.
 
 ## Run it yourself
+
 ```bash
+git clone https://github.com/pruthvig1998/sach-check && cd sach-check
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q            # offline, recorded fixtures, no live web
-python scripts/run_eval.py     # writes docs/evaluation.md and data/eval_summary.json
-python scripts/eval_retrieval.py   # LLM-free: does retrieval surface the known source page? -> docs/retrieval-evaluation.md
+python -m pytest -q                 # offline, recorded fixtures, no live web (4012 tests at the time of writing)
+python -m sach.web                  # http://localhost:8080
+```
+
+With no keys Sach still runs in a conservative heuristic mode: high precision, low recall, mostly UNVERIFIED. Copy `.env.example` to `.env` and add keys to switch the rest on.
+
+| Variable | What it does |
+|---|---|
+| `GEMINI_API_KEY` | Google AI Studio free tier; several keys may be comma-separated. Also used for screenshot reading |
+| `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `MISTRAL_API_KEY` | More free-tier judges for failover (models overridable with `SACH_GROQ_MODELS`, `SACH_OPENROUTER_MODELS`, `SACH_MISTRAL_MODELS`, `SACH_GEMINI_MODEL`) |
+| `ANTHROPIC_API_KEY` | Optional, paid, last-resort judge (`SACH_MODEL`) |
+| `SACH_JUDGE_ORDER` | Judge order, default `groq,gemini,openrouter,mistral,claude` |
+| `BRAVE_API_KEY` | Live web search, tried first |
+| `TAVILY_API_KEY` | Failover search (free plan, no card); takes over when Brave is out of credits or down |
+| `SACH_SEARCH_ORDER` | e.g. `tavily,brave` to change the order |
+| `SACH_SITE_URL` | Your public address (https, host only), used for canonical links, share previews, sitemap and report text |
+| `SACH_BUDGET_S` | Time budget for one check (default 48 s, sized for Vercel's 60 s limit) |
+| `SACH_LEDGER`, `SACH_CACHE_DIR`, `SACH_STORE_DIR` | Where the ledger, cache and counters are kept on disk |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Persistent store for ledger, cache and counters (also read as `KV_REST_API_URL` / `KV_REST_API_TOKEN`) |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_BOT_USERNAME` | Telegram bot ([setup](docs/telegram-bot.md)) |
+| `SACH_UPI_ID`, `SACH_UPI_NAME`, `SACH_UPI_ID_ALT`, `SACH_UPI_MERCHANT` | Optional UPI QR tip jar. Never commit your real ID |
+| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Optional Razorpay checkout for tips |
+| `SACH_CONTACT_EMAIL` | Shown on the contact, privacy and refund pages |
+
+A key that runs out of quota is skipped for a while (5 minutes for AI keys; search providers that answer 402, 401 or 403 for 6 hours, 429 for the `Retry-After`). Search is never lost silently: every result carries a `search_status` (`ok`, `partial`, `down`, `off`), a degraded result is not cached, and evaluation runs mark themselves as fallback and do not overwrite headline numbers.
+
+Scripts:
+
+```bash
+python scripts/check_llm.py        # test every AI key and model with a live call and a quality probe
+python scripts/check_search.py     # test each search key with one small query
+python scripts/run_eval.py --dry-run   # validate the set, print counts, no network
+python scripts/run_eval.py         # full evaluation run (spends quota), writes docs/evaluation.md
+python scripts/red_team.py         # run the red-team set live, exit 1 on any overclaim
+python scripts/eval_retrieval.py   # LLM-free retrieval check
 python scripts/harvest_pib.py --max-queries 80   # grow the local PIB index (needs BRAVE_API_KEY)
-python -m sach.web             # http://localhost:8080
-```
-Optional env (copy `.env.example` to `.env`): AI judge keys, tried in order with **automatic failover**: `GEMINI_API_KEY` (Google AI Studio free tier; several keys may be comma-separated), then `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `MISTRAL_API_KEY` (free tiers), then `ANTHROPIC_API_KEY` (paid, last resort). A key that runs out of quota is skipped for 5 minutes. `BRAVE_API_KEY` enables live search, and `TAVILY_API_KEY` adds a second provider that takes over when Brave fails (Brave answers HTTP 402 once its prepaid credit runs out). Tavily's free plan gives 1,000 credits a month with no card ([source](https://docs.tavily.com/documentation/api-credits)); a basic search costs 1 credit. `SACH_SEARCH_ORDER=tavily,brave` changes the order. A provider that answers 402/401/403 is skipped for 6 hours, one that answers 429 for its `Retry-After` (5 to 600 s); timeouts and 5xx just move on to the next provider. **Search is never lost silently:** every result carries `search_status` (`ok`, `partial`, `down`, or `off` when no search key is set; `degraded` still means only "AI judge unavailable"). When search was `down` or `partial` the page says so, the result is not cached, `scripts/run_eval.py` marks the run as fallback and does not overwrite the headline numbers, and `scripts/red_team.py` prints the status. Run `python scripts/check_search.py` to test each search key with one small query and `python scripts/check_llm.py` to verify every key and model with a live call and a quality probe. With no keys it still runs in a conservative heuristic mode: high precision, low recall, mostly UNVERIFIED.
-
-Deploy: `vercel --prod` (entry point `api/index.py`, config in `vercel.json`); set the two keys as Vercel environment variables.
-
-**Site address.** Set `SACH_SITE_URL` (for example `https://sach.example.org`: https only, host only, no path or query; a trailing slash is ignored) when you move to a custom domain. It is used for canonical links, share previews (`og:` and Twitter tags), `robots.txt`, `sitemap.xml`, the report text and the scripts' default URL. Unset, Sach uses the request's own `Host` header, and falls back to `https://sach-check-lilac.vercel.app`. The old `*.vercel.app` address keeps working, so set `SACH_SITE_URL` to make the custom domain the canonical one.
-
-## Layout
-```
-sach/extract.py   claim splitting + domain tags      sach/verdict.py   hard verdict rules
-sach/retrieve.py  PIB + Brave retrieval              sach/stance.py    quote/number/denial validation
-sach/llm.py       Gemini/Claude judge + translate    sach/pipeline.py  orchestration with hard deadlines
-sach/i18n.py      EN/HI/TE card strings              sach/site.py      website
-sach/web.py       HTTP handlers, JSON API            tests/            60+ tests, no live web
+python scripts/snapshot_impact.py  # freeze the live impact numbers into evidence/
+python scripts/set_telegram_webhook.py   # register the Telegram webhook
 ```
 
-- **Check a screenshot.** `sach/ocr.py` + `POST /?api=ocr`: the browser shrinks an uploaded image, Gemini reads its text, and the text is only placed in the box for the person to edit before pressing Check (4 per minute per IP; the image and text are never stored or logged).
+Deploy: `vercel --prod`. The entry point is `api/index.py` and `vercel.json` pins the Mumbai region (`bom1`, close to the government sites) and a 60-second function limit. Set the keys as Vercel environment variables.
 
-## Known gaps
-- **Free-tier quota.** The AI judge runs on free tiers, which can run out under heavy use. With several keys or providers configured it fails over automatically; when every one is out, Sach shows a "Limited mode" notice and only reports FALSE for a clear PIB debunk (never TRUE or MISLEADING).
-- **Hindi and Telugu strings are human-written templates, and the strings for the other Indian languages are AI-written; none has been reviewed by a native speaker.** Manipuri cards are English until a native speaker supplies the wording. See [docs/languages.md](docs/languages.md) before relying on them publicly.
-- Live checks usually take 10 to 30 seconds. Every check has a 48-second budget inside Vercel's 60-second limit; a claim that runs out of time is reported as unverified, never guessed.
-- The live ledger on Vercel is ephemeral (resets between instances); it ships with a starter set, and the repository is the permanent record.
-- Translation for non-English claims can drift; numbers and quotes are still verified against the English page, but a mistranslated claim could be matched to the wrong source.
-- **Tips are not recorded by Sach.** Razorpay's dashboard is the record of who paid what; the webhook only logs a non-personal line, because the free Vercel deployment has no persistent storage. A "total raised" counter or thank-you wall would need a small database first.
-- Sach is not a government service and does not speak for PIB or any ministry.
+Code map: `sach/extract.py` (claims), `sach/retrieve.py` and `sach/search.py` (retrieval and search failover), `sach/llm.py` (judges), `sach/stance.py` (quote and number validation), `sach/verdict.py` (hard rules), `sach/pipeline.py` (orchestration with deadlines), `sach/lang.py` and `sach/i18n.py` (languages and card wording), `sach/site.py` and `sach/web.py` (website and API).
+
+## Limitations
+
+- **Free-tier quotas are real.** Gemini, Groq and Tavily free plans can run out under load. Failover helps; when every judge is out Sach says "limited mode" and can only report a clear PIB debunk as FALSE. Runs affected this way are labelled degraded and are never published as a headline result.
+- **Source coverage.** The focus is the central government. PIB handles Union matters only, so state-level or private-sector claims are mostly UNVERIFIED.
+- **Translation drift.** Non-English claims are translated to English for search and judging. Numbers and quotes are checked against the English page, but a mistranslated claim could be matched to the wrong source.
+- **Wording is AI-written and unreviewed.** Every non-English string, including Hindi and Telugu, awaits native-speaker review. **Manipuri cards are in English** until a native speaker supplies the wording.
+- **Script ambiguity.** Devanagari is shared by Hindi, Marathi, Konkani and Nepali, and the Bengali script by Bengali, Assamese and (sometimes) Manipuri. Detection uses marker words, so short messages can land on Hindi or Bengali; pick "Reply in" to override. See [docs/languages.md](docs/languages.md).
+- **What Sach refuses to judge:** opinions, predictions, claims about private individuals, and anything with no official source. These come back UNVERIFIED, on purpose.
+- **Speed and ephemeral storage.** A live check reads live government sites and can take a while; the hosted ledger lives in the deployment's store, and this repository is the permanent record.
+- **Tips are not recorded by Sach.** Razorpay's dashboard is the record of who paid.
+
+## Credits and license
+
+Built by [pruthvig1998](https://github.com/pruthvig1998) for the Bharat Agentic-AI Hackathon, Governance track. Verdicts rest on the work of the Press Information Bureau, the ministries and regulators it cites, and the IFCN-verified fact-checkers listed in [docs/sources.md](docs/sources.md). The UPI app logos used in the optional app chooser are their owners' trademarks and are not covered by this license (see `sach/assets/app_icons/NOTICE.md`).
+
+Code is released under the [MIT License](LICENSE).
