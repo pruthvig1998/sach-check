@@ -41,7 +41,7 @@ Landing page, live checker with one-click examples, WhatsApp-style verdict card 
 curl -s -X POST "https://sach-check-lilac.vercel.app/?format=json" \
   --data-urlencode "text=Government is giving Rs 1000 under Corona Sahayata Yojana"
 ```
-Checks read live sources and take roughly 15 to 40 seconds. There is a best-effort rate limit (8 checks per minute per IP) and a 4000-character input cap.
+Checks read live sources and usually take 10 to 30 seconds (the function runs in Vercel's Mumbai region, close to the government sites). There is a best-effort rate limit (8 checks per minute per IP) and a 4000-character input cap.
 
 ## Evaluation (honest version)
 31 claims: real PIB debunks (FALSE), real government announcements (TRUE), and invented controls (UNVERIFIED). Latest full run: **26/31 exactly right, 0 overclaimed FALSE, 0 wrong TRUE/FALSE**; all 5 misses were safe "unverified" abstentions. Full table including every miss: [`docs/evaluation.md`](docs/evaluation.md).
@@ -73,7 +73,7 @@ sach/web.py       HTTP handlers, JSON API            tests/            60+ tests
 
 ## Known gaps
 - **Hindi and Telugu strings are human-written templates but have not been reviewed by a native speaker.** Do that before relying on them publicly.
-- Live checks take 15 to 40 seconds and can approach Vercel's 60-second function limit on slow claims.
+- Live checks usually take 10 to 30 seconds. Every check has a 48-second budget inside Vercel's 60-second limit; a claim that runs out of time is reported as unverified, never guessed.
 - The live ledger on Vercel is ephemeral (resets between instances); it ships with a starter set, and the repository is the permanent record.
 - Translation for non-English claims can drift; numbers and quotes are still verified against the English page, but a mistranslated claim could be matched to the wrong source.
 - Sach is not a government service and does not speak for PIB or any ministry.

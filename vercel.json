@@ -1,4 +1,17 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
-  "functions": { "api/index.py": { "maxDuration": 60, "includeFiles": "{sach,data}/**" } }
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ],
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60,
+      "includeFiles": "{sach,data}/**"
+    }
+  },
+  "regions": [
+    "bom1"
+  ]
 }
