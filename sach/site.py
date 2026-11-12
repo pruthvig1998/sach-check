@@ -410,8 +410,9 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <p style="margin:0 0 8px"><b>Scan this code</b> with Google Pay, PhonePe, Paytm or BHIM and enter <b id="dlgamt2">₹{3 * PER_FORWARD}</b> when asked.</p>
 <p class="note" style="margin:0 0 10px"><b>On a phone:</b> tap Download, then in your UPI app choose <i>Scan QR</i> and pick the image from your gallery.</p>
 <div class="row"><a class="btn dlpng" href="/?view=tipqr&amp;fmt=png" download="sach-tip-qr.png" style="text-decoration:none">Download QR image</a>
-<a class="btn ghost" id="dlgapps" href="/?view=pay&amp;amt={3 * PER_FORWARD}" rel="nofollow" style="text-decoration:none">Open my UPI app instead</a></div>
-<p class="note" style="margin:10px 0 0">The app button works on some phones; many banks block payments started from a link. If it fails, use the QR code.</p></dialog>
+</div>
+<p class="note" style="margin:12px 0 0"><b>Easiest:</b> show this code on another screen (a laptop, or a friend's phone) and scan it with your UPI app's scanner.<br>
+<a id="dlgapps" href="/?view=pay&amp;amt={3 * PER_FORWARD}" rel="nofollow">Try opening my UPI app instead</a> (this often fails with a "limit exceeded" message, even for ₹20).</p></dialog>
 </div></section>'''
     body = f"""<div class="wrap"><div class="hero"><div>
 <p class="kicker">A corrections desk for your family group</p>

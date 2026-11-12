@@ -1268,8 +1268,9 @@ def test_tip_section_has_a_pay_panel_for_tiles_picker_and_other_amount(server, m
     assert '<dialog id="paydlg"' in tip and '<form method="dialog" class="x">' in tip and 'aria-label="Close"' in tip
     dlg = tip.split('<dialog id="paydlg"')[1].split("</dialog>")[0]
     assert 'id="dlgamt">₹30' in dlg and 'id="dlgamt2">₹30' in dlg and 'src="/?view=tipqr&amp;fmt=png"' in dlg
-    assert 'download="sach-tip-qr.png"' in dlg and 'id="dlgapps" href="/?view=pay&amp;amt=30"' in dlg and "Open my UPI app instead" in dlg
-    assert "On a phone:" in dlg and "gallery" in dlg and "many banks block payments started from a link" in dlg
+    assert 'download="sach-tip-qr.png"' in dlg and 'id="dlgapps" href="/?view=pay&amp;amt=30"' in dlg and "Try opening my UPI app instead" in dlg
+    assert "On a phone:" in dlg and "gallery" in dlg and "often fails" in dlg and "Easiest:" in dlg
+    assert 'class="btn ghost" id="dlgapps"' not in dlg                                     # the app link is a small note now, not a button
     assert 'id="fwgo"' in tip and "Chip in ₹30" in tip                                      # picker has a button that opens the panel
     assert 'id="oago"' in tip and 'id="oaerr"' in tip and 'role="alert"' in tip              # other amount: Continue button + inline error
     assert '<a class="tipcard"' not in tip and 'role="button"' in tip and tip.count('data-amt=') == 4
