@@ -51,7 +51,9 @@ def test_manifest_icons_point_at_working_routes(server):
 
 def test_manifest_share_target_shape(server):
     st = json.loads(get(server, "/?view=manifest")[2])["share_target"]
-    assert st == {"action": "/", "method": "GET", "params": {"title": "title", "text": "text", "url": "url"}}
+    # CHANGED (SHARE package): one POST multipart entry (text + images), action /?via=share
+    assert st["action"] == "/?via=share" and st["method"] == "POST" and st["enctype"] == "multipart/form-data"
+    assert {k: st["params"][k] for k in ("title", "text", "url")} == {"title": "title", "text": "text", "url": "url"}
 
 
 # ------------------------------------------------------------------ icons

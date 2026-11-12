@@ -25,7 +25,10 @@ def manifest() -> dict:
         "background_color": THEME, "theme_color": THEME,
         "categories": ["news", "utilities", "education"],
         "icons": [icon(192), icon(512), icon(192, True), icon(512, True)],
-        "share_target": {"action": "/", "method": "GET", "params": {"title": "title", "text": "text", "url": "url"}},
+        # One POST multipart entry carries text and images together (see share.py for the Chrome doc this was confirmed against).
+        "share_target": {"action": "/?via=share", "method": "POST", "enctype": "multipart/form-data",
+                         "params": {"title": "title", "text": "text", "url": "url",
+                                    "files": [{"name": "files", "accept": ["image/jpeg", "image/png", "image/webp", ".jpg", ".jpeg", ".png", ".webp"]}]}},
     }
 
 # ---------------------------------------------------------------- icons (pure Python raster: rounded square + a geometric "S")
@@ -213,7 +216,7 @@ def serve(h, path: str, qs: dict) -> bool:
         from .site import MAX_CHARS, home                  # lazy: site imports this module
         pre = share_text(qs, MAX_CHARS)
         if pre:
-            _out(h, home(prefill=pre), "text/html; charset=utf-8", "no-store")   # personal text: never cacheable by browser, CDN or service worker
+            _out(h, home(prefill=pre, autorun=qs.get("via", [""])[0] == "share"), "text/html; charset=utf-8", "no-store")   # personal text: never cacheable by browser, CDN or service worker
             return True
     return False
 

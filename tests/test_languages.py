@@ -328,7 +328,8 @@ def test_urdu_share_link_and_copy_text_carry_the_whole_card():
     res = _result("ur")
     block = SITE.result_block(res, chosen=True)
     link = re.search(r'href="(https://wa\.me/\?text=[^"]+)"', block).group(1)
-    assert _up.unquote(link.split("text=", 1)[1]).replace("&amp;", "&") == res["card"]
+    # CHANGED (SHARE package): the WhatsApp message is now the whole card followed by the claim, evidence link and an invitation
+    assert _up.unquote(link.split("text=", 1)[1]).replace("&amp;", "&").startswith(res["card"])
     assert "جھوٹ" in res["card"] and "innerText" in SITE.JS
 
 

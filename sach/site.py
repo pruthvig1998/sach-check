@@ -2,7 +2,7 @@
 from __future__ import annotations
 import html, json, os
 from urllib.parse import quote
-from . import ledger, pwa
+from . import ledger, pwa, share
 from .i18n import LABEL, text_lang
 from .lang import SUPPORTED, NAMES, NATIVE, RTL, INDIAN_LANGS, html_lang
 from .report import report_html, card_data_script
@@ -194,7 +194,7 @@ const lg=$('#lang');if(lg){try{const v=localStorage.getItem('sach-lang');if(v&&!
 const clr=$('#clear');if(clr)clr.addEventListener('click',()=>{ta.value='';upd();ta.focus()});
 const f=$('#form');if(f)f.addEventListener('submit',e=>{if(!ta.value.trim()){e.preventDefault();ta.focus();return}$('#busy').classList.add('on');$('#go').disabled=true;$('#go').textContent='Checking…'});
 window.addEventListener('pageshow',()=>{const g=$('#go');if(g){g.disabled=false;g.textContent='Check it';$('#busy').classList.remove('on')}});
-window.sachBindResult=()=>{const cp=$('#copy');if(cp)cp.addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('#cardtext').innerText);cp.textContent='Copied ✓'}catch(e){const r=document.createRange();r.selectNodeContents($('#cardtext'));getSelection().removeAllRanges();getSelection().addRange(r);cp.textContent='Selected — press Ctrl/Cmd+C'}});
+window.sachBindResult=()=>{const cp=$('#copy');if(cp)cp.addEventListener('click',async()=>{try{await navigator.clipboard.writeText((window.sachShareText&&window.sachShareText())||$('#cardtext').innerText);cp.textContent='Copied ✓'}catch(e){const r=document.createRange();r.selectNodeContents($('#cardtext'));getSelection().removeAllRanges();getSelection().addRange(r);cp.textContent='Selected — press Ctrl/Cmd+C'}});
 const c2=$('#copy2');if(c2)c2.addEventListener('click',async()=>{const t=$('#cardtext').innerText+'\\n\\n—— English ——\\n'+$('#cardtext_en').innerText;try{await navigator.clipboard.writeText(t);c2.textContent='Copied ✓'}catch(e){c2.textContent='Select & copy manually'}});
 /* #dl: see the 'Shareable verdict image' block below (before result_block) */
 };window.sachBindResult();
@@ -225,7 +225,7 @@ modal:{ondismiss:()=>{back();say('No problem. Nothing was charged.');rgo.disable
 rz.on('payment.failed',r=>{back();say('Payment failed: '+((r.error&&r.error.description)||'please try again')+'.');rgo.disabled=false});if(dlg&&dlg.open)dlg.close();rz.open();}
 catch(e){say(e.message==='load'?'Could not load checkout. Check your connection, or scan the code instead.':e.message);rgo.disabled=false}})}
 if(dlg)dlg.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
-const r=$('#result');if(r)r.scrollIntoView({behavior:'smooth',block:'start'});
+const r=$('#sharedhdr')||$('#result');if(r)r.scrollIntoView({behavior:'smooth',block:'start'});
 let fv='ALL';const apply=()=>{const q=($('#q')?.value||'').toLowerCase();let n=0;$$('tbody tr[data-v]').forEach(tr=>{const ok=(fv==='ALL'||tr.dataset.v===fv)&&tr.innerText.toLowerCase().includes(q);tr.style.display=ok?'':'none';if(ok)n++});const s=$('#shown');if(s)s.textContent=n+' shown';const e=$('#empty');if(e)e.style.display=n?'none':''};
 $$('.filters button').forEach(b=>b.addEventListener('click',()=>{$$('.filters button').forEach(x=>x.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true');fv=b.dataset.v;apply()}));
 const q=$('#q');if(q){q.addEventListener('input',apply);apply()}
@@ -409,7 +409,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards", path: 
 <link rel="icon" type="image/png" href="/?view=icon&amp;size=192">
 {pwa.HEAD}
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="{FONTS}" rel="stylesheet"><style>{CSS}{VOICE_CSS}</style>
+<link href="{FONTS}" rel="stylesheet"><style>{CSS}{VOICE_CSS}{share.CSS}</style>
 <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script></head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="wrap"><a class="logo" href="/" title="Sach (Hindi सच) and nijam (Telugu నిజం) both mean “truth”">Sach<small><span class="sc">सच · నిజం · </span>truth</small></a>
@@ -417,8 +417,8 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards", path: 
 <a href="/?view=ledger">Ledger</a><a class="opt" href="/?view=impact">Impact</a><a class="opt" href="{REPO}" rel="noopener">GitHub</a></nav><button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button></div></header>
 <main id="main">{body}</main>
 <footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Bharat Agentic-AI Hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
-<div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/?view=impact">Impact</a> · <a href="/#api">API</a>{tip_link}<br><a href="/?view=terms">Terms</a> · <a href="/?view=privacy">Privacy</a> · <a href="/?view=refund">Refunds</a> · <a href="/?view=contact">Contact</a></div></div></footer>
-<script>{JS}</script><script>{VOICE_JS}</script>{pwa.SCRIPT}</body></html>""".encode()
+<div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/?view=impact">Impact</a> · <a href="/#api">API</a>{tip_link}<br>{share.invite_link(base)}<br><a href="/?view=terms">Terms</a> · <a href="/?view=privacy">Privacy</a> · <a href="/?view=refund">Refunds</a> · <a href="/?view=contact">Contact</a></div></div></footer>
+{share.BAR_HTML}<script>{JS}{share.JS}</script><script>{VOICE_JS}</script>{pwa.SCRIPT}</body></html>""".encode()
 
 
 def stamp(v: str, cls="") -> str:
@@ -553,7 +553,7 @@ def card_attrs(code: str) -> str:
     return f' lang="{html_lang(real)}"' + (' dir="rtl"' if real in RTL else "")
 
 
-def result_block(res: dict, chosen: bool = False) -> str:
+def result_block(res: dict, chosen: bool = False, link: str | None = None) -> str:
     v = res["verdict"]
     if res.get("no_claims"):
         return (f'<div class="result" id="result"><div><div class="stamp big UNVERIFIED">No claim</div></div>'
@@ -594,15 +594,15 @@ def result_block(res: dict, chosen: bool = False) -> str:
         first = str(res.get("first_checked_at") or res.get("checked_at") or "")[:10]
         cachednote = f'<p class="note" role="status" style="margin:0 0 10px">First checked on {esc(first)}. This is a stored result for a repeated message.</p>'
     tr = trace_block(res)
-    wa = "https://wa.me/?text=" + quote(res["card"])
+    share_btns, share_data = share.result_share_html(res, site_url(), link)
     issue = (f"{REPO}/issues/new?title=" + quote(f"Wrong verdict? {v}") + "&body=" +
              quote("Claim(s):\n" + "\n".join("- " + c["claim"]["text"] for c in res["claims"]) + f"\n\nSach said: {v}\nWhat is wrong:\n"))
     return f"""<div class="result" id="result"><div><div class="stamp big {v}">{LABEL['en'][v]}</div></div>
 <div><p class="kicker">Forward this card back to the group · reply language: {esc(LANG_NAME.get(res['language'], res['language'].upper()))}{' (your choice)' if chosen else ' (matched to the forward)'}</p>
 {cachednote}<div class="bubble"{card_attrs(res.get('language', 'en'))}><span id="cardtext">{card}</span><small dir="ltr">Sach ✓✓</small></div>
-<div class="row actions" role="group" aria-label="Share this verdict"><a class="btn wa" href="{esc(wa)}" rel="noopener">Share on WhatsApp</a><button class="btn ghost" id="copy" type="button">Copy card</button>
+<div class="row actions" role="group" aria-label="Share this verdict">{share_btns}<button class="btn ghost" id="copy" type="button">Copy card</button>
 <button class="btn ghost" id="dl" type="button">Download image</button><button class="btn ghost" id="img-share" type="button" hidden>Share image</button>{listen_buttons(res.get('language', 'en'), bool(res.get('card_en')))}</div>
-{signs_html(res.get("warning_signs"), res.get("language", "en"))}{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
+{share_data}<p class="invitebox note">{share.invite_link(site_url())}</p>{signs_html(res.get("warning_signs"), res.get("language", "en"))}{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
 <div style="overflow-x:auto"><table class="stack" role="table"><thead role="rowgroup"><tr role="row"><th role="columnheader">Claim</th><th role="columnheader">Verdict</th><th role="columnheader">Citations</th></tr></thead><tbody role="rowgroup">{rows}</tbody></table></div>
 {tr}<p class="note" style="margin-top:14px">Checked {esc(res['checked_at'][:16].replace('T',' '))} UTC. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
 
@@ -618,7 +618,7 @@ def lang_options(reply: str = "auto") -> str:
             + f'<optgroup label="Written in English letters">{opt("tl", "Tinglish · Telugu in English letters")}</optgroup>')
 
 
-def home(result: str = "", prefill: str = "", error: str = "", reply: str = "auto", noindex: bool = False) -> bytes:
+def home(result: str = "", prefill: str = "", error: str = "", reply: str = "auto", noindex: bool = False, autorun: bool = False, notice: str = "") -> bytes:
     chips = "".join(f'<button type="button" class="chip" data-text="{esc(e["text"])}"><b class="{e["verdict"]}">{e["verdict"]}</b>{esc(e["title"])} · {e["lang"]}</button>' for e in EXAMPLES)
     opts = lang_options(reply)
     ev = eval_display()                      # None = "Evaluation pending" (old format, degraded or missing file)
@@ -681,14 +681,14 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 
 <section id="check"><div class="wrap"><h2>Check a forward</h2><p class="sub">Paste the whole message or a single claim. We reply in the language it was written in, or in any language you choose below. Checks usually take 10 to 30 seconds because we read the sources live.</p>
 <div class="checker" id="checker"><form id="form" method="post" action="/#result"><label for="text" class="kicker">The forward</label>
-<textarea id="text" name="text" placeholder="Paste the message here…" required maxlength="{MAX_CHARS}">{esc(prefill)}</textarea>{voice_controls()}
+{share.PASTE_HTML}<textarea id="text" name="text" placeholder="Paste the message here…" required maxlength="{MAX_CHARS}">{esc(prefill)}</textarea>{share.AUTORUN_HTML if (autorun and prefill) else ""}{share.review_notice() if notice else ""}{voice_controls()}
 {OCR_BLOCK}
 <div class="chips" role="group" aria-label="Try an example"><span class="note" style="align-self:center">Try:</span>{chips}</div>
 <div class="row"><label for="lang" class="note" style="margin-right:-4px">Reply in</label><select id="lang" name="lang">{opts}</select>
 <button class="btn" id="go" type="submit">Check it</button><button class="btn ghost" id="paste" type="button">Paste</button><button class="btn ghost" id="clear" type="button">Clear</button>
 <span id="count" aria-live="off"></span></div>
 <p class="note" style="margin:10px 0 0">Tip: press Ctrl/Cmd + Enter to check. Only the individual claims (never your name) go to the public ledger.</p>
-<div id="busy" role="status"><i></i>Reading PIB and official pages… this usually takes 10 to 30 seconds.</div>{progress_panel()}</form>
+<div id="busy" role="status"><i></i>Reading PIB and official pages… this usually takes 10 to 30 seconds.</div>{progress_panel()}</form>{share.HOWTO_HTML}
 <div id="results">{f'<p role="alert" style="color:var(--false);font-weight:600;margin-top:14px">{esc(error)}</p>' if error else ''}{result}</div></div></div></section>
 {pwa.HOME_HTML}
 

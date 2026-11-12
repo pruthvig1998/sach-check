@@ -41,6 +41,8 @@ _PRIVACY = lambda: f"""
 <h3>When you check a forward</h3>
 <ul><li>Your text is split into separate claims. Each claim is sent to search sources and to AI language-model providers (currently Google Gemini, with fallbacks to other providers) so they can compare it with official pages. Don't paste anything private, like personal details or one-time passwords.</li>
 <li>If you upload a screenshot, the image is sent to Google's Gemini service to read its text. Sach does not store the image or the text it reads.</li>
+<li>A share link shows the checked message and Sach's result to anyone who has the link; it expires when the stored result expires (7 days for TRUE/FALSE/MISLEADING, 6 hours for UNVERIFIED); links are not indexed by search engines.</li>
+<li>If you share an image into Sach, it is sent to Google's Gemini to read the text, and it is not stored.</li>
 <li>For each checked claim Sach keeps a <b>public record</b> in the <a href="/?view=ledger">evidence ledger</a>: the claim text, its verdict, the sources cited, the language and the date. The full original message, your name, your phone number and your IP address are <b>not</b> stored in that record.</li>
 <li><b>On your device only:</b> "My checks" keeps your last 20 checks (the claim, its verdict and the date) in your browser's local storage. It never leaves your device, and you can clear it from the page. Sach's service worker saves only the public home page, the icons and the app manifest for offline use, never your text or results.</li>
 <li>To limit abuse, the server briefly remembers your IP address in memory to count requests per minute. The hosting provider (Vercel) may also keep standard server logs.</li></ul>
