@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 UA = "Sach-check/0.1 (open-source fact-check research; MIT)"
 OFFICIAL_SUFFIXES = (".gov.in", ".nic.in", "who.int")
 OFFICIAL_HOSTS = {"pib.gov.in", "factcheck.pib.gov.in", "icmr.gov.in"}
+# Official bodies whose domains do not end in .gov.in / .nic.in. Matched as the exact host or a true subdomain.
+EXTRA_OFFICIAL = ("rbi.org.in", "mygov.in", "npci.org.in", "sansad.in", "nta.ac.in", "irctc.co.in", "epfindia.gov.in")
 FACTCHECKER_HOSTS = ("altnews.in", "boomlive.in", "vishvasnews.com")
 
 def host_of(url: str) -> str:
@@ -14,7 +16,8 @@ def host_of(url: str) -> str:
 
 def is_official(url: str) -> bool:
     h = host_of(url)
-    return h in OFFICIAL_HOSTS or any(h == s.lstrip(".") or h.endswith(s) for s in OFFICIAL_SUFFIXES)
+    return (h in OFFICIAL_HOSTS or any(h == s.lstrip(".") or h.endswith(s) for s in OFFICIAL_SUFFIXES)
+            or any(h == d or h.endswith("." + d) for d in EXTRA_OFFICIAL))
 
 def is_factchecker(url: str) -> bool:
     h = host_of(url)

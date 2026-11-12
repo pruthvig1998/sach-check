@@ -67,6 +67,13 @@ _DENIAL = re.compile(r"\b(fake|false|fictitious|fabricated|forged|fraudulent|sca
                       r"no such|not true|not been issued|has not issued|denies|denied|clarif\w+|no proposal|not giving|"
                       r"does not exist|incorrect)\b|फर्जी|झूठ|भ्रामक|నకిలీ|అబద్ధ|తప్పుడు", re.I)
 
+# A debunk page quotes the rumour in order to refute it. Such a page, or a quote that only REPORTS a claim, can never confirm it.
+_PAGE_DEBUNK = re.compile(r"\b(is|are|was|were) (completely |totally |entirely )?(fake|false|fictitious|fabricated|baseless|misleading|a hoax)\b|"
+                          r"\bfictitious\b|\bbusts? (the )?fake|\bno such (scheme|proposal|order|notification|provision|plan|decision|circular)\b|"
+                          r"\bnot been issued\b|\bfake news\b|\bmisinformation\b|\bclarif(y|ies|ication)\b", re.I)
+_REPORTED = re.compile(r"\b(media report|news report|reports? (said|claim|suggest)|rumou?rs?|viral|circulating|speculat\w+|purported|so-called|alleg\w+|"
+                       r"hoax|fake|fictitious|fabricated|baseless)\b", re.I)
+
 def _norm(t: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[\"'\u201c\u201d\u2018\u2019.\u2026]", "", t or "")).strip().lower()
 
@@ -82,8 +89,13 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -
     q, page = _norm(quote), _norm(f"{title} {text}")
     if len(q) < 12 or q not in page:
         return "none"
-    if overlap(claim, quote) < 0.4:
+    # A denial ("This is fake; no such proposal exists.") gets its subject from the page title, so for CONTRADICTS the title
+    # and quote together must relate to the claim. Confirmations / partial matches must be matched by the quote itself.
+    if overlap(claim, f"{title} {quote}" if label == "contradicts" else quote) < 0.4:
         return "none"
+    if label in ("confirms", "mixed") and not _META.search(claim) and (
+            _DENIAL.search(title) or _PAGE_DEBUNK.search(f"{title} {text}") or _REPORTED.search(quote)):
+        return "none"          # the page is a debunk, or the quote merely reports the rumour: it cannot back the claim
     if label == "confirms" and not numbers(claim) <= numbers(quote):
         return "none"
     if label in ("confirms", "mixed") and subject_coverage(claim, quote) < 0.7:

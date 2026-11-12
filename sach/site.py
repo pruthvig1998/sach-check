@@ -47,18 +47,19 @@ CSS = """
 :root[data-theme=dark]{--paper:#15130f;--paper2:#201d17;--card:#1b1914;--field:#12100d;--ink:#f1eadb;--mute:#a79f8d;--rule:#f1eadb;--dot:rgba(241,234,219,.06);
 --false:#ef6a55;--true:#4fbf80;--mis:#e8a23b;--unv:#9a9383;--wa:#1f4d32;--wa-ink:#eaf6ea}
 *{box-sizing:border-box}html{scroll-behavior:smooth}
+html,body{overflow-x:clip}
 body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.55;
 background-image:radial-gradient(var(--dot) 1px,transparent 1px);background-size:5px 5px}
 a{color:inherit}.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
 .skip{position:absolute;left:-999px}.skip:focus{left:10px;top:10px;background:#fff;color:#000;padding:8px;z-index:99}
 header.nav{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--paper) 94%,transparent);backdrop-filter:blur(6px);border-bottom:2px solid var(--rule)}
-.nav .wrap{display:flex;align-items:center;gap:22px;height:58px}
+.nav .wrap{display:flex;align-items:center;flex-wrap:wrap;gap:6px 22px;min-height:58px;padding-top:6px;padding-bottom:6px}
 .logo{font-family:var(--serif);font-weight:900;font-size:26px;text-decoration:none;letter-spacing:-.02em}
 .logo small{font-weight:500;font-size:14px;margin-left:8px;color:var(--mute)}
 .nav nav{margin-left:auto;display:flex;gap:18px;font-size:15px;font-weight:500;align-items:center}
 .nav nav a{text-decoration:none;border-bottom:2px solid transparent}.nav nav a:hover{border-color:var(--ink)}
 #theme{font:inherit;background:transparent;border:1.5px solid var(--ink);color:var(--ink);border-radius:99px;width:34px;height:34px;cursor:pointer}
-@media(max-width:760px){.nav nav a.opt{display:none}.logo small{display:none}.nav .wrap{gap:10px}.nav nav{gap:12px}}
+
 .hero{padding:56px 0 34px;display:grid;grid-template-columns:1.25fr .75fr;gap:30px;align-items:center}
 @media(max-width:860px){.hero{grid-template-columns:1fr}}
 .kicker{font-family:var(--mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
@@ -121,7 +122,8 @@ footer{border-top:2px solid var(--rule);padding:30px 0 50px;font-size:14px;color
 footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-between}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px;align-items:center}.filters button{font:inherit;font-size:14px;padding:5px 14px;border:1.5px solid var(--ink);background:transparent;color:var(--ink);border-radius:99px;cursor:pointer}
 .filters button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
-@media(max-width:860px){.hero{grid-template-columns:1fr;padding:34px 0 10px}.stampbox{display:flex;flex-wrap:wrap;gap:12px 10px;padding:4px 0}.stampbox .stamp{font-size:15px;border-width:3px;padding:2px 10px}.stampbox .stamp::after{display:none}h1{font-size:clamp(40px,11vw,64px)}}
+@media(max-width:860px){.hero{grid-template-columns:1fr;padding:34px 0 10px}.stampbox{gap:22px;padding:6px}.stampbox .stamp{font-size:clamp(18px,5vw,26px);padding:4px 12px;border-width:3px}h1{font-size:clamp(40px,11vw,64px)}}
+@media(max-width:560px){.nav .wrap{gap:0 12px;padding-top:4px;padding-bottom:4px;min-height:0}.logo{font-size:22px}.logo small{font-size:12px}.nav nav{gap:4px 8px;font-size:12.5px;width:100%;margin-left:0;justify-content:space-between;white-space:nowrap}#theme{width:28px;height:28px;flex:none}.wrap{padding:0 16px}}
 @media print{header.nav,footer,.chips,.row,#busy{display:none}body{background:#fff;color:#000}}
 """
 
@@ -169,7 +171,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="{FONTS}" rel="stylesheet"><style>{CSS}</style></head><body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="nav"><div class="wrap"><a class="logo" href="/" title="Sach (Hindi सच) and nijam (Telugu నిజం) both mean “truth”">Sach<small>सच · నిజం</small></a>
+<header class="nav"><div class="wrap"><a class="logo" href="/" title="Sach (Hindi सच) and nijam (Telugu నిజం) both mean “truth”">Sach<small><span class="sc">सच · నిజం · </span>truth</small></a>
 <nav aria-label="Main"><a href="/#check">Check</a><a class="opt" href="/#how">How it works</a><a class="opt" href="/#rules">Rules</a><a class="opt" href="/#faq">FAQ</a>
 <a href="/?view=ledger">Ledger</a><a class="opt" href="{REPO}" rel="noopener">GitHub</a><button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button></nav></div></header>
 <main id="main">{body}</main>
@@ -272,8 +274,8 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <div class="card">{stamp('UNVERIFIED','sm')}<h3>Unverified</h3><p>Everything else. No evidence is never “false”. Fact-checkers alone never decide a verdict.</p></div></div></div></section>
 
 <section id="sources"><div class="wrap"><h2>Where the evidence comes from</h2><p class="sub">In this order, and always labelled.</p>
-<div class="tier"><span class="t">1 · PIB</span><div><b>PIB Fact Check and press releases.</b> Has this exact claim already been debunked or announced?</div></div>
-<div class="tier"><span class="t">2 · OFFICIAL</span><div><b>Ministry and department sites,</b> scheme guideline pages, WHO and ICMR for health. Any *.gov.in, *.nic.in or who.int page.</div></div>
+<div class="tier"><span class="t">1 · PIB</span><div><b>PIB Fact Check and press releases.</b> Has this exact claim already been debunked or announced? We search PIB first, using a growing local index of PIB debunks and announcements plus live search, and re-read every page before citing it.</div></div>
+<div class="tier"><span class="t">2 · OFFICIAL</span><div><b>Ministry and department sites,</b> scheme guideline pages, WHO and ICMR for health, plus the Reserve Bank of India, MyGov, NPCI and Parliament (sansad.in). Any *.gov.in, *.nic.in or who.int page counts.</div></div>
 <div class="tier"><span class="t">3 · SECONDARY</span><div><b>Alt News, BOOM, Vishvas News.</b> Shown as “fact-checker (not official)”. They can support a note, never a verdict.</div></div></div></section>
 
 <section id="evidence"><div class="wrap"><h2>Does it actually work?</h2><p class="sub">We tested it on real PIB debunks, real government announcements, and invented claims that should be left unverified. The misses are published too.</p>

@@ -10,7 +10,7 @@ Misleading forwards about government schemes, money and health spread in family 
 
 ## How it works
 1. **Split** the forward into atomic, checkable claims and tag each (scheme/money, health, news, other). Call-to-action fragments ("click the link") and abbreviations like `Rs.` / `रु.` / `రూ.` are handled.
-2. **Search**, in priority order: PIB (hand-seeded debunks + live RSS) → official domains (`*.gov.in`, `*.nic.in`, `who.int`) via Brave search → fact-checkers (Alt News, BOOM, Vishvas News) as *secondary* evidence. Non-English claims are translated to English for search and judging; the ledger keeps the original wording.
+2. **Search**, in priority order: **PIB first** (hand-seeded debunks, a local index of harvested PIB releases in `data/pib_index.jsonl`, the live RSS feed, and a PIB-scoped Brave query) → the wider official pool (`*.gov.in`, `*.nic.in`, `who.int`, `rbi.org.in`, `mygov.in`, `sansad.in`, NPCI) via keyword queries → fact-checkers (Alt News, BOOM, Vishvas News) as *secondary* evidence, queried only when nothing authoritative turned up. Duplicate URLs for the same PIB release are merged. Non-English claims are translated to English for search and judging; the ledger keeps the original wording.
 3. **Judge** each fetched source: confirms / contradicts / partial / neither. The judge (Gemini) must **quote the exact sentence** it relies on, and the quote is verified verbatim against the page. A contradiction only counts if the page is itself a debunk or denial; a confirmation must contain the claim's numbers.
 4. **Decide** with hard rules (below) and **reply** with a short card: verdict first, one line of why, the citation link.
 
@@ -49,6 +49,9 @@ Checks read live sources and usually take 10 to 30 seconds (the function runs in
 
 Read before citing: these numbers were measured at commit `dfbdaf2`, before the later hardening (second-opinion judge, subject matching, safe fallback); a fresh LLM-backed run is pending the reset of Gemini's free-tier quota (a fallback-mode run, which can only report clear PIB debunks, scored 0 overclaims and 0 wrong verdicts: [`docs/evaluation-fallback-run.md`](docs/evaluation-fallback-run.md)); the set is small; two labels were corrected after inspecting the evidence (disclosed in the report); many FALSE items paraphrase PIB debunk titles so recall there is optimistic; results move by a claim or two between runs because live search varies; the set contains no true MISLEADING examples (the MISLEADING demo above was checked separately).
 
+## Retrieval evaluation (no AI involved)
+Does retrieval put the known source page in front of the judge? For 26 eval claims with a known PIB source page: **24/26 combined**, 23/26 from live Brave search alone, and for the 11 pages that are in neither the hand-seeded list nor the harvested index, Brave alone found **10/11**. The local index (351 PIB releases, 132 of them debunks or clarifications, built with `scripts/harvest_pib.py`) is partly circular for the other items, since it was harvested from searches on the same topics. Details: [`docs/retrieval-evaluation.md`](docs/retrieval-evaluation.md).
+
 ## Data checkpoint (what actually worked)
 `pib.gov.in` press-release pages (`PressReleasePage.aspx?PRID=`) fetch and parse. `pib.gov.in/factcheck.aspx` is only a Twitter embed and the RSS feed returns just the latest 20 items, so there is no scrapeable debunk archive. Debunks are therefore seeded by hand in `data/seed_debunks.json` (each fetched and parsed) and found live through Brave search of official domains.
 
@@ -57,9 +60,11 @@ Read before citing: these numbers were measured at commit `dfbdaf2`, before the 
 pip install -r requirements-dev.txt
 python -m pytest -q            # offline, recorded fixtures, no live web
 python scripts/run_eval.py     # writes docs/evaluation.md and data/eval_summary.json
+python scripts/eval_retrieval.py   # LLM-free: does retrieval surface the known source page? -> docs/retrieval-evaluation.md
+python scripts/harvest_pib.py --max-queries 80   # grow the local PIB index (needs BRAVE_API_KEY)
 python -m sach.web             # http://localhost:8080
 ```
-Optional env (copy `.env.example` to `.env`): `GEMINI_API_KEY` (Google AI Studio free tier, enables the stance judge and translation), `BRAVE_API_KEY` (live search), `ANTHROPIC_API_KEY` (alternative judge). With no keys it still runs in a conservative heuristic mode: high precision, low recall, mostly UNVERIFIED.
+Optional env (copy `.env.example` to `.env`): AI judge keys, tried in order with **automatic failover**: `GEMINI_API_KEY` (Google AI Studio free tier; several keys may be comma-separated), then `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `MISTRAL_API_KEY` (free tiers), then `ANTHROPIC_API_KEY` (paid, last resort). A key that runs out of quota is skipped for 5 minutes. `BRAVE_API_KEY` enables live search. Run `python scripts/check_llm.py` to verify every key and model with a live call and a quality probe. With no keys it still runs in a conservative heuristic mode: high precision, low recall, mostly UNVERIFIED.
 
 Deploy: `vercel --prod` (entry point `api/index.py`, config in `vercel.json`); set the two keys as Vercel environment variables.
 
@@ -73,7 +78,7 @@ sach/web.py       HTTP handlers, JSON API            tests/            60+ tests
 ```
 
 ## Known gaps
-- **Free-tier quota.** The AI judge runs on Gemini's free tier, which can run out under heavy use. When it does, Sach shows a "Limited mode" notice and only reports FALSE for a clear PIB debunk (never TRUE or MISLEADING).
+- **Free-tier quota.** The AI judge runs on free tiers, which can run out under heavy use. With several keys or providers configured it fails over automatically; when every one is out, Sach shows a "Limited mode" notice and only reports FALSE for a clear PIB debunk (never TRUE or MISLEADING).
 - **Hindi and Telugu strings are human-written templates but have not been reviewed by a native speaker.** Do that before relying on them publicly.
 - Live checks usually take 10 to 30 seconds. Every check has a 48-second budget inside Vercel's 60-second limit; a claim that runs out of time is reported as unverified, never guessed.
 - The live ledger on Vercel is ephemeral (resets between instances); it ships with a starter set, and the repository is the permanent record.

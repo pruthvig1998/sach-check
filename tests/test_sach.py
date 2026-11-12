@@ -652,3 +652,259 @@ def test_website_language_selector_form_json_and_query(server):
 def test_empty_input_keeps_the_chosen_language_in_the_form(server):
     code, h = _post(server, "", raw=_up.urlencode({"text": "  ", "lang": "hi"}).encode())
     assert code == 400 and 'value="hi" selected' in h
+
+
+# --- wider official allowlist
+@pytest.mark.parametrize("url", ["https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx?prid=1", "https://rbidocs.rbi.org.in/x.pdf",
+    "https://www.mygov.in/campaigns/x", "https://sansad.in/ls/questions", "https://www.npci.org.in/what-we-do/upi", "https://nta.ac.in/Home"])
+def test_more_official_domains_are_recognised(url):
+    assert is_official(url)
+
+@pytest.mark.parametrize("url", ["https://rbi.org.in.evil.com/", "https://evilrbi.org.in/", "https://fakesansad.in/", "https://mygov.in.phish.io/x",
+    "https://notrbi.org.in/", "https://rbi.org.in@evil.com/", "https://sansad.in.evil.in/"])
+def test_lookalike_domains_are_not_official(url):
+    assert not is_official(url)
+
+# --- source expansion: local PIB index, PIB-first multi-query retrieval, de-duplication
+import sach.index as PIDX
+import sach.retrieve as R
+
+def _entry(prid, title, excerpt="", debunk=False):
+    return {"prid": str(prid), "title": title, "excerpt": excerpt, "debunk": debunk, "url": f"https://pib.gov.in/PressReleasePage.aspx?PRID={prid}", "fetched_at": TS}
+
+def test_index_append_dedupes_search_needs_subject_words_and_survives_corrupt_lines(tmp_path):
+    p = str(tmp_path / "idx.jsonl")
+    assert PIDX.append([_entry(1, "No reduction in retirement age of Central Government employees", "fake news busts", True),
+                        _entry(2, "PM's address at the celebration of National Handloom Day", "Cabinet approved handloom schemes")], p) == 2
+    assert PIDX.append([_entry(1, "dup"), _entry(3, "Cabinet approves Samagra Shiksha continuation 2021 to 2026")], p) == 1     # PRID 1 already indexed
+    with open(p, "a") as f: f.write("{not json}\n")
+    assert len(PIDX.load(p)) == 3                                                                   # corrupt line skipped
+    hits = PIDX.search("Central Government will reduce the retirement age of employees to 50 years.", path=p)
+    assert hits and hits[0]["prid"] == "1" and hits[0]["debunk"]
+    assert PIDX.search("The Cabinet has approved declaring the 14th of every month as National Mango Day.", path=p) == []   # generic words alone never match
+    assert PIDX.load(str(tmp_path / "missing.jsonl")) == []
+
+def test_canonical_key_merges_pib_url_variants():
+    ks = {R.canonical_key(u) for u in ["https://pib.gov.in/PressReleasePage.aspx?PRID=1618590",
+          "https://www.pib.gov.in/PressReleasePage.aspx?PRID=1618590&reg=48&lang=2", "https://pib.gov.in/PressReleaseIframePage.aspx?PRID=1618590"]}
+    assert ks == {"pib:1618590"}
+    assert R.canonical_key("https://Example.gov.in/a/#x") == R.canonical_key("https://example.gov.in/a")
+    assert R.canonical_key("https://evil.com/?PRID=1618590") != "pib:1618590"
+
+def test_pib_retriever_uses_the_local_index(tmp_path, monkeypatch):
+    p = str(tmp_path / "idx.jsonl")
+    PIDX.append([_entry(777, "Clarification: fake recruitment notification for 4208 Constable posts in RPF", "fictitious message RPF", True)], p)
+    monkeypatch.setattr(PIDX, "INDEX_PATH", p)
+    monkeypatch.setattr(R, "get_release", lambda prid: {"title": "Clarification: fake recruitment notification for 4208 Constable posts in RPF",
+        "body": "A fictitious message is being circulated.", "url": "https://pib.gov.in/PressReleasePage.aspx?PRID=%s" % prid, "fetched_at": TS})
+    ev = R.PibRetriever(seed_path=str(tmp_path / "none.json"), use_rss=False).search("RPF has announced recruitment of 4,208 Constable posts.")
+    assert len(ev) == 1 and ev[0].tier == TIER_PIB and ev[0].url.endswith("PRID=777")
+
+class _FakeBrave(R.BraveRetriever):
+    def __init__(self, results):
+        super().__init__(key="k"); self.results, self.queries = results, []
+    def _search(self, q, count=8):
+        self.queries.append(q)
+        for needle, urls in self.results.items():
+            if needle in q: return urls
+        return []
+
+def _stub_pages(monkeypatch, titles):
+    monkeypatch.setattr(R, "fetch", lambda url: {"status": 200, "fetched_at": TS, "body": f"<html><title>{titles.get(url, 'Page')}</title><body>{titles.get(url, 'Page')} text</body></html>"})
+
+def test_brave_runs_pib_then_official_and_skips_factcheckers_when_authoritative_found(monkeypatch):
+    _stub_pages(monkeypatch, {})
+    b = _FakeBrave({"site:pib.gov.in": ["https://www.pib.gov.in/PressReleasePage.aspx?PRID=5&reg=3&lang=1"],
+                    "site:gov.in": ["https://www.pib.gov.in/PressReleasePage.aspx?PRID=5", "https://rbi.org.in/Scripts/x.aspx", "https://example.com/no"],
+                    "site:altnews.in": ["https://www.altnews.in/x"]})
+    ev = b.search("Government will give Rs 1000 to every woman under Corona Sahayata Yojana")
+    assert b.queries[0].startswith("site:pib.gov.in") and "site:gov.in" in b.queries[1]
+    assert not any("altnews" in q for q in b.queries)                       # saved a query: fact-checkers cannot decide a verdict
+    urls = [e.url for e in ev]
+    assert any("rbi.org.in" in u for u in urls) and not any("example.com" in u for u in urls)
+    assert sum("PRID=5" in u for u in urls) == 1                            # same release under two URLs counted once
+
+def test_brave_falls_back_to_keyword_pib_query_then_factcheckers_when_nothing_official(monkeypatch):
+    _stub_pages(monkeypatch, {})
+    b = _FakeBrave({"site:altnews.in": ["https://www.altnews.in/fake-claim"]})
+    ev = b.search("Every household will receive a free solar-powered refrigerator next month")
+    assert sum(q.startswith("site:pib.gov.in") for q in b.queries) == 2     # full-claim query, then the keyword form
+    assert any("site:altnews.in" in q for q in b.queries)
+    assert [e.tier for e in ev] == [TIER_FACTCHECKER]
+
+def test_brave_pib_pages_are_parsed_and_tiered_as_debunks(monkeypatch):
+    html = "<html><title>Press Release Page</title><h2>Fake news on WhatsApp claims Government giving Rs 1000</h2><div id='PdfDiv'>The claim is fake.</div></html>"
+    monkeypatch.setattr(R, "fetch", lambda url: {"status": 200, "fetched_at": TS, "body": html})
+    b = _FakeBrave({"site:pib.gov.in": ["https://www.pib.gov.in/PressReleasePage.aspx?PRID=1618314&reg=3&lang=1"]})
+    ev = b.search("Government giving Rs 1000 Corona Sahayata Yojana")
+    assert ev[0].tier == TIER_PIB and ev[0].title.startswith("Fake news on WhatsApp") and ev[0].source_name.startswith("PIB")
+
+def test_keyword_query_keeps_distinctive_words_and_numbers():
+    kw = R.BraveRetriever._keywords("The Union Cabinet has approved a scheme for coal and lignite gasification projects with an outlay of Rs 37,500 crore.")
+    assert "coal" in kw and "lignite" in kw and "37,500" in kw and "Cabinet" not in kw
+
+def test_pipeline_dedupes_same_release_from_two_retrievers():
+    a = Evidence("PIB", "https://pib.gov.in/PressReleasePage.aspx?PRID=9", TIER_PIB, TS, "Fake: Government will give Rs 1000 to every woman", "")
+    b = Evidence("www.pib.gov.in", "https://www.pib.gov.in/PressReleasePage.aspx?PRID=9&reg=3&lang=1", TIER_PIB, TS, "Fake: Government will give Rs 1000 to every woman", "")
+    class TL:
+        def stance(self, c, t, x, tier=""): return "contradicts"
+    res = check_forward("Government will give Rs 1000 to every woman in the country.", [FakeRetriever([a]), FakeRetriever([b])], TL())
+    assert res["verdict"] == FALSE and len(res["claims"][0]["citations"]) == 1
+
+
+def test_logo_shows_english_meaning_truth(server):
+    h = _ur.urlopen(server + "/?x=1").read().decode()
+    assert "<small><span class=\"sc\">सच · నిజం · </span>truth</small>" in h
+
+# --- LLM failover: key rotation, free providers, cooldowns
+import sach.llm as LL
+import urllib.error, urllib.request
+
+PAGE = "Fake: the scheme claim is a hoax, says ministry"
+CLAIM = "the scheme claim"
+GOOD = "CONTRADICTS | Fake: the scheme claim is a hoax"
+
+class _Scripted(LL._Judge):
+    """A judge whose _raw replies come from a script: str = reply, Exception = raised."""
+    def __init__(self, name, script, models="m1,m2"):
+        self.name, self.models, self.script, self.calls = name, models.split(","), script, 0
+    def _raw(self, model, system, user, max_tokens):
+        self.calls += 1
+        r = self.script(model, system) if callable(self.script) else self.script
+        if isinstance(r, Exception): raise r
+        return r
+
+def _http(code):
+    return urllib.error.HTTPError("u", code, "x", {}, None)
+
+def test_failover_uses_next_judge_when_first_is_out_of_quota():
+    a, b = _Scripted("a", _http(429)), _Scripted("b", GOOD)
+    f = LL.FailoverJudge([a, b])
+    assert f.stance(CLAIM, "t", PAGE) == "contradicts" and b.calls >= 1
+    assert f.failures == 0                          # a backup answered: not "limited mode"
+
+def test_quota_exhausted_judge_is_skipped_during_cooldown_then_retried(monkeypatch):
+    a, b = _Scripted("a", _http(429)), _Scripted("b", GOOD)
+    f = LL.FailoverJudge([a, b]); now = [1000.0]
+    monkeypatch.setattr(LL.time, "time", lambda: now[0])
+    f.stance(CLAIM, "t", PAGE); first_calls = a.calls
+    assert first_calls == 1 and not a.available()    # one 429 and its sibling models are not hammered
+    f.stance(CLAIM, "t", PAGE); f.stance(CLAIM, "t", PAGE)
+    assert a.calls == first_calls                    # skipped without a call while cooling down
+    now[0] += LL.COOLDOWN_S + 1
+    assert a.available(); f.stance(CLAIM, "t", PAGE)
+    assert a.calls == first_calls + 1                # retried after the cooldown
+
+@pytest.mark.parametrize("err", [_http(503), _http(404), TimeoutError("slow"), ValueError("odd payload")])
+def test_transient_errors_do_not_start_a_cooldown(err):
+    a = _Scripted("a", err)
+    with pytest.raises(Exception): a.stance(CLAIM, "t", PAGE)
+    assert a.available() and a.calls == 2            # both models tried, judge stays usable
+
+def test_all_judges_down_raises_counts_failure_and_site_falls_back_safely():
+    f = LL.FailoverJudge([_Scripted("a", _http(429)), _Scripted("b", OSError("down"))])
+    with pytest.raises(Exception): f.stance(CLAIM, "t", PAGE)
+    assert f.failures == 1
+    ev = Evidence("PIB", "https://pib.gov.in/x", TIER_PIB, TS, "Fake: Government will give Rs 1000 to every woman", "")
+    res = check_forward("Government will give Rs 1000 to every woman.", [FakeRetriever([ev])], LL.FailoverJudge([_Scripted("a", _http(429))]))
+    assert res["degraded"] is True and res["verdict"] == FALSE      # safe rules-only mode still catches the clear PIB debunk
+
+def test_everything_in_cooldown_fails_fast_without_calls():
+    a = _Scripted("a", _http(429)); f = LL.FailoverJudge([a])
+    with pytest.raises(Exception): f.stance(CLAIM, "t", PAGE)
+    calls = a.calls
+    with pytest.raises(Exception): f.stance(CLAIM, "t", PAGE)
+    assert a.calls == calls and f.failures == 2
+
+def test_translation_fails_over_too():
+    f = LL.FailoverJudge([_Scripted("a", _http(429)), _Scripted("b", "Government will give Rs 1000")])
+    assert f.translate("తెలుగు") == "Government will give Rs 1000"
+
+def test_failover_judge_works_with_judges_that_take_no_tier_argument():
+    class Old:
+        name = "old"; models = ["x"]; failures = 0
+        def available(self): return True
+        def stance(self, c, t, x): return "contradicts"
+    assert LL.FailoverJudge([Old()]).stance(CLAIM, "t", PAGE, tier="pib_debunk") == "contradicts"
+
+def test_decisive_call_from_backup_provider_still_needs_the_validation_rules():
+    # backup provider hallucinates a quote that is not on the page -> rejected, never a verdict
+    liar = _Scripted("groq", "CONTRADICTS | This sentence is nowhere on the page at all")
+    assert LL.FailoverJudge([liar]).stance(CLAIM, "t", PAGE) == "none"
+
+def test_openai_compatible_judge_parses_chat_completions_and_sends_bearer_auth(monkeypatch):
+    sent = {}
+    def fake_post(self, model, body):
+        sent["model"], sent["body"] = model, body
+        return {"choices": [{"message": {"content": GOOD}}]}
+    monkeypatch.setattr(LL.OpenAICompatJudge, "_post", fake_post)
+    j = LL.OpenAICompatJudge("groq", "https://api.groq.com/openai/v1/", "sekret", "m1,m2")
+    assert j.stance(CLAIM, "t", PAGE) == "contradicts"
+    assert sent["body"]["messages"][0]["role"] == "system" and sent["body"]["temperature"] == 0 and j.base_url.endswith("/v1")
+
+def test_openai_compatible_judge_request_headers(monkeypatch):
+    seen = {}
+    class R:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def read(self): return b'{"choices":[{"message":{"content":"NEITHER"}}]}'
+    def fake_open(req, timeout=0):
+        seen["h"], seen["url"] = dict(req.header_items()), req.full_url; return R()
+    monkeypatch.setattr(LL.urllib.request, "urlopen", fake_open)
+    LL.OpenAICompatJudge("mistral", "https://api.mistral.ai/v1", "KEY123", "m")._raw("m", "s", "u", 10)
+    assert seen["h"]["Authorization"] == "Bearer KEY123" and seen["url"] == "https://api.mistral.ai/v1/chat/completions"
+
+def test_build_judges_wiring_from_environment(monkeypatch):
+    for k in ("GEMINI_API_KEY", "GEMINI_API_KEYS", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GROQ_API_KEY", "OPENROUTER_API_KEY", "MISTRAL_API_KEY", "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    assert LL.get_llm() is None                                           # no keys: rules-only mode
+    monkeypatch.setenv("GEMINI_API_KEY", "gk1,gk2"); monkeypatch.setenv("GEMINI_API_KEY_2", "gk2 , gk3")
+    monkeypatch.setenv("GROQ_API_KEY", "gq"); monkeypatch.setenv("OPENROUTER_API_KEY", "or"); monkeypatch.setenv("MISTRAL_API_KEY", "ms")
+    monkeypatch.setenv("SACH_GROQ_MODELS", "custom-model")
+    f = LL.get_llm()
+    assert [j.name.split("-")[0] for j in f.judges] == ["gemini", "gemini", "gemini", "groq", "openrouter", "mistral"]     # order of preference
+    assert len({j.key for j in f.judges if j.name.startswith("gemini")}) == 3                                           # duplicates removed
+    assert [j for j in f.judges if j.name == "groq"][0].models == ["custom-model"]
+    assert [n for n, _ in f.describe()][-1] == "mistral" and all(s == "ready" for _, s in f.describe())
+
+
+def test_denial_quote_gets_its_subject_from_the_title():
+    claim = "Central Government will reduce the retirement age of employees to 50 years."
+    title = "No reduction in retirement age of Central Government employees, PIB Fact Check busts fake news"
+    page = "A media report said the retirement age would be reduced to 50 years. This is fake; no such proposal exists."
+    assert validate_stance("contradicts", "This is fake; no such proposal exists.", claim, title, page) == "contradicts"
+
+def test_denial_on_a_roundup_page_about_other_claims_is_still_rejected():
+    claim = "Central Government will reduce the retirement age of employees to 50 years."
+    title = "PIBFactCheck tweets five items today carrying the official version"          # generic title: no subject
+    page = "A viral video about a bridge is fake. This is fake; no such proposal exists. Retirement was not discussed."
+    assert validate_stance("contradicts", "This is fake; no such proposal exists.", claim, title, page) == "none"
+    # confirmations still need the quote itself to carry the claim
+    page2 = "The Cabinet approved the scheme. It is true."
+    assert validate_stance("confirms", "It is true.", "The Cabinet approved the scheme.", "Cabinet approves scheme", page2) == "none"
+
+
+# --- a debunk page repeating the rumour can never CONFIRM it
+RUMOUR_CLAIM = "Central Government will reduce the retirement age of employees to 50 years."
+DEBUNK_TITLE = "No reduction in retirement age of Central Government employees, PIB Fact Check busts fake news"
+DEBUNK_BODY = "A media report said the retirement age would be reduced to 50 years. This is fake; no such proposal exists."
+
+@pytest.mark.parametrize("label", ["confirms", "mixed"])
+def test_debunk_page_cannot_confirm_or_partially_confirm_the_rumour_it_debunks(label):
+    assert validate_stance(label, "A media report said the retirement age would be reduced to 50 years", RUMOUR_CLAIM, DEBUNK_TITLE, DEBUNK_BODY) == "none"
+
+def test_quote_that_only_reports_a_rumour_cannot_confirm():
+    page = "Viral message says Central Government will reduce the retirement age of employees to 50 years, officials noted."
+    assert validate_stance("confirms", "Viral message says Central Government will reduce the retirement age of employees to 50 years", RUMOUR_CLAIM, "Retirement update", page) == "none"
+
+def test_real_announcement_can_still_confirm():
+    claim = "The Union Cabinet has approved continuation of the Samagra Shiksha scheme from April 2021 to March 2026."
+    title = "Cabinet approves continuation of Samagra Shiksha Scheme for School Education from 1st April, 2021 to 31st March, 2026"
+    page = title + ". Financial outlay of Rs.2,94,283.04 crore which includes Central share of Rs.1,85,398.32 crore."
+    assert validate_stance("confirms", "Cabinet approves continuation of Samagra Shiksha Scheme for School Education from 1st April, 2021 to 31st March, 2026", claim, title, page) == "confirms"
+
+def test_claims_about_fact_checking_itself_are_exempt_from_the_debunk_page_rule():
+    claim = "PIB Fact-Check Unit has issued over 2,900 fact checks."
+    title = "Government Counters Misinformation; PIB Fact-Check Unit Issues Over 2,900 Fact Checks"
+    page = title + ". The PIB Fact-Check Unit has issued over 2,900 fact checks in total."
+    assert validate_stance("confirms", "The PIB Fact-Check Unit has issued over 2,900 fact checks in total", claim, title, page) == "confirms"

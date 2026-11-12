@@ -33,7 +33,7 @@ L = ["# Evaluation" + (" (fallback mode)" if degraded else ""), "",
      f"- **Overclaimed FALSE (the unforgivable failure): {len(false_pos)}**"]
 for l in ("FALSE", "TRUE", "UNVERIFIED"):
     g = lab(l); L.append(f"- Label {l}: {sum(r['got']==l for r in g)}/{len(g)} correct; {sum(r['got']=='UNVERIFIED' for r in g)} abstained as UNVERIFIED")
-for tag, flag in (("Seeded (PIB page was in data/seed_debunks.json; retrieval is partly circular)", True), ("Unseeded (retrieval had to find the page itself)", False)):
+for tag, flag in (("Seeded (PIB page was in data/seed_debunks.json or the harvested PIB index; retrieval is partly circular)", True), ("Unseeded (retrieval had to find the page itself)", False)):
     g = [r for r in res if r["seeded"] == flag and r["label"] != "UNVERIFIED"]
     if g:
         L.append(f"- {tag}: {sum(r['got']==r['label'] for r in g)}/{len(g)} correct")

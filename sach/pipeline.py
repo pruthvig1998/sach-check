@@ -7,6 +7,7 @@ from .extract import clean_text, extract_claims
 from .i18n import LABEL, NOCLAIM, NOCLAIM_LABEL
 from .lang import detect_language
 from .models import Claim, ClaimVerdict, UNVERIFIED
+from .retrieve import canonical_key
 from .stance import judge
 from .verdict import decide, aggregate
 
@@ -34,7 +35,12 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float) -> C
     evidence = []
     for r in retrievers:
         evidence += _run_with_deadline(lambda r=r: r.search(q), left(RETRIEVE_DEADLINE_S), [])
-    evidence = evidence[:8]
+    seen, uniq = set(), []
+    for e in evidence:                                  # the same PIB release often arrives under several URLs
+        k = canonical_key(e.url)
+        if k not in seen:
+            seen.add(k); uniq.append(e)
+    evidence = uniq[:8]
     ex = ThreadPoolExecutor(max_workers=8)              # LLM calls are slow; judge sources in parallel
     futs = [ex.submit(judge, q, e, llm) for e in evidence]
     wait(futs, timeout=left(JUDGE_DEADLINE_S))
