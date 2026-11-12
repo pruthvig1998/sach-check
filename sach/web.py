@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 from .llm import get_llm
 from .pipeline import check_forward
+from .scamsigns import analyze as scam_signs
 from .retrieve import default_retrievers
 from . import razorpay_pay as rzp
 from .legal import PAGES as LEGAL_PAGES, legal_page
@@ -198,6 +199,7 @@ class Handler(BaseHTTPRequestHandler):
             res = check_forward(text, Handler.retrievers, Handler.llm, reply_lang=None if lang_choice == "auto" else lang_choice)
         except Exception:
             return fail(500, "Something went wrong while checking. Nothing was recorded. Please try again.")
+        res = dict(res); res["warning_signs"] = scam_signs(text)   # advice only: from THIS request's text, never cached or stored
         if want_json:
             return self._json(res)
         self._send(home(result=result_block(res, chosen=lang_choice != "auto"), prefill=text, reply=lang_choice))
