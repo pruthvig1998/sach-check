@@ -114,6 +114,26 @@ class GeminiJudge(_Judge):
                 "generationConfig": {"temperature": 0, "maxOutputTokens": max_tokens}}
         return self._post(model, body)["candidates"][0]["content"]["parts"][0]["text"]
 
+    def transcribe_image(self, image_bytes, mime, max_tokens=2048):
+        """Read the visible text out of an image (OCR). Same model fallback and 429/401/403 cooldown as the other calls.
+        The reply is untrusted text: the caller cleans and caps it. Raises if no model answered."""
+        import base64
+        from .ocr import INSTRUCTION
+        body = {"contents": [{"role": "user", "parts": [{"text": INSTRUCTION},
+                                                         {"inlineData": {"mimeType": mime, "data": base64.b64encode(image_bytes).decode()}}]}],
+                "generationConfig": {"temperature": 0, "maxOutputTokens": max_tokens}}
+        last = None
+        for m in self.models:
+            try:
+                return self._post(m, body)["candidates"][0]["content"]["parts"][0]["text"]
+            except Exception as e:
+                last = e
+                self._note_failure(e)
+                if not self.available():
+                    break
+        self.failures += 1
+        raise last or RuntimeError(f"{self.name}: no model answered")
+
 
 class OpenAICompatJudge(_Judge):
     """Any OpenAI-compatible chat endpoint: Groq, OpenRouter, Mistral (free tiers / free models)."""

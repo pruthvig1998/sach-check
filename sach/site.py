@@ -4,6 +4,7 @@ import html, json, os
 from urllib.parse import quote
 from . import ledger
 from .i18n import LABEL
+from .ocr import OCR_BLOCK
 
 REPO = "https://github.com/pruthvig1998/sach-check"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -498,6 +499,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <section id="check"><div class="wrap"><h2>Check a forward</h2><p class="sub">Paste the whole message or a single claim. We reply in the language it was written in, or in any language you choose below. Checks usually take 10 to 30 seconds because we read the sources live.</p>
 <div class="checker" id="checker"><form id="form" method="post" action="/#result"><label for="text" class="kicker">The forward</label>
 <textarea id="text" name="text" placeholder="Paste the message here…" required maxlength="{MAX_CHARS}">{esc(prefill)}</textarea>
+{OCR_BLOCK}
 <div class="chips" role="group" aria-label="Try an example"><span class="note" style="align-self:center">Try:</span>{chips}</div>
 <div class="row"><label for="lang" class="note" style="margin-right:-4px">Reply in:</label><select id="lang" name="lang" aria-label="Reply language">{opts}</select>
 <button class="btn" id="go" type="submit">Check it</button><button class="btn ghost" id="paste" type="button">Paste</button><button class="btn ghost" id="clear" type="button">Clear</button>
