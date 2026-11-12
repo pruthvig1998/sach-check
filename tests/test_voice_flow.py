@@ -31,7 +31,7 @@ def test_home_has_voice_hooks_and_new_script(server):
         assert needle in h, needle
     # the speak box and progress panel are hidden by default, so with no JavaScript nothing new shows
     assert re.search(r'<div id="voicebox"[^>]*\bhidden\b', h) and re.search(r'<div id="sprog"[^>]*\bhidden\b', h)
-    assert h.count("<script>") == 2 and "<script src" not in h
+    assert h.count("<script>") == 3 and "<script src" not in h   # app script, voice script, screenshot-upload script
     # the plain form is untouched: same method, action and field names
     assert '<form id="form" method="post" action="/#result">' in h and 'name="text"' in h and 'name="lang"' in h
 
