@@ -190,10 +190,10 @@ const loadRzp=()=>window.Razorpay?Promise.resolve():new Promise((ok,no)=>{const 
 const post=(api,b)=>fetch('/?api='+api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json().then(j=>({ok:r.ok,j})));
 rgo.addEventListener('click',async()=>{rgo.disabled=true;say('Opening secure checkout…');
 try{await loadRzp();const o=await post('rzp-order',{amount:curAmt});if(!o.ok)throw new Error(o.j.error||'Could not start checkout.');
-const k=o.j;const rz=new window.Razorpay({key:k.key_id,amount:k.amount,currency:k.currency,order_id:k.order_id,name:'Sach',description:'Tip for the corrections desk',theme:{color:'#17140f'},
-handler:async resp=>{say('Confirming…');const v=await post('rzp-verify',resp);say(v.ok&&v.j.verified?'Thank you! Your tip went through. 🙏':'Paid, but we could not confirm it here. Your bank will show the status.');rgo.disabled=false},
-modal:{ondismiss:()=>{say('No problem. Nothing was charged.');rgo.disabled=false}}});
-rz.on('payment.failed',r=>{say('Payment failed: '+((r.error&&r.error.description)||'please try again')+'.');rgo.disabled=false});rz.open();}
+const k=o.j;const back=()=>{if(dlg&&typeof dlg.showModal==='function'&&!dlg.open)dlg.showModal()};const rz=new window.Razorpay({key:k.key_id,amount:k.amount,currency:k.currency,order_id:k.order_id,name:'Sach',description:'Tip for the corrections desk',theme:{color:'#17140f'},
+handler:async resp=>{back();say('Confirming…');const v=await post('rzp-verify',resp);say(v.ok&&v.j.verified?'Thank you! Your tip went through. 🙏':'Paid, but we could not confirm it here. Your bank will show the status.');rgo.disabled=false},
+modal:{ondismiss:()=>{back();say('No problem. Nothing was charged.');rgo.disabled=false}}});
+rz.on('payment.failed',r=>{back();say('Payment failed: '+((r.error&&r.error.description)||'please try again')+'.');rgo.disabled=false});if(dlg&&dlg.open)dlg.close();rz.open();}
 catch(e){say(e.message==='load'?'Could not load checkout. Check your connection, or scan the code instead.':e.message);rgo.disabled=false}})}
 if(dlg)dlg.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
 const r=$('#result');if(r)r.scrollIntoView({behavior:'smooth',block:'start'});
