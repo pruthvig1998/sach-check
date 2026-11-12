@@ -7,6 +7,7 @@ from .llm import get_llm
 from .pipeline import check_forward
 from .retrieve import default_retrievers
 from . import razorpay_pay as rzp
+from . import telegram_bot as tg
 from .legal import PAGES as LEGAL_PAGES, legal_page
 from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_png, tip_qr_svg, upi_link
 
@@ -139,6 +140,19 @@ class Handler(BaseHTTPRequestHandler):
         print(f"razorpay-webhook event={ev['event']} payment={ev['payment_id']} order={ev['order_id']} rupees={ev['rupees']}", flush=True)
         return self._json({"ok": True, "event": ev["event"]})
 
+    def _tg_webhook(self):
+        """Telegram -> us (?api=tg-webhook): secret header checked in telegram_bot.webhook_http; always 200 once accepted."""
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            n = 0
+        def deps():
+            if Handler.retrievers is None:
+                Handler.retrievers, Handler.llm = default_retrievers(), get_llm()
+            return Handler.retrievers, Handler.llm
+        code, obj = tg.webhook_http(self.headers, n, self.rfile.read, deps)
+        return self._json(obj, code)
+
     def _gateway_api(self, api: str):
         """Razorpay tip checkout: ?api=rzp-order creates an order, ?api=rzp-verify checks the payment signature."""
         if api == "rzp-webhook":
@@ -160,6 +174,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         api = parse_qs(urlparse(self.path).query).get("api", [""])[0]
+        if api == "tg-webhook":
+            return self._tg_webhook()
         if api in ("rzp-order", "rzp-verify", "rzp-webhook"):
             return self._gateway_api(api)
         # single POST route: accept any path (Vercel rewrites hide the original one)
