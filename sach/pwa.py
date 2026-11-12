@@ -79,6 +79,84 @@ def icon_png(size: int, maskable: bool = False) -> bytes:
     ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
     return b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", ihdr) + _chunk(b"IDAT", zlib.compress(bytes(rows), 9)) + _chunk(b"IEND", b"")
 
+# ---------------------------------------------------------------- link-preview card (1200x630, pure Python, no text)
+
+OG_W, OG_H = 1200, 630
+_PAPER, _INK, _WHITE = (0xF2, 0xEB, 0xDB), (0x17, 0x14, 0x0F), (255, 255, 255)
+_STAMPS = (  # (verdict glyph, centre x, centre y, half width, half height, rotation in degrees, colour)
+    ("false", 800, 86, 200, 42, -5, (0xC2, 0x32, 0x1F)), ("true", 920, 230, 200, 42, 4, (0x1F, 0x7A, 0x45)),
+    ("mis", 810, 374, 200, 42, 3, (0xC9, 0x78, 0x0A)), ("unv", 915, 518, 200, 42, -4, (0x6B, 0x65, 0x58)))
+
+def _rrect_sd(px: float, py: float, cx: float, cy: float, hw: float, hh: float, r: float, rot: float = 0.0) -> float:
+    """Signed distance (px, negative inside) to a rounded rectangle turned by `rot` radians about its centre."""
+    dx, dy = px - cx, py - cy
+    if rot:
+        c, s = math.cos(rot), math.sin(rot)
+        dx, dy = dx * c + dy * s, -dx * s + dy * c
+    qx, qy = abs(dx) - (hw - r), abs(dy) - (hh - r)
+    return math.hypot(max(qx, 0.0), max(qy, 0.0)) + min(max(qx, qy), 0.0) - r
+
+def _seg_d(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
+    vx, vy, wx, wy = bx - ax, by - ay, px - ax, py - ay
+    t = max(0.0, min(1.0, (wx * vx + wy * vy) / (vx * vx + vy * vy)))
+    return math.hypot(wx - t * vx, wy - t * vy)
+
+def _glyph_sd(kind: str, x: float, y: float) -> float:
+    """Signed distance to a simple verdict glyph centred on (0, 0): X, tick, equals-sign, ring. Stroke 14 px, round caps."""
+    if kind == "false":
+        d = min(_seg_d(x, y, -26, -26, 26, 26), _seg_d(x, y, -26, 26, 26, -26))
+    elif kind == "true":
+        d = min(_seg_d(x, y, -32, 2, -10, 24), _seg_d(x, y, -10, 24, 32, -24))
+    elif kind == "mis":
+        d = min(_seg_d(x, y, -30, -12, 30, -12), _seg_d(x, y, -30, 14, 30, 14))
+    else:
+        d = abs(math.hypot(x, y) - 24)
+    return d - 7
+
+@lru_cache(maxsize=1)
+def og_png() -> bytes:
+    """1200x630 RGB PNG for link previews: paper background, the red rounded-square S mark, and four tilted verdict-stamp outlines.
+    No text on purpose (social apps show the page title and description beside it)."""
+    W, H = OG_W, OG_H
+    img = bytearray(bytes(_PAPER) * (W * H))
+
+    def paint(x0, y0, x1, y1, sd, col):
+        for j in range(max(0, int(y0)), min(H, int(y1) + 1)):
+            base = j * W * 3
+            py = j + 0.5
+            for i in range(max(0, int(x0)), min(W, int(x1) + 1)):
+                cov = 0.5 - sd(i + 0.5, py)
+                if cov <= 0:
+                    continue
+                if cov > 1:
+                    cov = 1.0
+                o = base + i * 3
+                img[o] = round(img[o] + (col[0] - img[o]) * cov)
+                img[o + 1] = round(img[o + 1] + (col[1] - img[o + 1]) * cov)
+                img[o + 2] = round(img[o + 2] + (col[2] - img[o + 2]) * cov)
+
+    # the mark: red rounded square (same proportions as the icons) with the white S
+    M, mx, my = 380.0, 90.0, 125.0
+    mcx, mcy, k = mx + M / 2, my + M / 2, 0.68
+    paint(mx - 2, my - 2, mx + M + 2, my + M + 2, lambda x, y: _rrect_sd(x, y, mcx, mcy, M / 2, M / 2, M * 12 / 64), BRAND)
+    paint(mx + M * 0.15, my + M * 0.1, mx + M * 0.85, my + M * 0.9,
+          lambda x, y: _s_distance((x - mcx) / (M * k), (y - mcy) / (M * k)) * M * k, _WHITE)
+    # the stamps: a thick outline, a thin outer outline, and a glyph, each tilted like the stamps on the home page
+    for kind, cx, cy, hw, hh, deg, col in _STAMPS:
+        rot = math.radians(deg)
+        c, s = math.cos(rot), math.sin(rot)
+        ext = math.hypot(hw, hh) + 24
+        box = (cx - ext, cy - ext, cx + ext, cy + ext)
+        paint(*box, lambda x, y: abs(_rrect_sd(x, y, cx, cy, hw, hh, 18, rot) + 6) - 6, col)           # 12 px border
+        paint(*box, lambda x, y: abs(_rrect_sd(x, y, cx, cy, hw + 14, hh + 14, 24, rot)) - 1.5, col)    # thin outer line
+        paint(cx - 60, cy - 60, cx + 60, cy + 60, lambda x, y: 0.85 * _glyph_sd(kind, ((x - cx) * c + (y - cy) * s) / 0.85, (-(x - cx) * s + (y - cy) * c) / 0.85), col)
+    paint(0, H - 14, W, H, lambda x, y: -1.0, _INK)             # ink rule along the bottom edge, like the site's section rules
+    rows = bytearray()
+    for j in range(H):
+        rows += b"\x00" + img[j * W * 3:(j + 1) * W * 3]
+    ihdr = struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", ihdr) + _chunk(b"IDAT", zlib.compress(bytes(rows), 9)) + _chunk(b"IEND", b"")
+
 # ---------------------------------------------------------------- share target
 
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f‎‏‪-‮⁦-⁩]")   # keeps \n and \t, drops the rest incl. bidi controls
@@ -113,7 +191,7 @@ def _out(h, body: bytes, ctype: str, cache: str, extra: dict | None = None, code
     h.wfile.write(body)
 
 def serve(h, path: str, qs: dict) -> bool:
-    """Handle ?view=manifest|icon|sw and the share target. True when a response was written."""
+    """Handle ?view=manifest|icon|ogimage|sw and the share target. True when a response was written."""
     view = qs.get("view", [""])[0]
     if view == "manifest":
         _out(h, json.dumps(manifest(), ensure_ascii=False).encode(), "application/manifest+json; charset=utf-8", "public, max-age=3600")
@@ -124,6 +202,9 @@ def serve(h, path: str, qs: dict) -> bool:
             _out(h, b"not found", "text/plain", "no-store", code=404)
         else:
             _out(h, icon_png(int(size), qs.get("maskable", [""])[0] == "1"), "image/png", "public, max-age=86400")
+        return True
+    if view == "ogimage":
+        _out(h, og_png(), "image/png", "public, max-age=2592000, s-maxage=2592000")
         return True
     if view == "sw":
         _out(h, SW_JS.encode(), "application/javascript; charset=utf-8", "no-cache", {"Service-Worker-Allowed": "/"})

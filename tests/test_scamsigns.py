@@ -160,12 +160,13 @@ def test_signs_html_escapes_and_labels():
     assert signs_html([], "en") == "" and signs_html(None, "hi") == ""
 
 
-def test_signs_html_caps_at_five_high_first_and_localised():
+def test_signs_html_summary_caps_at_five_high_first_and_localised():
     ss = [sign(i, "medium", f"m{n}") for n, i in enumerate(("click_register", "urgency_threat", "forward_chain", "shortened_link", "impersonation"))]
     ss.append(sign("upi_trap", "high", "HIGHONE"))
     ss.append(sign("apk_download", "high", "HIGHTWO"))
     h = signs_html(ss, "en")
-    assert h.count("<li>") == MAX_SHOWN == 5 and "and 2 more" in h
+    # compact box: every sign is still listed (first two open, the rest in <details>); the one-line summary names at most MAX_SHOWN
+    assert h.count("<li>") == 7 and MAX_SHOWN == 5 and "and 2 more" in h and "Show all 7 signs" in h
     assert h.index("HIGHONE") < h.index("HIGHTWO") < h.index("m0")
     hi, te = signs_html([sign()], "hi"), signs_html([sign()], "te")
     assert "चेतावनी" in hi and "ఈ సందేశంలో" in te and "Warning signs" not in hi + te

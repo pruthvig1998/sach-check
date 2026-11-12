@@ -18,8 +18,8 @@ import html, json, unicodedata
 from urllib.parse import quote
 from .i18n import LABEL
 from .models import AUTHORITATIVE
+from .siteurl import site_url
 
-SITE_URL = "https://sach-check-lilac.vercel.app"
 PIB_WHATSAPP_DISPLAY = "+91 87997 11259"
 PIB_WHATSAPP_DIGITS = "918799711259"
 PIB_EMAIL = "socialmedia@pib.gov.in"
@@ -78,7 +78,7 @@ def _compose(claims: list, srcs: list, claim_limit: int, checked: str) -> str:
     if srcs:
         lines = [f"- {s['source']}: {s['url']}" + (f" (accessed {s['date']})" if s["date"] else "") for s in srcs]
         parts.append("Sources:\n" + "\n".join(lines))
-    parts.append(f"Checked with Sach ({SITE_URL}) on {checked}. Sach is an independent open-source tool, not a government service.")
+    parts.append(f"Checked with Sach ({site_url()}) on {checked}. Sach is an independent open-source tool, not a government service.")
     return "\n\n".join(parts)
 
 

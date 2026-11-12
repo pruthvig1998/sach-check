@@ -80,6 +80,6 @@ def legal_page(slug: str) -> bytes | None:
     if slug not in PAGES:
         return None
     nav = " · ".join(f'<a href="/?view={s}"{" aria-current=page" if s == slug else ""}>{_TITLES[s]}</a>' for s in PAGES)
-    body = (f'<div class="wrap"><section style="border:0;max-width:760px"><p class="kicker">Sach · {esc(_TITLES[slug])}</p><h2>{esc(_TITLES[slug])}</h2>'
+    body = (f'<div class="wrap"><section style="border:0;max-width:760px"><p class="kicker">Sach · {esc(_TITLES[slug])}</p><h1 class="h2">{esc(_TITLES[slug])}</h1>'
             f'<p class="note" style="margin:0 0 18px">{nav}</p>{_BODIES[slug]()}</section></div>')
-    return layout(body, f"{_TITLES[slug]} — Sach")
+    return layout(body, f"{_TITLES[slug]} — Sach", path=f"/?view={slug}")

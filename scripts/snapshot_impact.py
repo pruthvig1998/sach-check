@@ -15,7 +15,8 @@ from datetime import datetime, timezone
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-DEFAULT_URL = "https://sach-check-lilac.vercel.app"
+from sach.siteurl import site_url        # noqa: E402  (SACH_SITE_URL, else the built-in default)
+DEFAULT_URL = site_url()
 UA = "Sach-check-snapshot/0.1 (open-source fact-check; evidence snapshot script)"
 TIMEOUT = 30
 EXPECTED_KEYS = ("generated_at", "counting_since", "storage", "checks_total", "checks_served_fresh", "cache_hits",

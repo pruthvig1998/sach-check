@@ -5,6 +5,14 @@
       "destination": "/api/index?view=impact"
     },
     {
+      "source": "/robots.txt",
+      "destination": "/api/index?view=robots"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/index?view=sitemap"
+    },
+    {
       "source": "/(.*)",
       "destination": "/api/index"
     }
