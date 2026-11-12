@@ -34,3 +34,8 @@ def test_a_debunk_page_still_cannot_confirm_after_normalisation():
 def test_direction_conflict_still_applies():
     assert S.validate_stance("confirms", "The Centre will reduce the retirement age to 58", "Centre has increased retirement age to 62",
                              "Retirement age", "The Centre will reduce the retirement age to 58") == "none"
+
+def test_more_than_matches_over_so_translated_forwards_find_the_debunk():
+    claim = "From now on, there will be GST on UPI payments of more than 2000 rupees."   # machine translation of a Bengali forward
+    assert S.validate_stance("contradicts", TITLE, claim, TITLE, TITLE) == "contradicts"
+    assert S.tokens("more than 2000") == S.tokens("over 2000") == S.tokens("above 2000")

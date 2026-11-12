@@ -10,7 +10,7 @@ from .lang import to_ascii_digits
 from .langwords import DEBUNK_RE, NEGATION_RE
 
 _STOP = set("the a an and or of to in on for is are was were be been this that it with as by at from will has have "
-            "not no all your you we they their our new get free".split())
+            "not no all your you we they their our new get free than there".split())
 
 def _stem(w: str) -> str:
     return w[:5] if w.isascii() and w.isalpha() and len(w) > 5 else w   # crude stem: reduce~reduction
@@ -35,6 +35,7 @@ _WORD = r"[\w\u0900-\u0D7F\uABC0-\uABFF\u064B-\u065F\u0670\u06D6-\u06ED]+"
 
 def tokens(text: str) -> set[str]:
     text = re.sub(r"(?<=\d),(?=\d)", "", to_ascii_digits(text).lower())   # native digits -> 0-9; 2,000 == 2000 (and Indian 1,20,579) before splitting into words
+    text = re.sub(r"\b(?:more|greater|higher) than\b|\bin excess of\b", "above", text)   # translations say "more than", PIB says "over"
     ws = [_SYN.get(w, w) for w in re.findall(_WORD, text)]
     ws = [w for w in ws if w not in _STOP and len(w) > 1]
     return {_stem(w) for w in ws}
