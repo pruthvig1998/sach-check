@@ -10,7 +10,7 @@ rows = json.load(open("data/eval_set.json", encoding="utf-8"))
 ret, llm = default_retrievers(), get_llm()
 res = []
 for r in rows:
-    out = check_forward(r["claim"], ret, llm, log=False)
+    out = check_forward(r["claim"], ret, llm, log=bool(os.environ.get("SACH_SEED_LEDGER")))
     res.append({**r, "got": out["verdict"], "cites": [c["url"] for v in out["claims"] for c in v["citations"]]})
 n = len(res); ok = sum(r["got"] == r["label"] for r in res)
 false_pos = [r for r in res if r["got"] == "FALSE" and r["label"] != "FALSE"]

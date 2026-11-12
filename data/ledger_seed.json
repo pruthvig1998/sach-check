@@ -1,0 +1,309 @@
+[
+ {
+  "claim": "Central Government will reduce the retirement age of employees to 50 years.",
+  "domain": "news",
+  "verdict": "FALSE",
+  "reason_code": "official_contradiction",
+  "citations": [
+   {
+    "source": "PIB (Press Information Bureau)",
+    "url": "https://pib.gov.in/PressReleasePage.aspx?PRID=1618590",
+    "tier": "pib_debunk",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:17:35+00:00"
+   },
+   {
+    "source": "www.boomlive.in",
+    "url": "https://www.boomlive.in/fake-news/ministry-of-personnel-refutes-rumours-about-reducing-age-of-retirement-7838",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:02+00:00"
+   },
+   {
+    "source": "www.vishvasnews.com",
+    "url": "https://www.vishvasnews.com/society/fact-check-central-govt-did-not-increase-retirement-age-fake-notification-viral/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:03+00:00"
+   },
+   {
+    "source": "www.vishvasnews.com",
+    "url": "https://www.vishvasnews.com/politics/fact-check-post-claiming-compulsory-retirement-of-all-govt-employees-on-or-above-50-years-of-age-in-uttar-pradesh-is-misleading/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:04+00:00"
+   }
+  ],
+  "language": "en",
+  "checked_at": "2026-11-12T06:52:54+00:00"
+ },
+ {
+  "claim": "Government has ordered the closure of Ministries.",
+  "domain": "news",
+  "verdict": "FALSE",
+  "reason_code": "official_contradiction",
+  "citations": [
+   {
+    "source": "PIB (Press Information Bureau)",
+    "url": "https://pib.gov.in/PressReleasePage.aspx?PRID=1616896",
+    "tier": "pib_debunk",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:17:36+00:00"
+   },
+   {
+    "source": "www.vishvasnews.com",
+    "url": "https://www.vishvasnews.com/english/viral/fact-check-home-ministry-did-not-order-to-close-schools-colleges-edited-graphic-plate-going-viral/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:11+00:00"
+   },
+   {
+    "source": "www.boomlive.in",
+    "url": "https://www.boomlive.in/law/karnataka-high-court-lokayukta-anti-corruption-bureau-18819",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:12+00:00"
+   },
+   {
+    "source": "www.boomlive.in",
+    "url": "https://www.boomlive.in/amp/ftii-row-the-strike-will-go-on",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:13+00:00"
+   }
+  ],
+  "language": "en",
+  "checked_at": "2026-11-12T06:52:56+00:00"
+ },
+ {
+  "claim": "Air India passengers from Chicago were made to pay three times the fare.",
+  "domain": "other",
+  "verdict": "FALSE",
+  "reason_code": "official_contradiction",
+  "citations": [
+   {
+    "source": "PIB (Press Information Bureau)",
+    "url": "https://pib.gov.in/PressReleasePage.aspx?PRID=1622056",
+    "tier": "pib_debunk",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:17:38+00:00"
+   },
+   {
+    "source": "www.boomlive.in",
+    "url": "https://www.boomlive.in/fact-check/air-india-flight-return-chicago-toilets-clogged-issue-old-video-misreported-indian-news-outlets-28005",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:20+00:00"
+   },
+   {
+    "source": "www.boomlive.in",
+    "url": "https://www.boomlive.in/amp/all-thats-true-the-about-viral-message-on-air-india-offering-discounts-to-citizen",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:21+00:00"
+   },
+   {
+    "source": "www.altnews.in",
+    "url": "https://www.altnews.in/air-india-crash-the-infamous-cockpit-conversation-that-became-a-global-fact-without-evidence/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:22+00:00"
+   }
+  ],
+  "language": "en",
+  "checked_at": "2026-11-12T06:52:59+00:00"
+ },
+ {
+  "claim": "WHO doctors are advising against wearing masks and social distancing.",
+  "domain": "health",
+  "verdict": "UNVERIFIED",
+  "reason_code": "factchecker_only",
+  "citations": [
+   {
+    "source": "www.boomlive.in",
+    "url": "https://www.boomlive.in/fake-news/no-who-did-not-do-a-u-turn-on-masks-social-distancing-8929",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:30+00:00"
+   },
+   {
+    "source": "www.altnews.in",
+    "url": "https://www.altnews.in/world-doctors-alliance-video-promoting-covid-conspiracies-viral-again/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:31+00:00"
+   },
+   {
+    "source": "www.boomlive.in",
+    "url": "https://www.boomlive.in/amp/fake-news/world-doctors-alliance-video-repeats-debunked-covid-19-conspiracies-10361",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:32+00:00"
+   }
+  ],
+  "language": "en",
+  "checked_at": "2026-11-12T06:53:02+00:00"
+ },
+ {
+  "claim": "PIB Fact-Check Unit has issued over 2,900 fact checks.",
+  "domain": "other",
+  "verdict": "UNVERIFIED",
+  "reason_code": "factchecker_only",
+  "citations": [
+   {
+    "source": "www.altnews.in",
+    "url": "https://www.altnews.in/it-rules-amendments-can-pib-be-given-carte-blanche-to-decide-what-is-fake/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:58+00:00"
+   },
+   {
+    "source": "www.altnews.in",
+    "url": "https://www.altnews.in/op-sindoor-as-indian-media-made-false-outrageous-claims-pib-looked-the-other-way/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:59+00:00"
+   },
+   {
+    "source": "www.altnews.in",
+    "url": "https://www.altnews.in/political-misinformation-in-2025-who-shared-who-was-targeted-how-did-it-shape-narratives/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:00+00:00"
+   }
+  ],
+  "language": "en",
+  "checked_at": "2026-11-12T06:53:04+00:00"
+ },
+ {
+  "claim": "Government will give free laptops to all students.",
+  "domain": "news",
+  "verdict": "UNVERIFIED",
+  "reason_code": "factchecker_only",
+  "citations": [
+   {
+    "source": "www.vishvasnews.com",
+    "url": "https://www.vishvasnews.com/viral/fact-check-prime-minister-free-laptop-scheme-2023-24-is-fake/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:37+00:00"
+   },
+   {
+    "source": "www.vishvasnews.com",
+    "url": "https://www.vishvasnews.com/education/fact-check-aicte-free-laptop-scheme-for-students-viral-with-fake-claim/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:38+00:00"
+   },
+   {
+    "source": "www.vishvasnews.com",
+    "url": "https://www.vishvasnews.com/english/society/fact-check-dont-fall-for-the-viral-message-claiming-schools-distributing-free-laptops-and-tablets-to-students/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:39+00:00"
+   }
+  ],
+  "language": "en",
+  "checked_at": "2026-11-12T06:53:15+00:00"
+ },
+ {
+  "claim": "Government is giving Rs 1000 to everyone under Corona Sahayata Yojana, click the link to register.",
+  "domain": "scheme",
+  "verdict": "FALSE",
+  "reason_code": "official_contradiction",
+  "citations": [
+   {
+    "source": "PIB (Press Information Bureau)",
+    "url": "https://pib.gov.in/PressReleasePage.aspx?PRID=1618314",
+    "tier": "pib_debunk",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:41:45+00:00"
+   },
+   {
+    "source": "www.vishvasnews.com",
+    "url": "https://www.vishvasnews.com/english/viral/fact-check-pradhan-mantri-jan-kalyan-vibhag-not-giving-5000-rs-to-those-who-have-taken-covid-vax-viral-claim-is-fake/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:47+00:00"
+   },
+   {
+    "source": "www.boomlive.in",
+    "url": "https://www.boomlive.in/fact-check/economy/5000-vaccination-pm-jankalyan-yojana-free-money-factcheck-vaccinated-18931",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:48+00:00"
+   },
+   {
+    "source": "www.altnews.in",
+    "url": "https://www.altnews.in/false-claim-of-pradhan-mantri-ramban-suraksha-yojana-4-thousand-rupee-whatsapp-message/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:50+00:00"
+   }
+  ],
+  "language": "en",
+  "checked_at": "2026-11-12T06:53:17+00:00"
+ },
+ {
+  "claim": "Union Minister Sarbananda Sonowal's office has issued a letter on this matter.",
+  "domain": "news",
+  "verdict": "UNVERIFIED",
+  "reason_code": "factchecker_only",
+  "citations": [
+   {
+    "source": "www.altnews.in",
+    "url": "https://www.altnews.in/namo-seva-students-made-to-act-in-play-glorifying-modi-chant-modi-hai-toh-mumkin-hai-jai-sri-ram/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:57+00:00"
+   },
+   {
+    "source": "www.vishvasnews.com",
+    "url": "https://www.vishvasnews.com/politics/fact-check-old-and-unrelated-images-of-uttar-pradesh-viral-in-the-name-of-assam-after-cab-passed-by-parliament/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:58+00:00"
+   },
+   {
+    "source": "www.boomlive.in",
+    "url": "https://www.boomlive.in/fake-news/derogatory-painting-of-krishna-from-2015-passed-off-as-recent-9355",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:59+00:00"
+   }
+  ],
+  "language": "en",
+  "checked_at": "2026-11-12T06:53:19+00:00"
+ },
+ {
+  "claim": "A Health Ministry office memorandum on state holidays has been issued.",
+  "domain": "other",
+  "verdict": "UNVERIFIED",
+  "reason_code": "factchecker_only",
+  "citations": [
+   {
+    "source": "www.boomlive.in",
+    "url": "https://www.boomlive.in/fast-check/fake-letter-claiming-health-ministry-declared-holidays-in-4-states-7209",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:44:05+00:00"
+   },
+   {
+    "source": "www.altnews.in",
+    "url": "https://www.altnews.in/moh-states-viral-pdf-that-offers-clarification-regarding-the-declaration-of-holidays-is-false/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:44:07+00:00"
+   },
+   {
+    "source": "www.altnews.in",
+    "url": "https://www.altnews.in/hindutva-hooligans-target-christians-across-india-bajrang-dal-activists-gathered-outside-the-church-to-recite-hanuman-chalisa/",
+    "tier": "factchecker",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:44:09+00:00"
+   }
+  ],
+  "language": "en",
+  "checked_at": "2026-11-12T06:53:21+00:00"
+ }
+]
