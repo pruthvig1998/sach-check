@@ -18,7 +18,7 @@ EXTRA_OFFICIAL = ("rbi.org.in", "mygov.in", "npci.org.in", "sansad.in", "nta.ac.
 
 # Fact-checkers are SECONDARY: shown as labelled citations, never able to produce TRUE or FALSE (sach/verdict.py).
 # Whole-site entries: the outlet is a fact-checking organisation, every page counts.
-FACTCHECKER_HOSTS = ("altnews.in", "boomlive.in", "vishvasnews.com", "factly.in", "factcrescendo.com",
+FACTCHECKER_HOSTS = ("boomlive.in", "vishvasnews.com", "factly.in", "factcrescendo.com",
                      "newschecker.in", "youturn.in")
 # General news sites with a fact-check section: only URLs under these path prefixes count (segment-aware, see _path_ok).
 FACTCHECKER_PATHS = {

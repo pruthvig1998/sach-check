@@ -28,7 +28,7 @@ FAQ = [
     ("Is Sach an official government service?", "No. Sach is an independent open-source project. It cites official sources such as PIB and ministry sites, and shows you the link, but it does not speak for the government."),
     ("Why does it so often say “unverified”?", "Because guessing is worse. If we cannot find an official source that confirms or denies a claim, we say so plainly. “Unverified” is a respectable answer; wrongly calling something false is the one failure we refuse to ship."),
     ("What is the difference between false and misleading?", "False means an official source directly contradicts the claim. Misleading means the core fact is real, but the forward gets the numbers, dates or framing wrong, for example the right scheme with the wrong amount."),
-    ("Can fact-checkers like Alt News or BOOM decide a verdict?", "No. They are shown as secondary evidence and clearly labelled “not official”. Only PIB or an official source can make a claim false or true."),
+    ("Can fact-checkers like BOOM or Newschecker decide a verdict?", "No. They are shown as secondary evidence and clearly labelled “not official”. Only PIB or an official source can make a claim false or true."),
     ("Which languages work?", "English, Hindi, Telugu, Hinglish and Tinglish (Telugu in English letters). The verdict card is written in the language of the forward; Tinglish gets a Tinglish card. Hindi and Telugu wording is human-written but still awaiting native-speaker review."),
     ("What happens to what I paste?", "Only the individual claims (not the whole message, and nothing about you) are added to the public ledger, with their verdicts and sources."),
     ("A verdict looks wrong. What do I do?", "Use the “Report a wrong verdict” link under any result. It opens a pre-filled issue on GitHub so we can look at the exact sources used."),
@@ -523,7 +523,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <section id="sources"><div class="wrap"><h2>Where the evidence comes from</h2><p class="sub">In this order, and always labelled.</p>
 <div class="tier"><span class="t">1 · PIB</span><div><b>PIB Fact Check and press releases.</b> Has this exact claim already been debunked or announced? We search PIB first, using a growing local index of PIB debunks and announcements plus live search, and re-read every page before citing it.</div></div>
 <div class="tier"><span class="t">2 · OFFICIAL</span><div><b>Ministry and department sites,</b> scheme guideline pages, WHO and ICMR for health, plus the Reserve Bank of India, MyGov, NPCI and Parliament (sansad.in). Any *.gov.in, *.nic.in or who.int page counts.</div></div>
-<div class="tier"><span class="t">3 · SECONDARY</span><div><b>Alt News, BOOM, Vishvas News.</b> Shown as “fact-checker (not official)”. They can support a note, never a verdict.</div></div></div></section>
+<div class="tier"><span class="t">3 · SECONDARY</span><div><b>BOOM, Vishvas News, Newschecker, Factly and other IFCN-verified fact-checkers.</b> Shown as “fact-checker (not official)”. They can support a note, never a verdict.</div></div></div></section>
 
 <section id="evidence"><div class="wrap"><h2>Does it actually work?</h2><p class="sub">We tested it on real PIB debunks, real government announcements, and invented claims that should be left unverified. The misses are published too.</p>
 {stats}<div class="honest"><b>Read this before trusting the numbers</b><ul>

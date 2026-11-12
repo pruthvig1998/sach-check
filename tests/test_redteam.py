@@ -200,13 +200,13 @@ def test_who_int_lookalikes_are_not_official(url):
     # a failure means an attacker can register <anything>who.int and be treated as an official source
     assert not is_official(url)
 
-@pytest.mark.parametrize("url", ["https://www.boomlive.in/a", "https://BOOMLIVE.IN/a", "https://altnews.in/a", "https://vishvasnews.com/a"])
+@pytest.mark.parametrize("url", ["https://www.boomlive.in/a", "https://BOOMLIVE.IN/a", "https://vishvasnews.com/a"])
 def test_genuine_factchecker_hosts(url):
     # a failure means real fact-checker hosts lose their (secondary) tier
     assert is_factchecker(url)
 
-@pytest.mark.parametrize("url", ["https://boomlive.in.evil.com/a", "https://evilboomlive.in/a", "https://altnews.in@evil.com/a", "https://evil.com/altnews.in",
-                                 "https://notaltnews.in/", "https://vishvasnews.com.evil.org/", "https://xn--boomlive-9wa.in/"])
+@pytest.mark.parametrize("url", ["https://boomlive.in.evil.com/a", "https://evilboomlive.in/a", "https://boomlive.in@evil.com/a", "https://evil.com/altnews.in",
+                                 "https://notboomlive.in/", "https://vishvasnews.com.evil.org/", "https://xn--boomlive-9wa.in/"])
 def test_lookalike_factchecker_hosts(url):
     # a failure means an attacker host is wrongly given fact-checker standing (it would still never drive TRUE/FALSE, but it would be cited)
     assert not is_factchecker(url)

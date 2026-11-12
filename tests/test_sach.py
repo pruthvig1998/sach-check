@@ -39,7 +39,7 @@ def test_absence_of_evidence_is_unverified_never_false():
 
 def test_factchecker_alone_never_gives_false_or_true():
     for stance in ("contradicts", "confirms", "mixed"):
-        v = decide(C, [ev(TIER_FACTCHECKER, stance, "https://www.altnews.in/a", "Alt News")])
+        v = decide(C, [ev(TIER_FACTCHECKER, stance, "https://www.boomlive.in/a", "Alt News")])
         assert v.verdict == UNVERIFIED and v.reason_code == "factchecker_only"
         assert v.citations[0]["tier"] == TIER_FACTCHECKER   # labelled, not dressed up as official
 
@@ -716,20 +716,20 @@ def test_brave_runs_pib_then_official_and_skips_factcheckers_when_authoritative_
     _stub_pages(monkeypatch, {})
     b = _FakeBrave({"site:pib.gov.in": ["https://www.pib.gov.in/PressReleasePage.aspx?PRID=5&reg=3&lang=1"],
                     "site:gov.in": ["https://www.pib.gov.in/PressReleasePage.aspx?PRID=5", "https://rbi.org.in/Scripts/x.aspx", "https://example.com/no"],
-                    "site:altnews.in": ["https://www.altnews.in/x"]})
+                    "site:boomlive.in": ["https://www.boomlive.in/x"]})
     ev = b.search("Government will give Rs 1000 to every woman under Corona Sahayata Yojana")
     assert b.queries[0].startswith("site:pib.gov.in") and "site:gov.in" in b.queries[1]
-    assert not any("altnews" in q for q in b.queries)                       # saved a query: fact-checkers cannot decide a verdict
+    assert not any("boomlive" in q for q in b.queries)                       # saved a query: fact-checkers cannot decide a verdict
     urls = [e.url for e in ev]
     assert any("rbi.org.in" in u for u in urls) and not any("example.com" in u for u in urls)
     assert sum("PRID=5" in u for u in urls) == 1                            # same release under two URLs counted once
 
 def test_brave_falls_back_to_keyword_pib_query_then_factcheckers_when_nothing_official(monkeypatch):
     _stub_pages(monkeypatch, {})
-    b = _FakeBrave({"site:altnews.in": ["https://www.altnews.in/fake-claim"]})
+    b = _FakeBrave({"site:boomlive.in": ["https://www.boomlive.in/fake-claim"]})
     ev = b.search("Every household will receive a free solar-powered refrigerator next month")
     assert sum(q.startswith("site:pib.gov.in") for q in b.queries) == 2     # full-claim query, then the keyword form
-    assert any("site:altnews.in" in q for q in b.queries)
+    assert any("site:boomlive.in" in q for q in b.queries)
     assert [e.tier for e in ev] == [TIER_FACTCHECKER]
 
 def test_brave_pib_pages_are_parsed_and_tiered_as_debunks(monkeypatch):

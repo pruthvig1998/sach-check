@@ -67,7 +67,6 @@ Evidence: the IFCN (Poynter) signatory list, read from the API behind https://if
 | `newschecker.in` | Newschecker | Verified (2024-10-08) |
 | `youturn.in` | Youturn | Verified (2026-01-14) |
 | `vishvasnews.com` | Vishvas News (`factchecker.vishvasnews.com`) | Verified (2024-08-23) |
-| `altnews.in` | Alt News | **Listed as "Expired Signatory"** (last approval 2019-04-26). It was already in the list; kept because it is a long-running Indian fact-checker, but flagged for the lead to decide |
 
 ### Path-restricted entries (general news sites; only the fact-check section counts)
 
@@ -112,3 +111,5 @@ State hints (not built): one more call per claim would raise the worst case to a
 ## Proposing a new source
 
 Open a pull request that adds the domain to `sach/fetch.py` and a row to this file with: what the body is, why its site is authoritative (statute, regulator, or its own site for claims about itself), and a URL you loaded plus the date. Acceptable evidence: the body's own site, a link to it from a `*.gov.in` page, a regulator's notice, or the IFCN signatory list for fact-checkers. Do not add a domain from memory. Add tests for the host, a subdomain, uppercase, a prefix lookalike and a suffix-append lookalike. When unsure, leave it out: an unlisted source only means UNVERIFIED, a wrong official source can mean a wrong TRUE or FALSE.
+
+**Removed on 2026-11-12:** `altnews.in` (Alt News). IFCN lists it as an expired signatory (last approval 2019), so it no longer counts as a fact-checker source. Rows already in the public ledger that cite it are historical records and are left as they were.

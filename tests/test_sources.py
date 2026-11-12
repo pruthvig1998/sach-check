@@ -43,7 +43,7 @@ def test_existing_suffix_matching_is_dot_anchored_and_backslash_safe():
     assert is_official("https://ssc.gov.in/") and is_official("https://uidai.gov.in/") and is_official("https://cybercrime.gov.in/")
 
 # --- fact-checker list
-WHOLE_SITE = {"altnews.in": "www.altnews.in", "boomlive.in": "hindi.boomlive.in", "vishvasnews.com": "factchecker.vishvasnews.com",
+WHOLE_SITE = {"boomlive.in": "hindi.boomlive.in", "vishvasnews.com": "factchecker.vishvasnews.com",
               "factly.in": "telugu.factly.in", "factcrescendo.com": "hindi.factcrescendo.com", "newschecker.in": "hindi.newschecker.in",
               "youturn.in": "www.youturn.in"}
 
@@ -142,11 +142,11 @@ def test_tier_is_always_factchecker_and_only_listed_publishers_survive():
     claim = _claim("Government giving Rs 1000 to every woman under Mahila Sahayata Yojana",
                    _review("https://factcheck.pib.gov.in/x", pub="PIB Fact Check"),               # official domain: still not on the list
                    _review("https://www.randomblog.com/fake"), _review("http://www.boomlive.in/http-only"),
-                   _review("https://boomlive.in.evil.com/x"), _review("https://www.altnews.in/mahila-1000", pub="Alt News"),
+                   _review("https://boomlive.in.evil.com/x"), _review("https://www.factly.in/mahila-1000", pub="Factly"),
                    _review("https://www.indiatoday.in/fact-check/story/mahila-1000", pub="India Today"),
                    _review("https://www.indiatoday.in/india/story/mahila-1000", pub="India Today"))
     out = FactCheckToolsRetriever(key=KEY, opener=_Opener(_Resp({"claims": [claim]}))).search(Q)
-    assert {e.url for e in out} == {"https://www.altnews.in/mahila-1000", "https://www.indiatoday.in/fact-check/story/mahila-1000"}
+    assert {e.url for e in out} == {"https://www.factly.in/mahila-1000", "https://www.indiatoday.in/fact-check/story/mahila-1000"}
     assert all(e.tier == TIER_FACTCHECKER for e in out)
 
 def test_irrelevant_results_are_dropped_and_cap_is_three():
