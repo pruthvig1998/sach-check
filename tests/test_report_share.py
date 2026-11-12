@@ -159,7 +159,7 @@ def test_report_textarea_is_escaped_and_no_script_breakout():
     assert "<script>alert(1)" not in h and "onerror=alert(2)>" not in h and "</textarea><script" not in h
     assert h.count("<textarea") == 1 and h.count("</textarea>") == 1
     page = layout(h).decode()
-    assert page.count("<script") == page.count("</script>") == 4         # the app script, the voice script, the install/history script and the JSON data block only
+    assert page.count("<script") == page.count("</script>") == 5         # analytics tag (PR #1), app, voice, install/history scripts and the JSON data block only
     assert "<script>alert" not in page and "<img src=x" not in page
 
 

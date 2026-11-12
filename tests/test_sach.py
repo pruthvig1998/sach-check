@@ -1139,7 +1139,10 @@ def test_every_app_tile_shows_the_apps_real_icon_as_an_embedded_image(server, mo
     assert len(set(blobs)) == 4                                                  # four different logos
     assert all(_jpeg_size(b) == (96, 96) and 1500 < len(b) < 12000 for b in blobs)
     assert "<svg" in tiles[4].split("</a>")[0] and "appimg" not in tiles[4].split("</a>")[0]   # "other app": generic glyph, not a brand logo
-    assert not re.search(r'src="https?://', h) and not re.search(r"url\(https?://", h) and "cdn" not in h   # no third-party requests
+    ANALYTICS = '<script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>'   # the one allowed third-party script (owner's PR #1)
+    assert h.count(ANALYTICS) == 1
+    h = h.replace(ANALYTICS, "")
+    assert not re.search(r'src="https?://', h) and not re.search(r"url\(https?://", h) and "cdn" not in h   # no other third-party requests
     assert "belong to their owners" in h and "not affiliated" in h
 
 def test_icon_files_are_in_the_repo_with_an_ownership_notice():
