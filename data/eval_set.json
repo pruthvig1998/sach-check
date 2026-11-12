@@ -2,156 +2,485 @@
  {
   "claim": "Central Government will reduce the retirement age of employees to 50 years.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1618590"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1618590",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "Government has ordered the closure of Ministries.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1616896"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1616896",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "Air India passengers from Chicago were made to pay three times the fare.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1622056"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1622056",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "WHO doctors are advising against wearing masks and social distancing.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1616527"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1616527",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "PIB Fact-Check Unit has issued over 2,900 fact checks.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2247720"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2247720",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "The Cabinet has approved declaring the 14th of every month as National Mango Day.",
   "label": "UNVERIFIED",
-  "source": "control: invented claim, no source expected"
+  "source": "control: invented claim, no source expected",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Invented control; no official source expected."
  },
  {
   "claim": "Government is giving Rs 1000 to everyone under Corona Sahayata Yojana, click the link to register.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1618314"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1618314",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "Union Minister Sarbananda Sonowal's office has issued a letter on this matter.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2216041"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2216041",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "A Health Ministry office memorandum on state holidays has been issued.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1606395"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1606395",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "Railways has issued a recruitment notification for 19,800 Constable posts in RPF.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1890076"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1890076",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "RPF has announced recruitment of 4,208 Constables and 452 Sub-Inspectors.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2246142 (PIB lists RPF-SI 452 and RPF-Constable 4,208 vacancies; the 2024 PIB debunk 2009349 concerned a fake notice on one website, not the recruitment itself)"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2246142",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "PIB lists RPF-SI 452 and RPF-Constable 4,208 vacancies; the 2024 PIB debunk 2009349 concerned a fake notice on one website, not the recruitment itself"
  },
  {
   "claim": "The Cabinet Secretariat has advertised recruitment for 1,736 Field Assistant posts.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2130875"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2130875",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "The Centre has removed 55 lakh ration card holders from Punjab.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2160367"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2160367",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "Ration cards of people who do not provide Aadhaar numbers will be cancelled.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1623051"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1623051",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "The Railway Recruitment Board introduced a new method of result preparation for Level 1 results.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1567621"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1567621",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "India Post is offering subsidies and prizes to people who complete an online survey or quiz.",
   "label": "FALSE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1819189"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1819189",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "The Union Cabinet has approved a scheme for coal and lignite gasification projects with an outlay of Rs 37,500 crore.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2260621"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2260621",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "The Union Cabinet has approved a scheme to replace old trucks and buses in the Delhi-NCR area.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2268342"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2268342",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "The Union Cabinet has approved Nutrient Based Subsidy rates for Rabi 2026-27 on phosphatic and potassic fertilizers.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2334972"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2334972",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "The Union Cabinet has approved modernization of Command Area Development and Water Management under Pradhan Mantri Krishi Sinchayee Yojana.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2120362"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2120362",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "The Union Cabinet has approved continuation of the Samagra Shiksha scheme from April 2021 to March 2026.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1742290"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1742290",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "The Union Cabinet has approved integration and continuation of two schemes under SARTHAK-PDS.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2265788"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2265788",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "Railways has a recruitment process on for 1,20,579 vacancies notified in 2024 and 2025.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2198345"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2198345",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "Around 99.8% of ration cards have been seeded with Aadhaar.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1988732"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=1988732",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "Railways plans to provide 50,000 jobs in financial year 2025-26.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2143531"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2143531",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "The Government has notified PIB's Fact Check Unit as a fact checker of the Central Government under the IT Rules 2021.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2015792"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2015792",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "Suspected fake news can be sent to the PIB Fact Check WhatsApp hotline 8799711259.",
   "label": "TRUE",
-  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2206735"
+  "source": "https://pib.gov.in/PressReleasePage.aspx?PRID=2206735",
+  "lang": "en",
+  "seeded": true,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Original-build row: the PIB release at `source` was fetched when the row was added; the supporting sentence was not re-checked in this revision."
  },
  {
   "claim": "The Ministry of Culture has declared turmeric the national spice of India.",
   "label": "UNVERIFIED",
-  "source": "control: invented claim, no source expected"
+  "source": "control: invented claim, no source expected",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Invented control; no official source expected."
  },
  {
   "claim": "The Union Cabinet has approved renaming all national highways after rivers.",
   "label": "UNVERIFIED",
-  "source": "control: invented claim, no source expected"
+  "source": "control: invented claim, no source expected",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Invented control; no official source expected."
  },
  {
   "claim": "The government has declared the first monsoon rain day of each year a national holiday.",
   "label": "UNVERIFIED",
-  "source": "control: invented claim, no source expected"
+  "source": "control: invented claim, no source expected",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Invented control; no official source expected."
  },
  {
   "claim": "Every household in India will receive a free solar-powered refrigerator next month.",
   "label": "UNVERIFIED",
-  "source": "control: invented claim, no source expected"
+  "source": "control: invented claim, no source expected",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": null,
+  "verified_on_note": "verified in the original build; not re-fetched",
+  "note": "Invented control; no official source expected."
+ },
+ {
+  "claim": "⚠️ ज़रूरी सूचना: NTA ने NEET UG जुलाई 2020 की परीक्षा स्थगित कर दी है, नोटिस वायरल हो रहा है। सबको भेजो!",
+  "label": "FALSE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=1632059",
+  "lang": "hi",
+  "seeded": true,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 17 Jun 2020 (Ministry of Education): NTA calls the postponement notice fake and says 'no such decision has been taken by NTA or concerned authorities till date'. Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "खुशखबरी! केंद्र सरकार ने कर्मचारियों और पेंशनरों का महंगाई भत्ता 3% बढ़ा दिया है, 1 जुलाई 2026 से लागू। शेयर करें।",
+  "label": "TRUE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2329485",
+  "lang": "hi",
+  "seeded": false,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 28 Oct 2026: Cabinet approved additional DA/DR 'w.e.f. 01.07.2026 representing an increase of 3% over the existing rates of 60%'. Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "सावधान! अब 2000 रुपये से ऊपर के UPI पेमेंट पर सरकार GST लगाने जा रही है। सबको फॉरवर्ड करो।",
+  "label": "FALSE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2122747",
+  "lang": "hi",
+  "seeded": true,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 18 Apr 2025 (Finance): claims of GST on UPI transactions over Rs 2,000 are 'completely false, misleading, and without any basis'. Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "रबी विपणन सत्र 2027-28 के लिए गेहूं का MSP बढ़ाकर 2610 रुपये प्रति क्विंटल कर दिया गया है, सरकार का बड़ा फैसला।",
+  "label": "TRUE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2316956",
+  "lang": "hi",
+  "seeded": false,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 30 Sep 2026: table lists Wheat MSP RMS 2027-28 as 2610 (Rs per quintal), up Rs 25 from 2585. Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "बड़ी खबर: केंद्र सरकार ने 1 जनवरी से सभी साइकिल चलाने वालों को हर महीने 500 रुपये 'हरित यात्रा भत्ता' देने का फैसला किया है।",
+  "label": "UNVERIFIED",
+  "source": "control: invented claim, no source expected",
+  "lang": "hi",
+  "seeded": false,
+  "verified_on": null,
+  "note": "Invented control; no official source expected. Written to avoid resembling any real scheme. Written by an AI model; not yet reviewed by a native speaker.",
+  "verified_on_note": "invented control; nothing to verify"
+ },
+ {
+  "claim": "सेना के आधुनिकीकरण के लिए सरकार ने नया बैंक खाता खोला है, कैबिनेट का फैसला है और अक्षय कुमार ने शुरू किया है। सब दान करें।",
+  "label": "FALSE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2124728",
+  "lang": "hi",
+  "seeded": true,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 27 Apr 2025 (Defence): the WhatsApp message is 'misleading'; the bank account in it is not meant for modernisation of the Army and its details are wrong. PIB's own tag is MISLEADING; labelled FALSE because the rule treats fake/false/misleading debunks as FALSE. Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "RBI గవర్నర్ గారి వీడియో వైరల్ అవుతోంది: RBI కొత్త పెట్టుబడి పథకం ప్రారంభించింది, అందులో డబ్బు పెడితే భారీ లాభాలు వస్తాయి. అందరికీ షేర్ చేయండి.",
+  "label": "FALSE",
+  "source": "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx?prid=59135",
+  "lang": "te",
+  "seeded": false,
+  "verified_on": "2026-11-12",
+  "note": "RBI press release 19 Nov 2024: fake videos of the Governor claim 'launch of or support to some investment schemes by the RBI'; RBI clarifies its officials are not involved in or support any such activities. Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "కేంద్ర మంత్రివర్గం PM-KISAN పథకాన్ని 2026-27 నుంచి 2030-31 వరకు కొనసాగించడానికి ₹3.15 లక్షల కోట్లు ఆమోదించింది.",
+  "label": "TRUE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2292437",
+  "lang": "te",
+  "seeded": true,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 31 Jul 2026: Cabinet approved continuation of PM-KISAN from 2026-27 to 2030-31 'with a Financial Outlay of Rs.3.15 lakh crore'. Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "కోవిడ్ వల్ల కేంద్ర ప్రభుత్వ ఉద్యోగుల LTC, లీవ్ ఎన్‌క్యాష్‌మెంట్, మెడికల్ అలవెన్సులు కట్ చేస్తారట. షేర్ చేయండి.",
+  "label": "FALSE",
+  "source": "https://www.pib.gov.in/newsite/PrintRelease.aspx?relid=202611",
+  "lang": "te",
+  "seeded": false,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 27 Apr 2020: Fact Check says the Central Government 'is not going to deduct allowances' of its employees; the Hindi tweet quoted says there is no such proposal and the report is wrong and baseless (LTC/leave encashment/OTA/medical). Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "వృద్ధాప్య, వితంతు పింఛన్లు ఉన్న జాతీయ సామాజిక సహాయ కార్యక్రమాన్ని (NSAP) 2026-27 నుంచి 2030-31 వరకు ₹53,428 కోట్లతో కొనసాగించడానికి కేబినెట్ ఆమోదించింది.",
+  "label": "TRUE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2323264",
+  "lang": "te",
+  "seeded": false,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 14 Oct 2026: Cabinet approved continuation of NSAP 'with total outlay of Rs. 53,428 crore for five years from 2026-27 to 2030-31'; old-age and widow pension schemes continue. Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "కేంద్ర ప్రభుత్వం ప్రతి గ్రామంలో ఉచితంగా ఒక జత చెప్పులు ఇచ్చే 'పాదరక్ష యోజన' ప్రారంభించింది, రేపటి నుంచి నమోదు మొదలు.",
+  "label": "UNVERIFIED",
+  "source": "control: invented claim, no source expected",
+  "lang": "te",
+  "seeded": false,
+  "verified_on": null,
+  "note": "Invented control; no official source expected. Written to avoid resembling any real scheme. Written by an AI model; not yet reviewed by a native speaker.",
+  "verified_on_note": "invented control; nothing to verify"
+ },
+ {
+  "claim": "బేటీ బచావో బేటీ పడావో పథకం కింద ప్రతి ఆడపిల్లకు ప్రభుత్వం 2 లక్షల రూపాయలు ఇస్తుంది, ఈ ఫారం నింపి పంపండి.",
+  "label": "FALSE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=1514657",
+  "lang": "te",
+  "seeded": false,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 29 Dec 2017 (WCD): BBBP 'has no provision for individual cash incentive/cash transfer'; fraudsters falsely promised Rs 2 lakh to girls through fake forms. Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "Dhyan do! 1 January se RBI scribble ya likhe hue currency notes nahi lega, banks mana kar denge. Sabko forward karo.",
+  "label": "FALSE",
+  "source": "https://www.rbi.org.in/scripts/BS_PressReleaseDisplay.aspx?prid=35717",
+  "lang": "hinglish",
+  "seeded": false,
+  "verified_on": "2026-11-12",
+  "note": "RBI press release 14 Dec 2015: RBI 'denied having issued a communication' saying banks will not accept notes with scribbling from 1 Jan 2016, and called the message incorrect. Old but fixed by a dated release. Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "Sarkar ne kharif 2026-27 ke liye common paddy ka MSP 2441 rupaye per quintal tay kiya hai.",
+  "label": "TRUE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2260617",
+  "lang": "hinglish",
+  "seeded": false,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 13 May 2026: table lists Paddy Common MSP 2026-27 as 2441 (Rs per quintal) against 2369 in 2025-26. Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "Kal se sarkar har mobile user ko har mahine 5 kilo aam free dene wali hai, bas apna number register karo.",
+  "label": "UNVERIFIED",
+  "source": "control: invented claim, no source expected",
+  "lang": "hinglish",
+  "seeded": false,
+  "verified_on": null,
+  "note": "Invented control; no official source expected. Written to avoid resembling any real scheme. Written by an AI model; not yet reviewed by a native speaker.",
+  "verified_on_note": "invented control; nothing to verify"
+ },
+ {
+  "claim": "Petroleum ministry nunchi pettrol bunk dealership direct ga istunnaru ani newspaper lo ad vachindi, andaru apply cheyandi.",
+  "label": "FALSE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=1521898",
+  "lang": "tinglish",
+  "seeded": false,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 27 Feb 2018 (Petroleum): the Ministry 'has not issued any advertisement for direct allotment of dealership/distributorship of petroleum products'; it calls it a fake advertisement. Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "UGC prakaram 2026 February list lo 32 fake universities unnayi ani prabhutvam cheppindi, andaru jagratta ga undandi.",
+  "label": "TRUE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2295054",
+  "lang": "tinglish",
+  "seeded": true,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 5 Aug 2026 (Education): 'As per the latest list published in February 2026, 32 institutions have been identified as fake Universities.' Written by an AI model; not yet reviewed by a native speaker."
+ },
+ {
+  "claim": "The Union Cabinet approved an incentive scheme for low-value BHIM-UPI person-to-merchant transactions with an outlay of Rs 1,500 crore for 2024-25.",
+  "label": "TRUE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2112874",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 19 Mar 2025: scheme approved 'at an estimated outlay of 1,500 crore, from 01.04.2024 to 31.03.2025' (rupee sign lost in extraction)."
+ },
+ {
+  "claim": "The Cabinet has fixed the MSP for milling copra at Rs 12,027 per quintal for the 2026 season.",
+  "label": "TRUE",
+  "source": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2202999",
+  "lang": "en",
+  "seeded": false,
+  "verified_on": "2026-11-12",
+  "note": "PIB release 12 Dec 2025: 'The MSP for Fair Average Quality of milling copra has been fixed at Rs.12,027/- per quintal'; ball copra Rs 12,500."
  }
 ]
