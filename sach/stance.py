@@ -45,12 +45,52 @@ def subject_coverage(claim: str, evidence_text: str) -> float:
     d = distinctive(claim)
     return 1.0 if not d else len(d & tokens(evidence_text)) / len(d)
 
+# Text aimed at the judge model rather than at a human reader. A forward or a page that contains it is never allowed to drive a
+# decisive stance: it can only make Sach abstain. (A blocklist: it catches the common phrasings, not every paraphrase. The hard
+# defences are the verbatim-quote, number and subject checks plus the official-host rule; this only closes the loud cases.)
+_INJECTION = re.compile(
+    r"\b(ignore|disregard|forget|override)\b[^.\n]{0,40}\b(instructions?|prompts?|sources?|rules?|evidence)\b|"
+    r"\b(ai|llm|automated|bot)[- ]?(reviewers?|checkers?|judges?|graders?|assistants?|models?)\b|"
+    r"\b(note|message|notice|instruction|attention)s?\s+(to|for)\s+(the\s+)?(ai|llm|model|assistant|automated|bot|reviewers?|checkers?|judges?)\b|"
+    r"\b(system|developer)\s*(message|prompt|override|instruction)s?\b|\bsystem\s*:|\byou are now\b|"
+    r"\b(mark|label|rate|output|answer|reply|respond|return|say|write)\s+(this\s+)?(page\s+|message\s+|claim\s+|forward\s+)?(as\s+)?(true|false|confirms?|contradicts?|verified)\b|"
+    r"\bverdict\s*:\s*(true|false|confirms?|contradicts?)\b|\b(confirms|contradicts|partial|neither)\s*\|", re.I)
+
+def has_injection(*texts: str) -> bool:
+    return any(_INJECTION.search(t or "") for t in texts)
+
+# Direction words: a claim that says 'increased' is not supported by, or refuted by, a quote that only says 'reduce'.
+_UP = ("increas", "rais", "hike", "extend", "higher", "doubl", "boost", "expand")
+_DOWN = ("reduc", "cut", "lower", "decreas", "lessen", "slash", "trim", "shrink", "drop")
+
+def _direction(text: str) -> set:
+    ws = re.findall(r"[a-z]+", (text or "").lower())
+    return {d for d, stems in (("up", _UP), ("down", _DOWN)) if any(w.startswith(x) for w in ws for x in stems)}
+
+def direction_conflict(claim: str, evidence: str) -> bool:
+    c, e = _direction(claim), _direction(evidence)
+    return bool(c) and bool(e) and not (c & e)
+
+# Words that restrict or relocate a claim. A swap of any of them changes what is true, so the quote must contain each one.
+_QUALIFIERS = {_stem(w) for w in """only women woman men man girls boys farmers students seniors children widows minors every everyone free double triple half
+except unless mandatory compulsory daily monthly weekly annual yearly minimum maximum""".split()} | {
+    _stem(m) for m in """january february march april june july august september october november december
+kharif rabi monsoon summer winter""".split()}
+
+def critical_words(claim: str) -> set:
+    """Qualifier words, plus proper nouns / names (capitalised words inside the sentence: places, seasons, schemes)."""
+    toks = tokens(claim)
+    caps = {_stem(w.lower()) for w in re.findall(r"(?<=[a-z0-9,] )[A-Z][a-z]{2,}", claim)}
+    return (toks & _QUALIFIERS) | (caps - _GENERIC)     # generic officialese ('Union', 'Cabinet') may be dropped in a short quote
+
 _META = re.compile(r"\b(fake|false|hoax|rumou?rs?|misinformation|fact[- ]?check\w*|scam|fraud\w*|misleading)\b", re.I)
 
 def heuristic_stance(claim: str, title: str, text: str, tier: str) -> str:
     """Conservative. FALSE-grade stance needs a strict debunk word IN THE TITLE and the claim to match the title.
     Negated claims are never judged heuristically (they could be the opposite of what the page debunks)."""
     if _NEGATION.search(claim):
+        return "none"
+    if has_injection(claim, title, text):    # instructions aimed at the judge: never a decisive stance
         return "none"
     if _META.search(claim):      # a claim ABOUT fake news ("send suspected fake news to ...") matches every debunk-themed title
         return "none"
@@ -90,6 +130,12 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -
     q, page = _norm(quote), _norm(f"{title} {text}")
     if len(q) < 12 or q not in page:
         return "none"
+    if has_injection(claim, title, text, quote):
+        return "none"          # the forward or the page tries to instruct the judge: abstain rather than trust it
+    if direction_conflict(claim, f"{title} {quote}"):
+        return "none"          # 'increased' vs a page that says 'reduce' (and the reverse): neither confirms nor refutes
+    if label == "contradicts" and (_NEGATION.search(claim) or _META.search(claim)):
+        return "none"          # a negated claim, or one that merely reports a rumour/debunk, can agree with a debunk page: never FALSE
     # A denial ("This is fake; no such proposal exists.") gets its subject from the page title, so for CONTRADICTS the title
     # and quote together must relate to the claim. Confirmations / partial matches must be matched by the quote itself.
     if overlap(claim, f"{title} {quote}" if label == "contradicts" else quote) < 0.4:
@@ -99,6 +145,8 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -
         return "none"          # the page is a debunk, or the quote merely reports the rumour: it cannot back the claim
     if label == "confirms" and not numbers(claim) <= numbers(quote):
         return "none"
+    if label == "confirms" and not critical_words(claim) <= tokens(quote):
+        return "none"          # a swapped place/season/month/eligibility word ('Mumbai' for 'Delhi-NCR', 'only women') is not confirmed
     if label in ("confirms", "mixed") and subject_coverage(claim, quote) < 0.7:
         return "none"          # the quote must contain the claim's subject words (a Handloom Day page cannot back a Mango Day claim)
     if label == "contradicts" and subject_coverage(claim, f"{title} {quote}") < 0.6:
