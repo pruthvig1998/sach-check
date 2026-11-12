@@ -159,6 +159,7 @@ def test_parse_label_maps_and_defaults_to_none():
 
 def test_gemini_judge_skips_dead_models(monkeypatch):
     import urllib.error, sach.llm as L
+    Q = "Cabinet approves the scheme"
     tried = []
     def fake_post(self, model, body):
         tried.append(model)
@@ -166,9 +167,9 @@ def test_gemini_judge_skips_dead_models(monkeypatch):
             raise urllib.error.HTTPError("u", 404, "retired", {}, None)
         if model == "busy":
             raise urllib.error.HTTPError("u", 503, "overloaded", {}, None)
-        return {"candidates": [{"content": {"parts": [{"text": "CONTRADICTS"}]}}]}
+        return {"candidates": [{"content": {"parts": [{"text": "CONTRADICTS | Fake: the scheme claim is a hoax"}]}}]}
     monkeypatch.setattr(L.GeminiJudge, "_post", fake_post)
-    assert L.GeminiJudge(key="k", model="old,busy,good").stance("c", "t", "x") == "contradicts"
+    assert L.GeminiJudge(key="k", model="old,busy,good").stance("the scheme claim", "t", "Fake: the scheme claim is a hoax, says ministry") == "contradicts"
     assert tried == ["old", "busy", "good"]
 
 def test_gemini_failure_still_falls_back_safely(monkeypatch):
@@ -203,3 +204,46 @@ def test_web_routes_work_with_query_and_any_post_path():
         assert "UNVERIFIED" in out
     finally:
         srv.shutdown()
+
+
+# --- tightened judge: verbatim quote, number match, denial-only contradiction, confirm+mixed conflict
+from sach.stance import validate_stance
+from sach.llm import parse_reply
+
+def test_parse_reply():
+    assert parse_reply("CONTRADICTS | It is fake") == ("contradicts", "It is fake")
+    assert parse_reply("NEITHER") == ("none", "")
+
+def test_quote_must_be_verbatim_in_page():
+    page = "The Ministry clarifies that the message about Rs 1000 is fake and fraudulent."
+    assert validate_stance("contradicts", "message about Rs 1000 is fake and fraudulent", "Rs 1000 message", "t", page) == "contradicts"
+    assert validate_stance("contradicts", "this is a totally invented sentence", "Rs 1000 message", "t", page) == "none"
+
+def test_descriptive_scheme_page_cannot_contradict():
+    page = "PM Surya Ghar Muft Bijli Yojana has crossed 10 lakh rooftop solar installations for households."
+    assert validate_stance("contradicts", "10 lakh rooftop solar installations for households", "free solar refrigerator households", "t", page) == "none"
+
+def test_confirms_needs_the_claims_numbers_in_the_quote():
+    page = "43,230 recruitments done including Sub-Inspectors and Constable (RPF) in this fiscal."
+    claim = "RPF has announced recruitment of 4,208 Constables and 452 Sub-Inspectors."
+    assert validate_stance("confirms", "Sub-Inspectors and Constable (RPF)", claim, "t", page) == "none"
+    page2 = "RPF recruitment of 4,208 Constables and 452 Sub-Inspectors has been notified."
+    assert validate_stance("confirms", "RPF recruitment of 4,208 Constables and 452 Sub-Inspectors has been notified", claim, "t", page2) == "confirms"
+
+def test_confirm_plus_mixed_is_unverified_not_misleading():
+    assert decide(C, [ev(TIER_OFFICIAL, "confirms"), ev(TIER_OFFICIAL, "mixed", "https://b.gov.in")]).verdict == UNVERIFIED
+    assert decide(C, [ev(TIER_OFFICIAL, "mixed")]).verdict == MISLEADING   # mixed alone still works
+
+def test_hung_retriever_and_judge_cannot_block_a_check(monkeypatch):
+    import time, sach.pipeline as P
+    monkeypatch.setattr(P, "RETRIEVE_DEADLINE_S", 0.3); monkeypatch.setattr(P, "JUDGE_DEADLINE_S", 0.3)
+    class Hung:
+        def search(self, c): time.sleep(5); return []
+    class SlowJudge:
+        def stance(self, *a): time.sleep(5); return "contradicts"
+    t = time.time()
+    res = check_forward("Government will give Rs 5000 to every woman.", [Hung()])
+    assert res["verdict"] == UNVERIFIED and time.time() - t < 2
+    ev = Evidence("PIB", "https://pib.gov.in/x", TIER_PIB, TS, "Fake: Government will give Rs 5000 to every woman", "")
+    res = check_forward("Government will give Rs 5000 to every woman.", [FakeRetriever([ev])], SlowJudge())
+    assert time.time() - t < 4 and res["verdict"] in (UNVERIFIED, FALSE)

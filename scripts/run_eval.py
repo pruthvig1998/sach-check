@@ -12,7 +12,9 @@ seed_ids = {str(x["prid"]) for x in json.load(open("data/seed_debunks.json"))}
 res = []
 for r in rows:
     out = check_forward(r["claim"], ret, llm, log=bool(os.environ.get("SACH_SEED_LEDGER")))
+    print(f"[{len(res)+1}/{len(rows)}] {r['label']:10} -> ", end="", flush=True)
     res.append({**r, "seeded": any(("PRID=" + i) in r["source"] for i in seed_ids), "got": out["verdict"], "reasons": [v["reason_code"] for v in out["claims"]], "cites": [c["url"] for v in out["claims"] for c in v["citations"]]})
+    print(res[-1]["got"], flush=True)
 n = len(res); ok = sum(r["got"] == r["label"] for r in res)
 false_pos = [r for r in res if r["got"] == "FALSE" and r["label"] != "FALSE"]
 lab = lambda L: [r for r in res if r["label"] == L]

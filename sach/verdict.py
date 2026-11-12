@@ -19,6 +19,8 @@ def decide(claim: Claim, evidence: list[Evidence]) -> ClaimVerdict:
 
     if contra and conf:   # authoritative sources disagree -> never guess
         return ClaimVerdict(claim, UNVERIFIED, "conflicting_official_sources", cites(contra, conf))
+    if conf and mixed:    # one official source confirms, another disagrees on the details -> do not guess
+        return ClaimVerdict(claim, UNVERIFIED, "conflicting_official_sources", cites(conf, mixed))
     if contra:
         return ClaimVerdict(claim, FALSE, "official_contradiction", cites(contra, fc))
     if mixed:

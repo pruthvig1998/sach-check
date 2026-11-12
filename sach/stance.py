@@ -40,6 +40,33 @@ def heuristic_stance(claim: str, title: str, text: str, tier: str) -> str:
         return "contradicts"
     return "confirms" if overlap(claim, page) >= 0.8 and tier == "official" and not _STRICT_DEBUNK.search(page) else "none"
 
+_DENIAL = re.compile(r"\b(fake|false|fictitious|fabricated|forged|fraudulent|scam|hoax|baseless|misleading|misinformation|"
+                      r"no such|not true|not been issued|has not issued|denies|denied|clarif\w+|no proposal|not giving|"
+                      r"does not exist|incorrect)\b|फर्जी|झूठ|भ्रामक|నకిలీ|అబద్ధ|తప్పుడు", re.I)
+
+def _norm(t: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[\"'\u201c\u201d\u2018\u2019.\u2026]", "", t or "")).strip().lower()
+
+def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -> str:
+    """Accept an LLM stance only if it is backed by a verbatim quote from the page that relates to the claim.
+    - quote must appear verbatim in the page (kills hallucinated evidence)
+    - quote must overlap the claim (kills 'related topic' calls)
+    - CONFIRMS: quote must contain every number in the claim
+    - CONTRADICTS: the page must itself be a debunk/denial (a page describing a real scheme can never refute)
+    Anything failing a check becomes 'none' -> UNVERIFIED."""
+    if label == "none":
+        return "none"
+    q, page = _norm(quote), _norm(f"{title} {text}")
+    if len(q) < 12 or q not in page:
+        return "none"
+    if overlap(claim, quote) < 0.4:
+        return "none"
+    if label == "confirms" and not numbers(claim) <= numbers(quote):
+        return "none"
+    if label == "contradicts" and not _DENIAL.search(f"{title} {quote}"):
+        return "none"
+    return label
+
 def judge(claim: str, ev, llm=None) -> str:
     if llm is not None:
         try:

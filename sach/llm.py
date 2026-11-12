@@ -2,18 +2,25 @@
 Any failure raises, and stance.judge() falls back to the conservative heuristic."""
 from __future__ import annotations
 import json, os, time, urllib.request
+from .stance import validate_stance
 
-PROMPT = ("You judge ONE source page against ONE claim from a viral forward. Reply with exactly one word:\n"
+PROMPT = ("You judge ONE source page against ONE claim from a viral forward. Reply on ONE line as:  LABEL | quote\n"
+          "where LABEL is exactly one of the words below and quote is a sentence COPIED VERBATIM from the page (max 30 words) that justifies it. For NEITHER write no quote.\n"
           "CONTRADICTS - the page directly refutes this specific claim.\n"
           "CONFIRMS - the page directly states this specific claim is true.\n"
           "PARTIAL - the core fact is real but the claim's numbers, dates or framing differ from the page.\n"
           "NEITHER - anything else: unrelated, only loosely related, or unsure.\n"
-          "A page that merely mentions fake news in general, or a different claim, is NEITHER. When unsure, NEITHER.")
+          "A page that merely mentions fake news in general, or a DIFFERENT claim, scheme or number, is NEITHER. A page describing a real scheme does not contradict a claim about something else. When unsure, NEITHER.")
 _MAP = {"CONTRADICTS": "contradicts", "CONFIRMS": "confirms", "PARTIAL": "mixed", "NEITHER": "none"}
 
 def parse_label(raw: str) -> str:
     w = (raw or "").strip().upper().replace("*", "").split()
     return _MAP.get(w[0].strip(".,:;") if w else "", "none")
+
+def parse_reply(raw: str):
+    """'CONTRADICTS | quote...' -> (stance, quote)."""
+    label, _, quote = (raw or "").partition("|")
+    return parse_label(label), quote.strip()
 
 def _user(claim, title, text):
     return f"CLAIM: {claim}\n\nPAGE TITLE: {title}\nPAGE TEXT: {text[:6000]}"
@@ -37,12 +44,13 @@ class GeminiJudge:
     def stance(self, claim, title, text):
         body = {"systemInstruction": {"parts": [{"text": PROMPT}]},
                 "contents": [{"role": "user", "parts": [{"text": _user(claim, title, text)}]}],
-                "generationConfig": {"temperature": 0, "maxOutputTokens": 64}}
+                "generationConfig": {"temperature": 0, "maxOutputTokens": 200}}
         last = None
         for model in self.models:
             try:
                 d = self._post(model, body)
-                return parse_label(d["candidates"][0]["content"]["parts"][0]["text"])
+                st, q = parse_reply(d["candidates"][0]["content"]["parts"][0]["text"])
+                return validate_stance(st, q, claim, title, text)
             except Exception as e:      # 404/429/503/timeout/odd payload: try the next model
                 last = e
         raise last
@@ -54,9 +62,10 @@ class ClaudeJudge:
         self.model = os.environ.get("SACH_MODEL", "claude-sonnet-5-5")
 
     def stance(self, claim, title, text):
-        r = self.client.messages.create(model=self.model, max_tokens=8, system=PROMPT,
+        r = self.client.messages.create(model=self.model, max_tokens=200, system=PROMPT,
                                         messages=[{"role": "user", "content": _user(claim, title, text)}])
-        return parse_label(r.content[0].text)
+        st, q = parse_reply(r.content[0].text)
+        return validate_stance(st, q, claim, title, text)
 
 def get_llm():
     try:
