@@ -6,6 +6,7 @@ from . import ledger
 from .i18n import LABEL
 from .report import report_html, card_data_script
 from .ocr import OCR_BLOCK
+from .scamsigns import CSS as SIGNS_CSS, signs_html
 
 REPO = "https://github.com/pruthvig1998/sach-check"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -157,6 +158,7 @@ dialog img{display:block;background:#fff;padding:8px;border:2px solid var(--rule
 @media print{.tipcard,#upiqr,dialog{display:none}}
 @media print{header.nav,footer,.chips,.row,#busy{display:none}body{background:#fff;color:#000}}
 """
+CSS += SIGNS_CSS
 
 JS = """
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
@@ -436,7 +438,8 @@ def result_block(res: dict, chosen: bool = False) -> str:
     if res.get("no_claims"):
         return (f'<div class="result" id="result"><div><div class="stamp big UNVERIFIED">No claim</div></div>'
                 f'<div><p class="kicker">Nothing to check</p><div class="bubble"><span id="cardtext">{esc(res["card"])}</span></div>'
-                f'<p class="note" style="margin-top:14px">Greetings, links, emoji and bare numbers are not factual claims. Paste the sentence that makes the claim.</p></div></div>')
+                f'<p class="note" style="margin-top:14px">Greetings, links, emoji and bare numbers are not factual claims. Paste the sentence that makes the claim.</p>'
+                f'{signs_html(res.get("warning_signs"), res.get("language", "en"))}</div></div>')
     rows = ""
     for c in res["claims"]:
         fmt = lambda x: (f'<div class="cite"><a href="{esc(x["url"])}" rel="noopener">{esc(x["source"])}</a> '
@@ -476,7 +479,7 @@ def result_block(res: dict, chosen: bool = False) -> str:
 {cachednote}<div class="bubble"><span id="cardtext">{card}</span><small>Sach ✓✓</small></div>
 <div class="row"><button class="btn ghost" id="copy" type="button">Copy card</button><a class="btn" href="{esc(wa)}" rel="noopener">Share on WhatsApp</a>
 <button class="btn ghost" id="dl" type="button">Download image</button><button class="btn" id="img-share" type="button" hidden>Share image</button></div>
-{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
+{signs_html(res.get("warning_signs"), res.get("language", "en"))}{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
 <div style="overflow-x:auto"><table><thead><tr><th>Claim</th><th>Verdict</th><th>Citations</th></tr></thead><tbody>{rows}</tbody></table></div>
 {tr}<p class="note" style="margin-top:14px">Checked {esc(res['checked_at'][:16].replace('T',' '))} UTC. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
 
