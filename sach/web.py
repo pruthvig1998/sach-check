@@ -66,7 +66,9 @@ class Handler(BaseHTTPRequestHandler):
         if view == "pay":                                    # choose your UPI app (avoids iOS picking WhatsApp for you)
             if not tip_config():
                 return self._send(b"not found", 404, "text/plain")
-            return self._send(pay_page(tip_amount(qs.get("amt", [""])[0])))
+            raw_amt = qs.get("amt", [""])[0]
+            amt = tip_amount(raw_amt)
+            return self._send(pay_page(amt, bad_amount=bool(raw_amt.strip()) and amt is None))
         if view == "tipqr":                                  # QR drawn on the server (pay-any-amount link)
             cfg = tip_config()
             svg = tip_qr_svg(cfg, tip_amount(qs.get("amt", [""])[0])) if cfg else None

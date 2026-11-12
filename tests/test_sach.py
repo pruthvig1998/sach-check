@@ -1076,9 +1076,9 @@ def test_chooser_page_lists_apps_amount_and_qr_without_the_address(server, monke
     code, hdr, body = _raw_get(server, "/?view=pay&amt=50")
     h = body.decode()
     assert code == 200 and "Pay ₹50" in h
-    for name in ("Google Pay", "PhonePe", "Paytm", "Any other UPI app"):
+    for name in ("Google Pay", "PhonePe", "Paytm", "BHIM", "Any other UPI app"):
         assert name in h
-    for app in ("gpay", "phonepe", "paytm", "upi"):
+    for app in ("gpay", "phonepe", "paytm", "bhim", "upi"):
         assert f'href="/?go=tip&amp;amt=50&amp;app={app}"' in h
     assert '<img id="upiqr" src="/?view=tipqr&amp;amt=50"' in h and "WhatsApp" in h                  # iPhone tip explains the WhatsApp surprise
     assert "supporter" not in h and "okbank" not in h and "upi://" not in h and "gpay://" not in h        # no address, no scheme links in HTML
@@ -1089,14 +1089,14 @@ def test_chooser_without_amount_says_any_amount(server, monkeypatch):
     h = body.decode()
     assert code == 200 and "Pay any amount" in h and 'href="/?go=tip&amp;app=gpay"' in h and "amt=" not in h.split("<h1")[1].split("</h1>")[0]
 
-@pytest.mark.parametrize("app,prefix", [("gpay", "gpay://upi/pay?"), ("phonepe", "phonepe://pay?"), ("paytm", "paytmmp://pay?"), ("upi", "upi://pay?")])
+@pytest.mark.parametrize("app,prefix", [("gpay", "gpay://upi/pay?"), ("phonepe", "phonepe://pay?"), ("paytm", "paytmmp://pay?"), ("bhim", "bhim://upi/pay?"), ("upi", "upi://pay?")])
 def test_each_app_gets_its_own_link_scheme_with_the_same_payee_and_amount(server, monkeypatch, app, prefix):
     _tip_env(monkeypatch, "supporter@okbank", "Sach")
     code, hdr, _ = _raw_get(server, f"/?go=tip&amt=100&app={app}")
     loc = hdr["Location"]
     assert code == 302 and loc.startswith(prefix) and "pa=supporter@okbank" in loc and loc.endswith("&am=100") and "cu=INR" in loc
 
-@pytest.mark.parametrize("bad", ["bhim", "WhatsApp", "javascript:alert(1)", "", "gpay://evil", "../x", "G P A Y"])
+@pytest.mark.parametrize("bad", ["WhatsApp", "javascript:alert(1)", "", "gpay://evil", "../x", "G P A Y", "bhim://evil", "amazonpay"])
 def test_unknown_app_falls_back_to_generic_scheme_never_an_open_redirect(server, monkeypatch, bad):
     from urllib.parse import quote
     _tip_env(monkeypatch, "supporter@okbank")
@@ -1129,3 +1129,55 @@ def test_upi_link_builder_supports_apps_and_falls_back():
     assert SITE.upi_link(cfg, 20, app="phonepe").startswith("phonepe://pay?pa=supporter@okbank")
     assert SITE.upi_link(cfg, 20, app="nope").startswith("upi://pay?")
     assert SITE.upi_link(cfg, 20).startswith("upi://pay?")                                           # default unchanged
+
+
+# --- logos, BHIM tile, custom amounts
+def test_every_app_tile_has_its_own_inline_logo_and_no_external_image_requests(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    h = _raw_get(server, "/?view=pay&amt=50")[2].decode()
+    tiles = h.split('class="appbtn"')[1:]
+    assert len(tiles) == 5 and all('class="ico"><svg' in t.split("</a>")[0] for t in tiles)
+    icons = [t.split('class="ico">')[1].split("</span>")[0] for t in tiles]
+    assert len(set(icons)) == 5                                           # five different icons
+    assert 'fill="#4285F4"' in icons[0] and 'fill="#5F259F"' in icons[1] and 'fill="#20336B"' in icons[2] and "BHIM" in icons[3]
+    import re
+    assert "<img" not in h.replace('<img id="upiqr"', "") and "cdn" not in h                             # logos are inline SVG
+    assert not re.search(r'src="https?://', h) and not re.search(r"url\(https?://", h)                  # no third-party images or scripts (only the page's font stylesheet link)
+    assert "trademarks of their owners" in h and "Simple Icons" in h
+
+def test_chooser_has_a_change_amount_form_prefilled(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    h = _raw_get(server, "/?view=pay&amt=75")[2].decode()
+    assert 'class="otheramt compact"' in h and 'name="view" value="pay"' in h and 'name="amt" type="number"' in h and 'min="1" max="10000"' in h
+    assert 'value="75"' in h and "Change amount" in h and 'method="get" action="/"' in h
+
+def test_tip_section_has_an_other_amount_tile(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    h = _ur.urlopen(server + "/?t=other").read().decode()
+    tip = h.split('id="tip"')[1].split("</section>")[0]
+    assert 'class="tipcard other"' in tip and "Other amount" in tip and 'name="amt" type="number"' in tip and "₹1 to ₹10,000" in tip
+    assert tip.count('class="tipcard"') == 4                                # the four preset tiers are unchanged
+
+@pytest.mark.parametrize("bad", ["abc", "0", "-5", "10001", "99999999", "5.5", "1e3"])
+def test_invalid_custom_amount_shows_a_clear_message_and_still_lets_them_pay(server, monkeypatch, bad):
+    _tip_env(monkeypatch, "supporter@okbank")
+    code, _, body = _raw_get(server, f"/?view=pay&amt={bad}")
+    h = body.decode()
+    assert code == 200 and "whole number of rupees from 1 to 10,000" in h and "Pay any amount" in h and 'href="/?go=tip&amp;app=gpay"' in h
+
+def test_no_error_message_for_valid_or_missing_amount(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    for path in ("/?view=pay", "/?view=pay&amt=75", "/?view=pay&amt="):
+        assert "whole number of rupees" not in _raw_get(server, path)[2].decode()
+
+def test_custom_amount_flows_into_the_app_links_and_qr(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    h = _raw_get(server, "/?view=pay&amt=75")[2].decode()
+    assert 'href="/?go=tip&amp;amt=75&amp;app=phonepe"' in h and 'src="/?view=tipqr&amp;amt=75"' in h and "Pay ₹75" in h
+    assert _raw_get(server, "/?go=tip&amt=75&app=paytm")[1]["Location"].endswith("&am=75")
+
+def test_icons_and_forms_leak_no_address(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    for path in ("/?view=pay&amt=50", "/?t=leak", "/?view=pay&amt=abc"):
+        h = _raw_get(server, path)[2].decode()
+        assert "supporter" not in h and "okbank" not in h and "upi://" not in h and "bhim://" not in h and "gpay://" not in h
