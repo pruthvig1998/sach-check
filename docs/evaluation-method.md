@@ -18,6 +18,13 @@ An overclaim is a TRUE or FALSE verdict where the label says something else. Ove
 ## Languages
 `lang` is `en`, `hi`, `te`, `hinglish` or `tinglish`. The Hindi, Telugu, Hinglish and Tinglish claims were written by an AI model and have not been reviewed by a native speaker; each such note says so. `sach.lang.detect_language` returns `hi` and `te` for those rows, `tl` for Tinglish, and `hi` for Hinglish.
 
+## The 13 added Indian languages
+`bn` Bengali, `as` Assamese, `mni` Manipuri (Meitei Mayek script), `mr` Marathi, `kok` Konkani, `ne` Nepali, `ta` Tamil, `gu` Gujarati, `pa` Punjabi (Gurmukhi), `or` Odia, `kn` Kannada, `ml` Malayalam and `ur` Urdu (right-to-left) each have two rows: one FALSE (a PIB or RBI debunk) and one TRUE (an official announcement). Three more rows (`mr`, `ta`, `ur`) are invented UNVERIFIED controls. These 29 rows take the set from 50 to 79.
+
+No new fact was researched. Each translated row is the same claim as an already-verified Hindi, Telugu, Hinglish, Tinglish or English row, written as a casual forward in the new language. `translated_from` holds the original claim, and `label`, `source`, `seeded` and `verified_on` are copied from it, so the official page behind each row was fetched and read once, in the original. A test checks that every number in a translation (native digits converted) equals the numbers of its original. Different facts are used across languages where possible; sixteen facts (eight FALSE, eight TRUE) cover the 26 translated rows, so most facts appear twice.
+
+All of these rows were written by an AI model and have not been reviewed by a native speaker. Manipuri in Meitei Mayek is the weakest and most in need of review. With two rows per language, a language's score is a smoke test, not a measurement. The red-team file has matching cases for several of these scripts (embedded instructions in English and in the language, fabricated PIB lines, altered numbers, rumour-reporting bait, Urdu bidi tricks).
+
 ## How to run
 ```
 python scripts/run_eval.py --dry-run      # validates the set, prints counts by language and label, no network calls

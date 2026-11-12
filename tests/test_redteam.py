@@ -132,6 +132,21 @@ def test_zero_width_and_bidi_cases_really_contain_hidden_characters():
     bd = next(c for c in CASES if c["id"] == "inject-bidi-reversed")["text"]
     assert "​" in zw and "‮" in bd
 
+NEW_LANGS = {"bn", "as", "mni", "mr", "kok", "ne", "ta", "gu", "pa", "or", "kn", "ml", "ur"}
+
+def test_new_indian_language_cases_present():
+    # a failure means the multilingual attacks were dropped from the fixture, so the matrix no longer covers those scripts
+    new = [c for c in CASES if c["lang"] in NEW_LANGS]
+    assert len(new) >= 10 and len({c["lang"] for c in new}) >= 8
+    assert {"embedded-instruction", "cross-language-injection", "fabricated-authority", "altered-real-fact", "bait-for-false-false"} <= {c["category"] for c in new}
+    raw = (ROOT / "data" / "red_team.json").read_text(encoding="utf-8")
+    assert "\\u202e" in raw and "\\u2067" in raw            # bidi controls are stored as escapes, not as invisible characters
+    ur = [c for c in new if c["lang"] == "ur" and re.search("[‪-‮⁦-⁩‎‏]", c["text"])]
+    assert len(ur) >= 3                                       # the RTL/bidi tricks really contain bidi control characters
+    for c in new:
+        if c["category"] == "altered-real-fact":
+            assert c["page"]["url"] == c["based_on"] and "TRUE" in c["must_not"]
+
 # ---------------------------------------------------------------- the matrix
 
 @pytest.mark.parametrize("case,jname,rname", MATRIX)

@@ -1,5 +1,5 @@
 """Offline tests for the evaluation set (data/eval_set.json) and scripts/run_eval.py. No network, no LLM calls."""
-import importlib.util, json, os, pathlib, re, sys
+import importlib.util, json, os, pathlib, re, sys, unicodedata
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -12,6 +12,14 @@ _spec.loader.exec_module(run_eval)
 
 ROWS = json.load(open(ROOT / "data" / "eval_set.json", encoding="utf-8"))
 FIELDS = ("claim", "label", "source", "lang", "seeded", "verified_on", "note")
+OLD_LANGS = ("en", "hi", "te", "hinglish", "tinglish")
+NEW_LANGS = ("bn", "as", "mni", "mr", "kok", "ne", "ta", "gu", "pa", "or", "kn", "ml", "ur")
+
+
+def _validation_errors():
+    """run_eval.validate_rows, ignoring only 'bad lang' complaints about the 13 new codes. scripts/run_eval.py's LANGS tuple has to
+    learn those codes (it is outside this work package); every other problem still fails the test."""
+    return [e for e in run_eval.validate_rows(ROWS) if not any(e.endswith(f"bad lang {c!r}") for c in NEW_LANGS)]
 
 
 def _seed_prids():
@@ -22,13 +30,13 @@ def _seed_prids():
 
 # ---------- the data ----------
 def test_size_and_schema():
-    assert 45 <= len(ROWS) <= 60
-    assert run_eval.validate_rows(ROWS) == []
+    assert 75 <= len(ROWS) <= 90
+    assert _validation_errors() == []
     for r in ROWS:
         for f in FIELDS:
             assert f in r, (f, r["claim"])
         assert r["label"] in ("TRUE", "FALSE", "UNVERIFIED")
-        assert r["lang"] in ("en", "hi", "te", "hinglish", "tinglish")
+        assert r["lang"] in OLD_LANGS + NEW_LANGS
         assert isinstance(r["seeded"], bool)
         assert r["note"].strip()
         if r["verified_on"] is None:
@@ -74,6 +82,92 @@ def test_seeded_flags_match_seed_files():
 def test_label_mix_roughly_balanced():
     n = lambda l: sum(r["label"] == l for r in ROWS)
     assert n("FALSE") >= 15 and n("TRUE") >= 15 and 3 <= n("UNVERIFIED") <= 12
+
+
+# ---------- the 13 new languages ----------
+SCRIPT_RANGES = {
+    "bn": [(0x0980, 0x09FF)], "as": [(0x0980, 0x09FF)], "mni": [(0xABC0, 0xABFF), (0xAAE0, 0xAAFF)],
+    "mr": [(0x0900, 0x097F), (0xA8E0, 0xA8FF)], "kok": [(0x0900, 0x097F), (0xA8E0, 0xA8FF)], "ne": [(0x0900, 0x097F), (0xA8E0, 0xA8FF)],
+    "ta": [(0x0B80, 0x0BFF)], "gu": [(0x0A80, 0x0AFF)], "pa": [(0x0A00, 0x0A7F)], "or": [(0x0B00, 0x0B7F)],
+    "kn": [(0x0C80, 0x0CFF)], "ml": [(0x0D00, 0x0D7F)],
+    "ur": [(0x0600, 0x06FF), (0x0750, 0x077F), (0xFB50, 0xFDFF), (0xFE70, 0xFEFF)],
+}
+NEW_ROWS = [r for r in ROWS if r["lang"] in NEW_LANGS]
+TRANSLATED = [r for r in NEW_ROWS if r.get("translated_from")]
+BY_CLAIM = {r["claim"]: r for r in ROWS}
+
+
+def _in(ch, ranges):
+    return any(a <= ord(ch) <= b for a, b in ranges)
+
+
+def _numbers(text):
+    """Numbers in a claim with native digits (Bengali, Devanagari, Gujarati, Odia, Meitei Mayek, Arabic-Indic ...) converted to ASCII."""
+    t = "".join(str(unicodedata.decimal(c)) if unicodedata.category(c) == "Nd" else c for c in text)
+    return sorted(re.findall(r"\d+(?:[.,]\d+)*", t))
+
+
+def test_new_languages_have_at_least_two_rows_one_false_one_true():
+    for lang in NEW_LANGS:
+        rows = [r for r in ROWS if r["lang"] == lang]
+        assert len(rows) >= 2, lang
+        assert {"FALSE", "TRUE"} <= {r["label"] for r in rows}, lang
+
+
+def test_new_language_totals():
+    assert len(NEW_ROWS) == 29 and len(TRANSLATED) == 26
+    assert sum(r["label"] == "UNVERIFIED" for r in NEW_ROWS) == 3
+    assert len({r["lang"] for r in NEW_ROWS if r["label"] == "UNVERIFIED"}) == 3          # controls spread over three languages
+    assert len({r["translated_from"] for r in TRANSLATED}) >= 8                           # not one fact repeated 13 times
+
+
+@pytest.mark.parametrize("row", NEW_ROWS, ids=lambda r: f"{r['lang']}-{r['label']}")
+def test_new_language_row_script_matches_language(row):
+    ranges = SCRIPT_RANGES[row["lang"]]
+    marked = [c for c in row["claim"] if ord(c) > 127 and unicodedata.category(c)[0] in "LM" and c not in "️‌‍"]  # emoji selector / joiners are script-neutral
+    assert len(marked) >= 15, row["claim"]                                                  # really written in that script
+    stray = [c for c in marked if not _in(c, ranges)]
+    assert not stray, (row["lang"], stray, row["claim"])                                    # no letters from another script
+    if row["lang"] == "as":
+        assert re.search("[ৰৱ]", row["claim"]), row["claim"]                               # Assamese-specific letters
+    if row["lang"] == "bn":
+        assert not re.search("[ৰৱ]", row["claim"]), row["claim"]                           # those letters are not Bengali
+    assert "not yet reviewed by a native speaker" in row["note"]
+
+
+@pytest.mark.parametrize("row", TRANSLATED, ids=lambda r: f"{r['lang']}-{r['label']}")
+def test_translated_row_keeps_the_verified_facts_of_its_source(row):
+    src = BY_CLAIM.get(row["translated_from"])
+    assert src is not None and src["lang"] in OLD_LANGS, row["translated_from"]
+    for f in ("label", "source", "seeded", "verified_on"):
+        assert row[f] == src[f], (f, row["claim"])
+    assert src["label"] in ("TRUE", "FALSE") and src["verified_on"], "only rows whose official page was fetched and read may be translated"
+    assert row["verified_on_note"].startswith("same fact as the ") and src["claim"][:60] in row["verified_on_note"]
+    assert row["verified_on_note"].endswith("translated by an AI model, not native-reviewed")
+    assert row["note"] == "Translation of an already-verified row. Written by an AI model; not yet reviewed by a native speaker."
+    # every number, date and amount survives translation unchanged (native digits are converted first)
+    assert _numbers(row["claim"]) == _numbers(src["claim"]), (row["claim"], _numbers(row["claim"]), _numbers(src["claim"]))
+
+
+def test_number_extraction_handles_native_digits():
+    assert _numbers("২০২৬-২৭ ₹৫৩,৪২৮ ꯲꯰꯲꯶ ۲۰۲۶ ૧,૫૦૦ ୩.୧୫") == sorted(["2026", "27", "53,428", "2026", "2026", "1,500", "3.15"])
+
+
+@pytest.mark.parametrize("row", [r for r in NEW_ROWS if r["label"] == "UNVERIFIED"], ids=lambda r: r["lang"])
+def test_new_language_controls_are_marked_invented(row):
+    assert row["source"].startswith("control:") and row["verified_on"] is None and row.get("verified_on_note")
+    assert "Invented control" in row["note"] and "avoid resembling any real scheme" in row["note"]
+    assert "translated_from" not in row
+
+
+@pytest.mark.parametrize("lang", NEW_LANGS)
+def test_detect_language_on_new_language_rows(lang):
+    # Detection is built separately; this runs only once sach.lang lists the code in SUPPORTED (it skips until the branches are merged).
+    import sach.lang as sl
+    if lang not in getattr(sl, "SUPPORTED", ()):
+        pytest.skip(f"sach.lang does not support {lang!r} yet")
+    for r in (r for r in ROWS if r["lang"] == lang):
+        assert sl.detect_language(r["claim"]) == lang, r["claim"]
 
 
 # ---------- script: pure functions ----------
@@ -146,7 +240,8 @@ def test_dry_run_makes_no_calls(env, capsys, monkeypatch):
     assert not (tmp / "docs" / "evaluation.md").exists() and not (tmp / "cache").exists()
 
 
-def test_dry_run_on_real_set(capsys):
+def test_dry_run_on_real_set(capsys, monkeypatch):
+    monkeypatch.setattr(run_eval, "LANGS", tuple(dict.fromkeys(tuple(run_eval.LANGS) + NEW_LANGS)))   # no-op once run_eval knows the codes
     assert run_eval.main(["--dry-run"]) == 0
     assert "by language" in capsys.readouterr().out
 
