@@ -58,7 +58,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(302)
             app = qs.get("app", ["upi"])[0].lower()
             app = app if app in UPI_APPS else "upi"          # unknown app name: generic scheme, never an error
-            self.send_header("Location", upi_link(cfg, tip_amount(qs.get("amt", [""])[0]), "Sach tip", app=app))
+            self.send_header("Location", upi_link(cfg, tip_amount(qs.get("amt", [""])[0]), "Sach tip", app=app, alt=qs.get("alt", [""])[0] == "1"))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Robots-Tag", "noindex, nofollow")
             self.send_header("Content-Length", "0")
@@ -68,12 +68,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(b"not found", 404, "text/plain")
             raw_amt = qs.get("amt", [""])[0]
             amt = tip_amount(raw_amt)
-            return self._send(pay_page(amt, bad_amount=bool(raw_amt.strip()) and amt is None))
+            return self._send(pay_page(amt, bad_amount=bool(raw_amt.strip()) and amt is None, alt=qs.get("alt", [""])[0] == "1"))
         if view == "tipqr":                                  # QR drawn on the server (pay-any-amount link)
             cfg = tip_config()
             as_png = qs.get("fmt", [""])[0] == "png"
             amt = tip_amount(qs.get("amt", [""])[0])
-            svg = (tip_qr_png(cfg, amt) if as_png else tip_qr_svg(cfg, amt)) if cfg else None
+            want_alt = qs.get("alt", [""])[0] == "1"
+            if want_alt and not (cfg or {}).get("alt_vpa"):
+                return self._send(b"not found", 404, "text/plain")      # no second address configured
+            svg = (tip_qr_png(cfg, amt, alt=want_alt) if as_png else tip_qr_svg(cfg, amt, alt=want_alt)) if cfg else None
             if not svg:
                 return self._send(b"not found", 404, "text/plain")
             self.send_response(200)

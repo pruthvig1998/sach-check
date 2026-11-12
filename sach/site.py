@@ -145,6 +145,7 @@ dialog{border:2px solid var(--rule);border-radius:6px;background:var(--card);col
 dialog::backdrop{background:rgba(20,16,10,.55)}
 dialog form.x{position:absolute;top:6px;right:8px;margin:0}dialog form.x button{font:inherit;font-size:22px;background:none;border:0;color:var(--ink);cursor:pointer;padding:6px 10px}
 dialog img{display:block;background:#fff;padding:8px;border:2px solid var(--rule);border-radius:4px;margin:10px 0}
+.linklike{font:inherit;background:none;border:0;padding:0;color:inherit;text-decoration:underline;cursor:pointer}
 @media print{.tipcard,#upiqr,dialog{display:none}}
 @media print{header.nav,footer,.chips,.row,#busy{display:none}body{background:#fff;color:#000}}
 """
@@ -168,9 +169,14 @@ const dl=$('#dl');if(dl)dl.addEventListener('click',()=>{const lines=$('#cardtex
 const c=document.createElement('canvas');c.width=W;c.height=pad*2+lines.length*lh+60;const x=c.getContext('2d');x.fillStyle='#dcf8c6';x.fillRect(0,0,W,c.height);
 x.fillStyle='#17140f';x.font='600 30px sans-serif';let y=pad+30;lines.forEach(l=>{x.fillText(l.slice(0,70),pad,y);y+=lh});x.font='20px monospace';x.fillStyle='#555';x.fillText('Sach · checked '+new Date().toISOString().slice(0,10),pad,c.height-24);
 const a=document.createElement('a');a.download='sach-verdict.png';a.href=c.toDataURL('image/png');a.click()});
+let alt=false;const qsAlt=()=>alt?'&alt=1':'';
+$$('.altswap').forEach(b=>b.addEventListener('click',()=>{alt=!alt;
+$$('.qrimg').forEach(i=>{i.src='/?view=tipqr&fmt=png'+qsAlt()});$$('.dlpng').forEach(a=>{a.href='/?view=tipqr&fmt=png'+qsAlt()});
+$$('.qrlabel').forEach(l=>{l.textContent=alt?'Code B':'Code A'});$$('.altswap').forEach(x=>{x.textContent=alt?'Back to code A':'Code not working? Try code B'});
+const ap=$('#dlgapps');if(ap)ap.href=ap.href.replace(/&alt=1/,'')+qsAlt()}));
 const want=$('#want'),dlg=$('#paydlg');
 const setAmt=a=>{if(want)want.textContent=a?('₹'+a):'any amount';$$('.tipcard[data-amt]').forEach(c=>c.classList.toggle('on',String(c.dataset.amt)===String(a)))};
-const openPay=a=>{setAmt(a);if(!dlg)return;$('#dlgamt').textContent='₹'+a;$('#dlgamt2').textContent='₹'+a;$('#dlgapps').href='/?view=pay&amt='+a;
+const openPay=a=>{setAmt(a);if(!dlg)return;$('#dlgamt').textContent='₹'+a;$('#dlgamt2').textContent='₹'+a;$('#dlgapps').href='/?view=pay&amt='+a+qsAlt();
 if(typeof dlg.showModal==='function'){if(!dlg.open)dlg.showModal()}else{$('#upiqr').scrollIntoView({behavior:'smooth',block:'center'})}};
 $$('.tipcard[data-amt]').forEach(c=>{const go=()=>openPay(c.dataset.amt);c.addEventListener('click',go);c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}})});
 const fw=$('#fw'),fwgo=$('#fwgo');
@@ -249,22 +255,22 @@ def tip_amount(raw) -> int | None:
     raw = (raw or "").strip()
     return int(raw) if raw.isascii() and raw.isdigit() and 1 <= int(raw) <= 10000 else None      # ASCII digits only (not "٥٠")
 
-def tip_qr_png(cfg: dict, amount: int | None = None) -> bytes | None:
+def tip_qr_png(cfg: dict, amount: int | None = None, alt: bool = False) -> bytes | None:
     """The same QR as a PNG, so a phone can save it to the gallery and scan it from there inside the UPI app."""
     try:
         import io, segno
         buf = io.BytesIO()
-        segno.make(upi_link(cfg, amount, "Sach tip"), error="m").save(buf, kind="png", scale=8, border=4)
+        segno.make(upi_link(cfg, amount, "Sach tip", alt=alt), error="m").save(buf, kind="png", scale=8, border=4)
         return buf.getvalue()
     except Exception:
         return None
 
-def tip_qr_svg(cfg: dict, amount: int | None = None) -> bytes | None:
+def tip_qr_svg(cfg: dict, amount: int | None = None, alt: bool = False) -> bytes | None:
     """A QR (generic upi:// so every UPI scanner reads it), drawn on the server so the address never appears in the page's HTML."""
     try:
         import io, segno
         buf = io.BytesIO()
-        segno.make(upi_link(cfg, amount, "Sach tip"), error="m").save(buf, kind="svg", scale=5, border=2, xmldecl=False, svgns=True)
+        segno.make(upi_link(cfg, amount, "Sach tip", alt=alt), error="m").save(buf, kind="svg", scale=5, border=2, xmldecl=False, svgns=True)
         return buf.getvalue()
     except Exception:
         return None
@@ -275,11 +281,16 @@ def tip_config():
     if not _VPA.match(vpa):
         return None
     name = _re.sub(r"[^A-Za-z0-9 .&'-]", "", os.environ.get("SACH_UPI_NAME") or "Sach")[:40].strip() or "Sach"
-    return {"vpa": vpa, "name": name}
+    cfg = {"vpa": vpa, "name": name}
+    alt = (os.environ.get("SACH_UPI_ID_ALT") or "").strip()          # optional second UPI address for the SAME bank account
+    if _VPA.match(alt) and alt.lower() != vpa.lower():
+        cfg["alt_vpa"] = alt
+    return cfg
 
-def upi_link(cfg: dict, amount: int | None = None, note: str = "Sach tip", app: str = "upi") -> str:
+def upi_link(cfg: dict, amount: int | None = None, note: str = "Sach tip", app: str = "upi", alt: bool = False) -> str:
     base = UPI_APPS.get(app, UPI_APPS["upi"])[1]                     # unknown app name -> the generic scheme, never an error
-    q = f"pa={_q(cfg['vpa'], safe='@.-_')}&pn={_q(cfg['name'])}&cu=INR&tn={_q(note)}"
+    vpa = cfg["alt_vpa"] if (alt and cfg.get("alt_vpa")) else cfg["vpa"]      # alt requested but not configured -> the main address
+    q = f"pa={_q(vpa, safe='@.-_')}&pn={_q(cfg['name'])}&cu=INR&tn={_q(note)}"
     return base + "?" + q + (f"&am={int(amount)}" if amount else "")
 
 
@@ -377,6 +388,8 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
     if cfg:
         cards = "".join(f'<div class="tipcard" data-amt="{amt}" role="button" tabindex="0"><div class="amt">₹{amt}</div><b>{esc(t)}</b><span class="d">{esc(d)}</span></div>'
                         for amt, t, d in TIP_TIERS)
+        altnote = ('<p class="note" style="margin:8px 0"><b class="qrlabel">Code A</b> &middot; <button type="button" class="altswap linklike">Code not working? Try code B</button>'
+                   ' <span>(same bank account, a different UPI address)</span></p>') if cfg.get("alt_vpa") else ""
         opts_fw = "".join(f'<option value="{n}"{" selected" if n == 3 else ""}>{n}</option>' for n in (1, 3, 5, 10, 20))
         tip_section = f'''<section id="tip"><div class="wrap"><p class="kicker">Nobody asked, but…</p><h2>{esc(tip_headline())} ☕</h2>
 <p class="sub">Sach has no ads, no paywall and no “forward this to 10 groups or bad luck”. If a verdict saved you an awkward family-group moment, a small tip keeps the corrections coming. <b>Tips never change a verdict.</b></p>
@@ -384,19 +397,19 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <p class="note" style="margin:0 0 8px">Pick a suggestion (or type your own), then scan the code below and enter that amount in your UPI app.</p>
 <div class="tipgrid">{cards}<div class="tipcard other"><div class="amt" style="font-size:24px">Other amount</div><span class="d">Any amount from ₹1 to ₹10,000</span>
 <div class="otheramt"><label for="oa"><b>Amount</b> (₹)</label><input id="oa" type="number" inputmode="numeric" min="1" max="10000" step="1" placeholder="e.g. 75"><button class="btn" type="button" id="oago">Continue</button></div><div id="oaerr" class="note" role="alert" style="color:var(--false);min-height:1.3em"></div></div></div>
-<div class="tipbox"><img id="upiqr" src="/?view=tipqr&amp;fmt=png" width="190" height="190" alt="UPI QR code for tips">
+<div class="tipbox"><img id="upiqr" class="qrimg" src="/?view=tipqr&amp;fmt=png" width="190" height="190" alt="UPI QR code for tips">
 <div><p style="margin:0 0 8px"><b>Scan this code</b> with Google Pay, PhonePe, Paytm or BHIM and enter <b id="want">₹{3 * PER_FORWARD}</b> when asked.</p>
 <p style="margin:0 0 8px"><b>On a computer:</b> scan it with the UPI app on your phone.<br><b>On a phone:</b> save the image (tap Download, or press and hold it), then open your UPI app, choose <i>Scan QR</i> and pick the image from your gallery.</p>
-<div class="row"><a class="btn" href="/?view=tipqr&amp;fmt=png" download="sach-tip-qr.png" style="text-decoration:none">Download QR image</a></div>
+<div class="row"><a class="btn dlpng" href="/?view=tipqr&amp;fmt=png" download="sach-tip-qr.png" style="text-decoration:none">Download QR image</a></div>{altnote}
 <p class="note" style="margin:10px 0 0">Your UPI app shows who you're paying before you confirm; that's UPI's own safety check. Tips are optional and go straight from your app to the person who runs Sach. Sach never sees who paid or how much.</p>
 <p class="note" style="margin:8px 0 0">Prefer a button? <a href="/?view=pay" rel="nofollow">Try opening your UPI app directly</a>. It works on some phones, but many banks block payments started from a link and show a “limit exceeded” message even for ₹20. If that happens, use the QR code above.</p></div></div>
 <dialog id="paydlg" aria-labelledby="paytitle"><form method="dialog" class="x"><button aria-label="Close">✕</button></form>
 <p class="kicker">Chip in for the corrections desk ☕</p>
 <h3 id="paytitle" style="font-family:var(--serif);font-size:36px;margin:4px 0 6px">Pay <span id="dlgamt">₹{3 * PER_FORWARD}</span></h3>
-<img src="/?view=tipqr&amp;fmt=png" width="190" height="190" alt="UPI QR code for tips">
+<img class="qrimg" src="/?view=tipqr&amp;fmt=png" width="190" height="190" alt="UPI QR code for tips">{altnote}
 <p style="margin:0 0 8px"><b>Scan this code</b> with Google Pay, PhonePe, Paytm or BHIM and enter <b id="dlgamt2">₹{3 * PER_FORWARD}</b> when asked.</p>
 <p class="note" style="margin:0 0 10px"><b>On a phone:</b> tap Download, then in your UPI app choose <i>Scan QR</i> and pick the image from your gallery.</p>
-<div class="row"><a class="btn" href="/?view=tipqr&amp;fmt=png" download="sach-tip-qr.png" style="text-decoration:none">Download QR image</a>
+<div class="row"><a class="btn dlpng" href="/?view=tipqr&amp;fmt=png" download="sach-tip-qr.png" style="text-decoration:none">Download QR image</a>
 <a class="btn ghost" id="dlgapps" href="/?view=pay&amp;amt={3 * PER_FORWARD}" rel="nofollow" style="text-decoration:none">Open my UPI app instead</a></div>
 <p class="note" style="margin:10px 0 0">The app button works on some phones; many banks block payments started from a link. If it fails, use the QR code.</p></dialog>
 </div></section>'''
@@ -460,11 +473,19 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
     return layout(body)
 
 
-def pay_page(amount: int | None = None, bad_amount: bool = False) -> bytes:
+def pay_page(amount: int | None = None, bad_amount: bool = False, alt: bool = False) -> bytes:
     """Pick-your-UPI-app page. Every button is a server redirect, so the UPI address is not in this page's HTML."""
+    cfg_ = tip_config() or {}
+    alt = bool(alt and cfg_.get("alt_vpa"))                           # ignored unless a second address is configured
     amt_q = f"&amp;amt={amount}" if amount else ""
+    alt_q = "&amp;alt=1" if alt else ""
+    switch = ""
+    if cfg_.get("alt_vpa"):
+        other = f'/?view=pay{amt_q}{"" if alt else "&amp;alt=1"}'
+        switch = (f'<p class="note">Paying the {"second" if alt else "first"} address. Link not working? <a href="{other}" rel="nofollow">'
+                  f'Try the {"first" if alt else "other"} address</a> (same bank account).</p>')
     shown = f"₹{amount}" if amount else "any amount"
-    buttons = "".join(f'<a class="appbtn" href="/?go=tip{amt_q}&amp;app={k}" rel="nofollow"><span class="ico">{app_icon(k)}</span>'
+    buttons = "".join(f'<a class="appbtn" href="/?go=tip{amt_q}&amp;app={k}{alt_q}" rel="nofollow"><span class="ico">{app_icon(k)}</span>'
                       f'<span class="txt"><b>{esc(name)}</b><span>{esc(hint)}</span></span></a>' for k, (name, _scheme, hint) in UPI_APPS.items())
     err = ('<p role="alert" style="color:var(--false);font-weight:600;margin:0 0 10px">Please enter a whole number of rupees from 1 to 10,000. '
            'You can also pick an app now and type the amount there.</p>') if bad_amount else ""
@@ -473,10 +494,10 @@ def pay_page(amount: int | None = None, bad_amount: bool = False) -> bytes:
 {err}<p role="note" style="background:var(--paper2);border-left:6px solid var(--mis);padding:12px 16px;margin:0 0 16px"><b>Heads up:</b> payments started from a link often fail for tips to a personal UPI ID (some banks show “limit exceeded” even for ₹20). If it fails, go back and <b>scan the QR code</b> instead; that always works.</p>
 <p class="sub" style="margin-bottom:14px">Pick the app you use. Your phone may ask “open another application?”; say yes. The amount is filled in and <b>you confirm the payment inside that app</b>.</p>
 {buttons}
-{amount_form(amount, compact=True)}
+{switch}{amount_form(amount, compact=True)}
 <p class="note">iPhone tip: if you choose “Any other UPI app”, iOS decides which app opens and it may not be the one you wanted (for example WhatsApp). Choosing your app above avoids that. App not installed? Use the QR below or go back.</p>
 <h2 style="font-size:24px;margin:26px 0 8px">On a computer?</h2>
-<div class="tipbox"><img id="upiqr" src="/?view=tipqr{amt_q}" width="170" height="170" alt="UPI QR code for tips">
+<div class="tipbox"><img id="upiqr" src="/?view=tipqr{amt_q}{alt_q}" width="170" height="170" alt="UPI QR code for tips">
 <p class="note" style="margin:0;max-width:22em">Scan this with any UPI app{f" (it already has {esc(shown)} filled in)" if amount else " and enter any amount"}. Tips are optional and never change a verdict.</p></div>
 <p style="margin-top:24px"><a class="btn ghost" href="/#tip" style="text-decoration:none">← Back to the tip jar</a></p>
 <p class="logonote">App names and logos belong to their owners (Google LLC, PayTM Mobile Solutions, NPCI, PhonePe) and are shown only to help you recognise the app. Sach is not affiliated with them. The icons are the apps own App Store icons; the "other app" icon is a generic glyph.</p></div></div>"""

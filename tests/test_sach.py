@@ -1209,7 +1209,7 @@ def test_tip_section_is_qr_first_with_funny_copy_and_suggestion_tiles(server, mo
     assert tip.count('class="tipcard"') == 4 and 'role="button"' in tip and 'data-amt="20"' in tip and 'data-amt="500"' in tip
     assert "Samosa for the fact-checker" in tip and "Sponsor a family-group intervention" in tip
     assert '<a class="tipcard"' not in tip and "?go=tip" not in tip                      # tiles are suggestions, not payment links
-    assert '<img id="upiqr" src="/?view=tipqr&amp;fmt=png"' in tip and 'download="sach-tip-qr.png"' in tip
+    assert '<img id="upiqr" class="qrimg" src="/?view=tipqr&amp;fmt=png"' in tip and 'download="sach-tip-qr.png"' in tip
     assert "Scan this code" in tip and 'enter <b id="want">₹30</b>' in tip and "On a phone:" in tip and "gallery" in tip
     assert '<option value="3" selected>3</option>' in tip and 'id="fwamt">₹30' in tip   # picker defaults to 3 forwards = ₹30
     assert "Copy UPI ID" not in tip and "copyupi" not in tip
@@ -1290,3 +1290,61 @@ def test_pay_panel_markup_absent_when_tip_jar_is_off(server, monkeypatch):
     _tip_env(monkeypatch, None)
     h = _ur.urlopen(server + "/?t=dlgoff").read().decode()
     assert 'id="paydlg"' not in h and 'id="fwgo"' not in h and 'id="oago"' not in h
+
+
+# --- two UPI addresses for the same bank account (a second QR / link set to fall back on)
+def _tip_env2(monkeypatch, alt="alt9000@upi", vpa="supporter@okbank", name="Sach Desk"):
+    _tip_env(monkeypatch, vpa, name)
+    if alt is None: monkeypatch.delenv("SACH_UPI_ID_ALT", raising=False)
+    else: monkeypatch.setenv("SACH_UPI_ID_ALT", alt)
+
+def test_second_address_config_is_validated(monkeypatch):
+    _tip_env2(monkeypatch, "alt9000@upi"); assert SITE.tip_config()["alt_vpa"] == "alt9000@upi"
+    for bad in ("", "nonsense", "a@b c", '"><script>@x', "supporter@okbank", "SUPPORTER@okbank", "x" * 80 + "@upi"):
+        _tip_env2(monkeypatch, bad); assert "alt_vpa" not in SITE.tip_config(), bad            # invalid or identical -> ignored, never an error
+    _tip_env2(monkeypatch, None); assert "alt_vpa" not in SITE.tip_config()
+
+def test_alt_link_uses_the_second_address_and_falls_back_to_main_when_absent(monkeypatch):
+    _tip_env2(monkeypatch, "alt9000@upi"); cfg = SITE.tip_config()
+    assert "pa=alt9000@upi" in SITE.upi_link(cfg, 20, alt=True) and "pa=supporter@okbank" in SITE.upi_link(cfg, 20)
+    _tip_env2(monkeypatch, None); cfg = SITE.tip_config()
+    assert "pa=supporter@okbank" in SITE.upi_link(cfg, 20, alt=True)
+
+def test_alt_qr_and_redirect_routes(server, monkeypatch):
+    _tip_env2(monkeypatch, "alt9000@upi")
+    a = _raw_get(server, "/?view=tipqr&fmt=png"); b = _raw_get(server, "/?view=tipqr&fmt=png&alt=1")
+    assert a[0] == 200 and b[0] == 200 and a[2] != b[2] and b[2][:4] == b"\x89PNG"
+    assert b"alt9000" not in b[2] and b"supporter" not in a[2]
+    assert "pa=alt9000@upi" in _raw_get(server, "/?go=tip&amt=20&app=gpay&alt=1")[1]["Location"]
+    assert "pa=supporter@okbank" in _raw_get(server, "/?go=tip&amt=20&app=gpay")[1]["Location"]
+    _tip_env2(monkeypatch, None)
+    assert _raw_get(server, "/?view=tipqr&fmt=png&alt=1")[0] == 404                         # no second address configured
+    assert "pa=supporter@okbank" in _raw_get(server, "/?go=tip&app=gpay&alt=1")[1]["Location"]   # redirect just uses the main one
+
+def test_toggle_and_notes_only_appear_when_a_second_address_exists(server, monkeypatch):
+    _tip_env2(monkeypatch, None)
+    h = _ur.urlopen(server + "/?t=noalt").read().decode()
+    assert "altswap" not in h.split('id="tip"')[1].split("</section>")[0] and "Try code B" not in h.split('id="tip"')[1].split("</section>")[0]
+    _tip_env2(monkeypatch, "alt9000@upi")
+    h = _ur.urlopen(server + "/?t=alt").read().decode()
+    tip = h.split('id="tip"')[1].split("</section>")[0]
+    assert tip.count('class="altswap linklike"') == 2 and "Code not working? Try code B" in tip and "same bank account" in tip     # main section + panel
+    assert tip.count('class="qrimg"') == 2 and tip.count("dlpng") == 2
+    assert "alt9000" not in h and "supporter" not in h and "okbank" not in h and "@upi" not in h and "upi://pay" not in h          # neither address is in the page
+
+def test_chooser_can_switch_to_the_other_address_without_leaking_it(server, monkeypatch):
+    _tip_env2(monkeypatch, "alt9000@upi")
+    h = _raw_get(server, "/?view=pay&amt=50")[2].decode()
+    assert "Paying the first address" in h and 'href="/?view=pay&amp;amt=50&amp;alt=1"' in h and "Try the other address" in h
+    h2 = _raw_get(server, "/?view=pay&amt=50&alt=1")[2].decode()
+    assert "Paying the second address" in h2 and '&amp;alt=1" rel="nofollow"><span class="ico">' in h2 and 'src="/?view=tipqr&amp;amt=50&amp;alt=1"' in h2
+    assert "Try the first address" in h2 and "alt9000" not in h2 and "supporter" not in h2
+    _tip_env2(monkeypatch, None)
+    h3 = _raw_get(server, "/?view=pay&amt=50&alt=1")[2].decode()
+    assert "Paying the" not in h3 and "&amp;alt=1" not in h3                                  # alt ignored when not configured
+
+def test_page_script_has_the_code_toggle(server, monkeypatch):
+    _tip_env2(monkeypatch, "alt9000@upi")
+    h = _ur.urlopen(server + "/?t=altjs").read().decode()
+    for needle in ("let alt=false;", "$$('.altswap')", "'Back to code A'", "&alt=1", "qsAlt()"):
+        assert needle in h, needle
