@@ -177,6 +177,7 @@ def test_disabled_without_key_and_blank_query(monkeypatch):
 
 def test_default_retrievers_wiring(monkeypatch):
     monkeypatch.delenv("BRAVE_API_KEY", raising=False); monkeypatch.delenv("GOOGLE_FACTCHECK_API_KEY", raising=False)
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)              # web search is on when either search key is set
     assert [type(r).__name__ for r in R.default_retrievers()] == ["PibRetriever"]
     monkeypatch.setenv("GOOGLE_FACTCHECK_API_KEY", KEY)
     assert [type(r).__name__ for r in R.default_retrievers()] == ["PibRetriever", "FactCheckToolsRetriever"]
