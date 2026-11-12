@@ -225,7 +225,7 @@ modal:{ondismiss:()=>{back();say('No problem. Nothing was charged.');rgo.disable
 rz.on('payment.failed',r=>{back();say('Payment failed: '+((r.error&&r.error.description)||'please try again')+'.');rgo.disabled=false});if(dlg&&dlg.open)dlg.close();rz.open();}
 catch(e){say(e.message==='load'?'Could not load checkout. Check your connection, or scan the code instead.':e.message);rgo.disabled=false}})}
 if(dlg)dlg.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
-const r=$('#sharedhdr')||$('#result');if(r)r.scrollIntoView({behavior:'smooth',block:'start'});
+const r=$('#sharedhdr')||$('#result');if(r){const go=()=>{const t=r.querySelector('.stamp.big')||r;t.scrollIntoView({behavior:'auto',block:'start'})};go();setTimeout(go,350);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>setTimeout(go,50))}
 let fv='ALL';const apply=()=>{const q=($('#q')?.value||'').toLowerCase();let n=0;$$('tbody tr[data-v]').forEach(tr=>{const ok=(fv==='ALL'||tr.dataset.v===fv)&&tr.innerText.toLowerCase().includes(q);tr.style.display=ok?'':'none';if(ok)n++});const s=$('#shown');if(s)s.textContent=n+' shown';const e=$('#empty');if(e)e.style.display=n?'none':''};
 $$('.filters button').forEach(b=>b.addEventListener('click',()=>{$$('.filters button').forEach(x=>x.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true');fv=b.dataset.v;apply()}));
 const q=$('#q');if(q){q.addEventListener('input',apply);apply()}
@@ -676,7 +676,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <p class="lede">Paste a WhatsApp message. Sach splits it into claims, checks each against PIB and official sources, and hands back a verdict card you can forward straight into the group, with the link.</p>
 <p class="scripts">English and {N_INDIAN} Indian languages · हिन्दी · বাংলা · తెలుగు · தமிழ் · मराठी · <a href="#languages">see all</a></p>
 <p class="note" style="margin-top:6px"><b>Sach</b> (सच, Hindi) and <b>nijam</b> (నిజం, Telugu) both mean <b>“truth”</b>.</p>
-<div class="row"><a class="btn" href="#check">Check a forward</a><a class="btn ghost" href="#how">How it works</a></div></div>
+<div class="row"><a class="btn" href="#check">Check a forward</a><a class="btn ghost" href="#how">How it works</a><a class="btn wa-invite" href="{esc(share.wa_url(share.invite_text(site_url())))}" rel="noopener">Share Sach on WhatsApp</a></div></div>
 <div class="stampbox" aria-hidden="true">{stamp('FALSE')}{stamp('TRUE')}{stamp('MISLEADING')}{stamp('UNVERIFIED')}</div></div></div>
 
 <section id="check"><div class="wrap"><h2>Check a forward</h2><p class="sub">Paste the whole message or a single claim. We reply in the language it was written in, or in any language you choose below. Checks usually take 10 to 30 seconds because we read the sources live.</p>

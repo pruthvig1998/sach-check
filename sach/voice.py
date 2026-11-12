@@ -271,7 +271,7 @@ function swapIn(doc){
   if(window.sachBindResult)window.sachBindResult();bindListen();
   document.dispatchEvent(new CustomEvent('sach:result',{detail:{results:box}}));
   if(target){target.setAttribute('tabindex','-1');target.focus({preventScroll:true});
-    const r=target.getBoundingClientRect();if(r.top<0||r.top>innerHeight*0.6)target.scrollIntoView({behavior:reduced()?'auto':'smooth',block:'start'})}
+    target.scrollIntoView({behavior:reduced()?'auto':'smooth',block:'start'})}
   announce(verdict?t('result_ready'):(err?err.textContent:t('result_ready')));
 }
 async function runCheck(){

@@ -260,6 +260,7 @@ CSS = """
 .actions .btn.wa{flex:1 1 100%;background:#0f7a3a;border-color:#0f7a3a;color:#fff;font-size:18px;min-height:52px}
 .actions .btn.wa:hover,.sharebar .btn.wa:hover{background:#0b6130;border-color:#0b6130;color:#fff}
 .sharebar .btn.wa{background:#0f7a3a;border-color:#0f7a3a;color:#fff}
+.btn.wa-invite{background:#0f7a3a;border-color:#0f7a3a;color:#fff}.btn.wa-invite:hover{background:#0b6130;border-color:#0b6130;color:#fff}
 .actions #more-share{flex:1 1 100%}
 @media(max-width:560px){.actions .btn.wa,.actions #more-share{grid-column:1/-1}}
 .invite{display:inline-flex;align-items:center;min-height:44px;font-weight:600}
@@ -276,8 +277,9 @@ details.howto summary{min-height:44px;display:flex;align-items:center;font-size:
 .shared{margin:0 0 22px;padding:16px 18px;background:var(--paper2);border-left:6px solid var(--true);border-radius:2px;scroll-margin-top:80px}
 blockquote.fwd{margin:0;padding:8px 12px;border-left:4px solid var(--rule);background:var(--card);white-space:pre-wrap;overflow-wrap:anywhere;max-height:14em;overflow:auto}
 .shared .btn{min-height:48px;display:inline-flex;align-items:center}
-.sharebar{display:none}
-@media(max-width:760px){
+.sharebar[hidden]{display:none!important}
+@media(min-width:761px){.sharebar{left:auto!important;right:24px!important;bottom:24px!important;border:2px solid var(--rule)!important;border-radius:6px;box-shadow:6px 6px 0 var(--rule);width:auto}}
+@media(min-width:0px){
 .sharebar{display:flex;gap:8px;align-items:center;position:fixed;left:0;right:0;bottom:0;z-index:30;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:var(--card);border-top:2px solid var(--rule);animation:sbup .2s ease-out}
 .sharebar .btn.wa{flex:1;min-height:48px;display:inline-flex;align-items:center;justify-content:center}
 .sharebar .btn.ghost{min-width:44px;min-height:48px;padding:8px 10px}
@@ -303,7 +305,7 @@ window.sachBindShare=function(){
   if(more&&data&&navigator.share){more.hidden=false;
     more.addEventListener('click',function(){try{var p=navigator.share({title:'Sach verdict',text:data.text});if(p&&p.catch)p.catch(function(){})}catch(e){}})}
   if(wa&&bar&&data&&'IntersectionObserver' in window){var bw=$('#sharebar-wa');if(bw)bw.href=wa.href;dismissed=false;
-    io=new IntersectionObserver(function(es){var e=es[es.length-1],show=!e.isIntersecting&&e.boundingClientRect.bottom<=0&&!dismissed;
+    io=new IntersectionObserver(function(es){var e=es[es.length-1],show=!e.isIntersecting&&!dismissed;
       bar.hidden=!show;root.classList.toggle('has-sharebar',show)});io.observe(wa)}
 };
 var bx=$('#sharebar-x');if(bx)bx.addEventListener('click',function(){dismissed=true;var b=$('#sharebar');if(b)b.hidden=true;document.documentElement.classList.remove('has-sharebar')});
