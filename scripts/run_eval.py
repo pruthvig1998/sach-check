@@ -18,7 +18,17 @@ for r in rows:
 n = len(res); ok = sum(r["got"] == r["label"] for r in res)
 false_pos = [r for r in res if r["got"] == "FALSE" and r["label"] != "FALSE"]
 lab = lambda L: [r for r in res if r["label"] == L]
-L = ["# Evaluation", "", f"Mode: {'LLM stance' if llm else 'heuristic stance (no ANTHROPIC_API_KEY)'}; retrieval: {', '.join(type(x).__name__ for x in ret)}.", "",
+failed = getattr(llm, "failures", 0)
+degraded = llm is None or failed > 0
+if llm is None:
+    mode = "FALLBACK (no LLM key): clear PIB debunks only, never TRUE or MISLEADING"
+elif failed:
+    mode = f"FALLBACK: the LLM failed on {failed} source judgements (quota/outage), so those sources fell back to the safe PIB-debunk-only check"
+else:
+    mode = "LLM stance (Gemini, with second-opinion consensus)"
+L = ["# Evaluation" + (" (fallback mode)" if degraded else ""), "",
+     *(["> **This run was degraded; it does not measure the full system.** It is saved separately and does not replace `docs/evaluation.md`.", ""] if degraded else []),
+     f"Mode: {mode}; retrieval: {', '.join(type(x).__name__ for x in ret)}.", "",
      f"- Claims: **{n}** (target was 100+; see limitations)", f"- Exact-match accuracy: **{ok}/{n}**",
      f"- **Overclaimed FALSE (the unforgivable failure): {len(false_pos)}**"]
 for l in ("FALSE", "TRUE", "UNVERIFIED"):
@@ -41,7 +51,8 @@ L += ["", "## Limitations (read before citing these numbers)",
       "- Official-domain rule is *.gov.in / *.nic.in / who.int, so news sites such as newsonair.gov.in count as official; PIB is treated as the strongest tier.",
       "- A real 100+ evaluation needs a search provider (BRAVE_API_KEY) or a bulk crawl of PIB press releases."]
 wrong = [r for r in res if r["got"] != r["label"] and r["got"] != "UNVERIFIED"]
-json.dump({"n": n, "correct": ok, "overclaimed_false": len(false_pos), "abstained": sum(r["got"] == "UNVERIFIED" and r["label"] != "UNVERIFIED" for r in res),
+if not degraded:      # only a full LLM-backed run may update the numbers the website displays
+  json.dump({"n": n, "correct": ok, "overclaimed_false": len(false_pos), "abstained": sum(r["got"] == "UNVERIFIED" and r["label"] != "UNVERIFIED" for r in res),
            "abstained_wrong": len(wrong)}, open("data/eval_summary.json", "w"))   # read by the website
-open("docs/evaluation.md", "w", encoding="utf-8").write("\n".join(L) + "\n")
+open("docs/evaluation-fallback-run.md" if degraded else "docs/evaluation.md", "w", encoding="utf-8").write("\n".join(L) + "\n")
 print("\n".join(L[:9]))

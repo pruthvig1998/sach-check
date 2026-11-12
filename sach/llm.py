@@ -2,7 +2,7 @@
 Any failure raises, and stance.judge() falls back to the conservative heuristic."""
 from __future__ import annotations
 import json, os, time, urllib.request
-from .stance import validate_stance
+from .stance import validate_stance, heuristic_stance
 
 PROMPT = ("You judge ONE source page against ONE claim from a viral forward. Reply on ONE line as:  LABEL | quote\n"
           "where LABEL is exactly one of the words below and quote is a sentence COPIED VERBATIM from the page (max 30 words) that justifies it. For NEITHER write no quote.\n"
@@ -27,7 +27,7 @@ def _user(claim, title, text):
 
 DEFAULT_GEMINI_MODELS = "gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-3.8-flash,gemini-flash-latest"
 
-TRANSLATE_PROMPT = ("Translate the user's claim into plain English. Be faithful and literal: keep every number, amount, date, name and "
+TRANSLATE_PROMPT = ("Translate the user's claim into plain English. The claim may be in Telugu, Hindi, or Telugu/Hindi written in English letters (Tinglish/Hinglish). Be faithful and literal: keep every number, amount, date, name and "
                     "scheme name exactly. Do not add, explain or soften anything. Output only the English sentence.")
 
 class GeminiJudge:
@@ -36,6 +36,7 @@ class GeminiJudge:
         self.key = key or os.environ["GEMINI_API_KEY"]
         self.models = [m.strip() for m in (model or os.environ.get("SACH_GEMINI_MODEL", DEFAULT_GEMINI_MODELS)).split(",") if m.strip()]
         self.timeout = timeout
+        self.failures = 0      # count of stance calls where every model failed (quota, outage): surfaced as a "limited mode" notice
 
     def _post(self, model, body):
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -44,19 +45,36 @@ class GeminiJudge:
         with urllib.request.urlopen(req, timeout=self.timeout) as r:
             return json.load(r)
 
-    def stance(self, claim, title, text):
+    def _label(self, model, claim, title, text):
         body = {"systemInstruction": {"parts": [{"text": PROMPT}]},
                 "contents": [{"role": "user", "parts": [{"text": _user(claim, title, text)}]}],
                 "generationConfig": {"temperature": 0, "maxOutputTokens": 200}}
-        last = None
-        for model in self.models:
+        d = self._post(model, body)
+        st, q = parse_reply(d["candidates"][0]["content"]["parts"][0]["text"])
+        return validate_stance(st, q, claim, title, text)
+
+    def stance(self, claim, title, text, tier=""):
+        """First opinion from the first model that answers. Any decisive stance (not 'none') must be confirmed by a
+        DIFFERENT model. If no second model can answer, the deterministic title/number heuristic is the second opinion
+        (so a clear PIB debunk survives a flaky free tier, but a lone LLM guess does not). Disagreement -> 'none'."""
+        first, used, last = None, None, None
+        for m in self.models:
             try:
-                d = self._post(model, body)
-                st, q = parse_reply(d["candidates"][0]["content"]["parts"][0]["text"])
-                return validate_stance(st, q, claim, title, text)
+                first, used = self._label(m, claim, title, text), m
+                break
             except Exception as e:      # 404/429/503/timeout/odd payload: try the next model
                 last = e
-        raise last
+        if first is None:
+            self.failures += 1
+            raise last
+        if first == "none":
+            return "none"
+        for m in [m for m in self.models if m != used] or [used]:
+            try:
+                return first if self._label(m, claim, title, text) == first else "none"
+            except Exception:
+                continue
+        return first if heuristic_stance(claim, title, text, tier) == first else "none"
 
     def translate(self, text):
         body = {"systemInstruction": {"parts": [{"text": TRANSLATE_PROMPT}]},

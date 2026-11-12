@@ -1,5 +1,7 @@
 # Evaluation
 
+> **Measured on earlier code.** This LLM-backed run (26/31, 0 overclaims) was taken at commit `dfbdaf2`, before the later hardening (second-opinion consensus, subject-word matching, safe fallback). A fresh LLM-backed run is pending: Gemini's free-tier quota was exhausted by testing. A fallback-mode run is in [`evaluation-fallback-run.md`](evaluation-fallback-run.md) (0 overclaims, 0 wrong verdicts, 23 safe abstentions); the unsafe pre-fix fallback run is kept in [`evaluation-fallback-run-before-safety-fix.md`](evaluation-fallback-run-before-safety-fix.md).
+
 Mode: LLM stance; retrieval: PibRetriever, BraveRetriever.
 
 - Claims: **31** (target was 100+; see limitations)

@@ -1,6 +1,6 @@
 # Sach (सच · నిజం)
 
-**Got a forward? Get the receipts.** Paste a viral WhatsApp-style message in English, Hindi, Telugu or Hinglish. Sach splits it into claims, checks each against PIB and official sources, and returns a **cited verdict card** in the forward's own language, ready to paste back into the group. Every check is logged to a public evidence ledger.
+**Got a forward? Get the receipts.** Paste a viral WhatsApp-style message in English, Hindi, Telugu, Hinglish or Tinglish (Telugu in English letters). Sach splits it into claims, checks each against PIB and official sources, and returns a **cited verdict card** in the forward's own language (plus what it means in English), ready to paste back into the group. Every check is logged to a public evidence ledger.
 
 - **Live:** https://sach-check-lilac.vercel.app
 - **Track:** Governance · **License:** MIT · **Cost to run:** ₹0 (Vercel free, Gemini free tier, Brave free plan)
@@ -29,24 +29,25 @@ A citation appears only if the page was actually fetched (source, URL, date acce
 |---|---|
 | *Government is giving Rs 1000 to everyone under Corona Sahayata Yojana. Click the link to register.* | **FALSE** (PIB debunk, cited) |
 | *The Union Cabinet has approved a scheme for coal and lignite gasification projects with an outlay of Rs 37,500 crore.* | **TRUE** (PIB release, cited) |
-| *…with an outlay of Rs 50,000 crore.* (real scheme, wrong number) | **MISLEADING** |
+| *The Union Cabinet has approved continuation of the Samagra Shiksha scheme from April 2021 to March 2030.* (real scheme, wrong end date) | **MISLEADING** (PIB release, cited) |
 | *सरकार कोरोना सहायता योजना के तहत सभी को 1000 रुपये दे रही है।* | **FALSE**, card in Hindi |
-| *కేంద్ర ప్రభుత్వం ఉద్యోగుల పదవీ విరమణ వయస్సును 50 సంవత్సరాలకు తగ్గిస్తుంది.* | **FALSE**, card in Telugu |
+| *Central sarkaru employees retirement age ni 50 years ki taggistundi ani message vachindi* (Tinglish) | **FALSE**, card in Tinglish, with an English meaning |
 | *Every household in India will receive a free solar-powered refrigerator next month.* | **UNVERIFIED** (invented; we say so plainly) |
 
 ## The website
-Landing page, live checker with one-click examples, WhatsApp-style verdict card with **Copy**, **Share on WhatsApp** and **Download image**, per-claim citation table, public **evidence ledger** (filter + search), FAQ, dark mode, mobile-first layout, keyboard shortcut (Ctrl/Cmd+Enter), and a JSON API:
+Landing page, live checker with one-click examples, a reply-language selector (Auto, English, हिन्दी, తెలుగు, Tinglish) that works whatever the forward is written in, WhatsApp-style verdict card with **Copy**, **Share on WhatsApp** and **Download image**, per-claim citation table, public **evidence ledger** (filter + search), FAQ, dark mode, mobile-first layout, keyboard shortcut (Ctrl/Cmd+Enter), and a JSON API:
 
 ```bash
 curl -s -X POST "https://sach-check-lilac.vercel.app/?format=json" \
-  --data-urlencode "text=Government is giving Rs 1000 under Corona Sahayata Yojana"
+  --data-urlencode "text=Government is giving Rs 1000 under Corona Sahayata Yojana" \
+  --data-urlencode "lang=te"     # optional: auto (default), en, hi, te, tl
 ```
 Checks read live sources and usually take 10 to 30 seconds (the function runs in Vercel's Mumbai region, close to the government sites). There is a best-effort rate limit (8 checks per minute per IP) and a 4000-character input cap.
 
 ## Evaluation (honest version)
 31 claims: real PIB debunks (FALSE), real government announcements (TRUE), and invented controls (UNVERIFIED). Latest full run: **26/31 exactly right, 0 overclaimed FALSE, 0 wrong TRUE/FALSE**; all 5 misses were safe "unverified" abstentions. Full table including every miss: [`docs/evaluation.md`](docs/evaluation.md).
 
-Read before citing: the set is small; two labels were corrected after inspecting the evidence (disclosed in the report); many FALSE items paraphrase PIB debunk titles so recall there is optimistic; results move by a claim or two between runs because live search varies; the set contains no true MISLEADING examples (the MISLEADING demo above was checked separately).
+Read before citing: these numbers were measured at commit `dfbdaf2`, before the later hardening (second-opinion judge, subject matching, safe fallback); a fresh LLM-backed run is pending the reset of Gemini's free-tier quota (a fallback-mode run, which can only report clear PIB debunks, scored 0 overclaims and 0 wrong verdicts: [`docs/evaluation-fallback-run.md`](docs/evaluation-fallback-run.md)); the set is small; two labels were corrected after inspecting the evidence (disclosed in the report); many FALSE items paraphrase PIB debunk titles so recall there is optimistic; results move by a claim or two between runs because live search varies; the set contains no true MISLEADING examples (the MISLEADING demo above was checked separately).
 
 ## Data checkpoint (what actually worked)
 `pib.gov.in` press-release pages (`PressReleasePage.aspx?PRID=`) fetch and parse. `pib.gov.in/factcheck.aspx` is only a Twitter embed and the RSS feed returns just the latest 20 items, so there is no scrapeable debunk archive. Debunks are therefore seeded by hand in `data/seed_debunks.json` (each fetched and parsed) and found live through Brave search of official domains.
@@ -72,6 +73,7 @@ sach/web.py       HTTP handlers, JSON API            tests/            60+ tests
 ```
 
 ## Known gaps
+- **Free-tier quota.** The AI judge runs on Gemini's free tier, which can run out under heavy use. When it does, Sach shows a "Limited mode" notice and only reports FALSE for a clear PIB debunk (never TRUE or MISLEADING).
 - **Hindi and Telugu strings are human-written templates but have not been reviewed by a native speaker.** Do that before relying on them publicly.
 - Live checks usually take 10 to 30 seconds. Every check has a 48-second budget inside Vercel's 60-second limit; a claim that runs out of time is reported as unverified, never guessed.
 - The live ledger on Vercel is ephemeral (resets between instances); it ships with a starter set, and the repository is the permanent record.

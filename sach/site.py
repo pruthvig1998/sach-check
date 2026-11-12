@@ -8,6 +8,7 @@ from .i18n import LABEL
 REPO = "https://github.com/pruthvig1998/sach-check"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MAX_CHARS = 4000
+REPLY_LANGS = ("auto", "en", "hi", "te", "tl")
 
 # Verified forwards (each checked against the live pipeline before being listed here).
 EXAMPLES = [
@@ -15,8 +16,10 @@ EXAMPLES = [
      "text": "Government is giving Rs 1000 to everyone under Corona Sahayata Yojana. Click the link to register. Please forward to all groups!"},
     {"verdict": "TRUE", "lang": "EN", "title": "Real announcement",
      "text": "The Union Cabinet has approved a scheme for coal and lignite gasification projects with an outlay of Rs 37,500 crore."},
-    {"verdict": "MISLEADING", "lang": "EN", "title": "Right scheme, wrong number",
-     "text": "The Union Cabinet has approved a scheme for coal and lignite gasification projects with an outlay of Rs 50,000 crore."},
+    {"verdict": "MISLEADING", "lang": "EN", "title": "Right scheme, wrong date",
+     "text": "The Union Cabinet has approved continuation of the Samagra Shiksha scheme from April 2021 to March 2030."},
+    {"verdict": "FALSE", "lang": "TINGLISH", "title": "Tinglish forward",
+     "text": "Central sarkaru employees retirement age ni 50 years ki taggistundi ani message vachindi"},
     {"verdict": "FALSE", "lang": "HI", "title": "हिन्दी फ़ॉरवर्ड",
      "text": "सरकार कोरोना सहायता योजना के तहत सभी को 1000 रुपये दे रही है। जल्दी रजिस्टर करें, सबको शेयर करें।"},
 ]
@@ -26,7 +29,7 @@ FAQ = [
     ("Why does it so often say “unverified”?", "Because guessing is worse. If we cannot find an official source that confirms or denies a claim, we say so plainly. “Unverified” is a respectable answer; wrongly calling something false is the one failure we refuse to ship."),
     ("What is the difference between false and misleading?", "False means an official source directly contradicts the claim. Misleading means the core fact is real, but the forward gets the numbers, dates or framing wrong, for example the right scheme with the wrong amount."),
     ("Can fact-checkers like Alt News or BOOM decide a verdict?", "No. They are shown as secondary evidence and clearly labelled “not official”. Only PIB or an official source can make a claim false or true."),
-    ("Which languages work?", "English, Hindi, Telugu and Hinglish. The verdict card is written in the language of the forward. Hindi and Telugu wording is human-written but still awaiting native-speaker review."),
+    ("Which languages work?", "English, Hindi, Telugu, Hinglish and Tinglish (Telugu in English letters). The verdict card is written in the language of the forward; Tinglish gets a Tinglish card. Hindi and Telugu wording is human-written but still awaiting native-speaker review."),
     ("What happens to what I paste?", "Only the individual claims (not the whole message, and nothing about you) are added to the public ledger, with their verdicts and sources."),
     ("A verdict looks wrong. What do I do?", "Use the “Report a wrong verdict” link under any result. It opens a pre-filled issue on GitHub so we can look at the exact sources used."),
 ]
@@ -78,6 +81,7 @@ section{padding:46px 0;border-top:2px solid var(--rule)}
 h2{font-family:var(--serif);font-weight:900;font-size:clamp(28px,4vw,44px);letter-spacing:-.02em;margin:0 0 6px}
 .sub{color:var(--mute);max-width:42em;margin:0 0 26px}
 .checker{background:var(--card);border:2px solid var(--rule);box-shadow:8px 8px 0 var(--rule);padding:24px;border-radius:4px}
+select{font:inherit;font-size:16px;padding:10px 12px;border:2px solid var(--rule);background:var(--field);color:var(--ink);border-radius:3px}
 textarea,input[type=search]{width:100%;font:inherit;font-size:18px;padding:14px;border:2px solid var(--rule);background:var(--field);color:var(--ink);border-radius:3px}
 textarea{min-height:170px;resize:vertical}input[type=search]{font-size:16px;padding:9px 12px;max-width:340px}
 textarea:focus,input:focus,button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid var(--mis);outline-offset:2px}
@@ -130,10 +134,12 @@ const upd=()=>{if(ta&&cnt)cnt.textContent=ta.value.length+' / '+ta.maxLength};if
 ta.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();$('#form').requestSubmit()}})}
 $$('.chip').forEach(c=>c.addEventListener('click',()=>{ta.value=c.dataset.text;upd();ta.focus();$('#checker').scrollIntoView({behavior:'smooth',block:'center'})}));
 const pb=$('#paste');if(pb)pb.addEventListener('click',async()=>{try{ta.value=(await navigator.clipboard.readText()).slice(0,ta.maxLength);upd();ta.focus()}catch(e){pb.textContent='Paste with Ctrl/Cmd+V'}});
+const lg=$('#lang');if(lg){try{const v=localStorage.getItem('sach-lang');if(v&&!document.querySelector('#result')&&lg.value==='auto')lg.value=v}catch(e){}lg.addEventListener('change',()=>{try{localStorage.setItem('sach-lang',lg.value)}catch(e){}})}
 const clr=$('#clear');if(clr)clr.addEventListener('click',()=>{ta.value='';upd();ta.focus()});
 const f=$('#form');if(f)f.addEventListener('submit',e=>{if(!ta.value.trim()){e.preventDefault();ta.focus();return}$('#busy').classList.add('on');$('#go').disabled=true;$('#go').textContent='Checking…'});
 window.addEventListener('pageshow',()=>{const g=$('#go');if(g){g.disabled=false;g.textContent='Check it';$('#busy').classList.remove('on')}});
 const cp=$('#copy');if(cp)cp.addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('#cardtext').innerText);cp.textContent='Copied ✓'}catch(e){const r=document.createRange();r.selectNodeContents($('#cardtext'));getSelection().removeAllRanges();getSelection().addRange(r);cp.textContent='Selected — press Ctrl/Cmd+C'}});
+const c2=$('#copy2');if(c2)c2.addEventListener('click',async()=>{const t=$('#cardtext').innerText+'\\n\\n—— English ——\\n'+$('#cardtext_en').innerText;try{await navigator.clipboard.writeText(t);c2.textContent='Copied ✓'}catch(e){c2.textContent='Select & copy manually'}});
 const dl=$('#dl');if(dl)dl.addEventListener('click',()=>{const lines=$('#cardtext').innerText.split('\\n'),W=900,pad=40,lh=44;
 const c=document.createElement('canvas');c.width=W;c.height=pad*2+lines.length*lh+60;const x=c.getContext('2d');x.fillStyle='#dcf8c6';x.fillRect(0,0,W,c.height);
 x.fillStyle='#17140f';x.font='600 30px sans-serif';let y=pad+30;lines.forEach(l=>{x.fillText(l.slice(0,70),pad,y);y+=lh});x.font='20px monospace';x.fillStyle='#555';x.fillText('Sach · checked '+new Date().toISOString().slice(0,10),pad,c.height-24);
@@ -145,6 +151,7 @@ const q=$('#q');if(q){q.addEventListener('input',apply);apply()}
 """
 
 esc = html.escape
+LANG_NAME = {'en': 'English', 'hi': 'हिन्दी', 'te': 'తెలుగు', 'tl': 'Tinglish'}
 
 
 def eval_summary() -> dict:
@@ -162,7 +169,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="{FONTS}" rel="stylesheet"><style>{CSS}</style></head><body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="nav"><div class="wrap"><a class="logo" href="/">Sach<small>सच · నిజం</small></a>
+<header class="nav"><div class="wrap"><a class="logo" href="/" title="Sach (Hindi सच) and nijam (Telugu నిజం) both mean “truth”">Sach<small>सच · నిజం</small></a>
 <nav aria-label="Main"><a href="/#check">Check</a><a class="opt" href="/#how">How it works</a><a class="opt" href="/#rules">Rules</a><a class="opt" href="/#faq">FAQ</a>
 <a href="/?view=ledger">Ledger</a><a class="opt" href="{REPO}" rel="noopener">GitHub</a><button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button></nav></div></header>
 <main id="main">{body}</main>
@@ -175,7 +182,7 @@ def stamp(v: str, cls="") -> str:
     return f'<span class="stamp {cls} {v}">{LABEL["en"][v]}</span>'
 
 
-def result_block(res: dict) -> str:
+def result_block(res: dict, chosen: bool = False) -> str:
     v = res["verdict"]
     if res.get("no_claims"):
         return (f'<div class="result" id="result"><div><div class="stamp big UNVERIFIED">No claim</div></div>'
@@ -192,21 +199,35 @@ def result_block(res: dict) -> str:
         rows += (f'<tr><td>{esc(c["claim"]["text"])}<br><span class="note">{esc(c["claim"]["domain"])} · {esc(c["reason_code"].replace("_"," "))}</span></td>'
                  f'<td><span class="tag {c["verdict"]}">{c["verdict"]}</span></td><td>{cites}</td></tr>')
     card = esc(res["card"])
+    notice = ""
+    if res.get("degraded"):
+        notice = ('<div class="honest" style="margin-top:18px" role="status"><b>Limited mode.</b> Our AI checker is unavailable or at capacity right now, '
+                  'so Sach only reports a verdict when a PIB debunk clearly matches. Most results will say “unverified”; try again later for a fuller check.</div>')
+    english = ""
+    if res.get("card_en"):
+        said = "".join(f'<li><span class="note">{esc(c["claim"]["text"])}</span><br><b>{esc(c["english"])}</b></li>' for c in res["claims"] if c.get("english"))
+        english = (f'<div class="honest" style="margin-top:22px;border-left-color:var(--true)" id="english"><b>What this means in English</b>'
+                   f'<div class="bubble" style="margin:10px 0;background:var(--paper)"><span id="cardtext_en">{esc(res["card_en"])}</span></div>'
+                   + (f'<p class="note" style="margin:8px 0 4px">We understood the forward as:</p><ul style="padding-left:18px;margin:0">{said}</ul>' if said else
+                      ('<p class="note" style="margin:8px 0 0">English rendering of the claim itself was not available for this check.</p>' if res.get('input_language', 'en') != 'en' else ''))
+                   + '<div class="row"><button class="btn ghost" id="copy2" type="button">Copy both languages</button></div></div>')
     wa = "https://wa.me/?text=" + quote(res["card"])
     issue = (f"{REPO}/issues/new?title=" + quote(f"Wrong verdict? {v}") + "&body=" +
              quote("Claim(s):\n" + "\n".join("- " + c["claim"]["text"] for c in res["claims"]) + f"\n\nSach said: {v}\nWhat is wrong:\n"))
     return f"""<div class="result" id="result"><div><div class="stamp big {v}">{LABEL['en'][v]}</div></div>
-<div><p class="kicker">Forward this card back to the group · reply language: {esc(res['language'].upper())}</p>
+<div><p class="kicker">Forward this card back to the group · reply language: {esc(LANG_NAME.get(res['language'], res['language'].upper()))}{' (your choice)' if chosen else ' (matched to the forward)'}</p>
 <div class="bubble"><span id="cardtext">{card}</span><small>Sach ✓✓</small></div>
 <div class="row"><button class="btn ghost" id="copy" type="button">Copy card</button><a class="btn" href="{esc(wa)}" rel="noopener">Share on WhatsApp</a>
 <button class="btn ghost" id="dl" type="button">Download image</button></div>
-<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
+{notice}{english}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
 <div style="overflow-x:auto"><table><thead><tr><th>Claim</th><th>Verdict</th><th>Citations</th></tr></thead><tbody>{rows}</tbody></table></div>
 <p class="note" style="margin-top:14px">Checked {esc(res['checked_at'][:16].replace('T',' '))} UTC. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
 
 
-def home(result: str = "", prefill: str = "", error: str = "") -> bytes:
+def home(result: str = "", prefill: str = "", error: str = "", reply: str = "auto") -> bytes:
     chips = "".join(f'<button type="button" class="chip" data-text="{esc(e["text"])}"><b class="{e["verdict"]}">{e["verdict"]}</b>{esc(e["title"])} · {e["lang"]}</button>' for e in EXAMPLES)
+    opts = "".join(f'<option value="{v}"{" selected" if v == reply else ""}>{esc(t)}</option>' for v, t in
+                   (("auto", "Auto (match the forward)"), ("en", "English"), ("hi", "हिन्दी"), ("te", "తెలుగు"), ("tl", "Tinglish")))
     ev = eval_summary()
     stats = ""
     if ev:
@@ -220,15 +241,17 @@ def home(result: str = "", prefill: str = "", error: str = "") -> bytes:
 <p class="kicker">A corrections desk for your family group</p>
 <h1>Got a forward? Get the <em>receipts.</em></h1>
 <p class="lede">Paste a WhatsApp message. Sach splits it into claims, checks each against PIB and official sources, and hands back a verdict card you can forward straight into the group, with the link.</p>
-<p class="scripts">English · हिन्दी · తెలుగు · Hinglish</p>
+<p class="scripts">English · हिन्दी · తెలుగు · Hinglish · Tinglish</p>
+<p class="note" style="margin-top:6px"><b>Sach</b> (सच, Hindi) and <b>nijam</b> (నిజం, Telugu) both mean <b>“truth”</b>.</p>
 <div class="row"><a class="btn" href="#check">Check a forward</a><a class="btn ghost" href="#how">How it works</a></div></div>
 <div class="stampbox" aria-hidden="true">{stamp('FALSE')}{stamp('TRUE')}{stamp('MISLEADING')}{stamp('UNVERIFIED')}</div></div></div>
 
-<section id="check"><div class="wrap"><h2>Check a forward</h2><p class="sub">Paste the whole message or a single claim. We reply in the language it was written in. Checks usually take 10 to 30 seconds because we read the sources live.</p>
+<section id="check"><div class="wrap"><h2>Check a forward</h2><p class="sub">Paste the whole message or a single claim. We reply in the language it was written in, or in any language you choose below. Checks usually take 10 to 30 seconds because we read the sources live.</p>
 <div class="checker" id="checker"><form id="form" method="post" action="/#result"><label for="text" class="kicker">The forward</label>
 <textarea id="text" name="text" placeholder="Paste the message here…" required maxlength="{MAX_CHARS}">{esc(prefill)}</textarea>
 <div class="chips" role="group" aria-label="Try an example"><span class="note" style="align-self:center">Try:</span>{chips}</div>
-<div class="row"><button class="btn" id="go" type="submit">Check it</button><button class="btn ghost" id="paste" type="button">Paste</button><button class="btn ghost" id="clear" type="button">Clear</button>
+<div class="row"><label for="lang" class="note" style="margin-right:-4px">Reply in:</label><select id="lang" name="lang" aria-label="Reply language">{opts}</select>
+<button class="btn" id="go" type="submit">Check it</button><button class="btn ghost" id="paste" type="button">Paste</button><button class="btn ghost" id="clear" type="button">Clear</button>
 <span id="count" aria-live="off"></span></div>
 <p class="note" style="margin:10px 0 0">Tip: press Ctrl/Cmd + Enter to check. Only the individual claims (never your name) go to the public ledger.</p>
 <div id="busy" role="status"><i></i>Reading PIB and official pages… this usually takes 10 to 30 seconds.</div></form>
@@ -256,6 +279,7 @@ def home(result: str = "", prefill: str = "", error: str = "") -> bytes:
 <section id="evidence"><div class="wrap"><h2>Does it actually work?</h2><p class="sub">We tested it on real PIB debunks, real government announcements, and invented claims that should be left unverified. The misses are published too.</p>
 {stats}<div class="honest"><b>Read this before trusting the numbers</b><ul>
 <li>It is a small set ({ev.get('n','?')} claims), and two labels were corrected after we looked at the evidence. Treat it as indicative.</li>
+<li>These numbers were measured before our latest safety hardening. A fresh run is waiting for the free AI quota to reset; when the AI checker is unavailable the site says so (“Limited mode”) and reports only clear PIB debunks.</li>
 <li>Many FALSE items are paraphrases of PIB debunk titles, so recall there is optimistic.</li>
 <li>Results move by a claim or two between runs, because live search returns different pages.</li>
 <li>Hindi and Telugu verdict wording is human-written but still awaiting native-speaker review.</li></ul>
@@ -264,8 +288,9 @@ def home(result: str = "", prefill: str = "", error: str = "") -> bytes:
 <section id="faq"><div class="wrap"><h2>Questions</h2><p class="sub">Short, honest answers.</p>{faq}</div></section>
 
 <section id="api"><div class="wrap"><h2>Use it from code</h2><p class="sub">The same checker is available as JSON. Be kind: each call reads live sources and usually takes 10 to 30 seconds.</p>
-<pre class="code">curl -s -X POST https://sach-check-lilac.vercel.app/?format=json \\
-  --data-urlencode "text=Government is giving Rs 1000 under Corona Sahayata Yojana"
+<pre class="code">curl -s -X POST "https://sach-check-lilac.vercel.app/?format=json" \\
+  --data-urlencode "text=Government is giving Rs 1000 under Corona Sahayata Yojana" \\
+  --data-urlencode "lang=te"      # optional reply language: auto (default), en, hi, te, tl
 
 → {{"verdict":"FALSE","language":"en","card":"…","claims":[{{"verdict":"FALSE","citations":[{{"url":"https://pib.gov.in/…"}}]}}]}}</pre>
 <div class="row"><a class="btn ghost" href="/?view=ledger">Open the public ledger →</a><a class="btn ghost" href="{REPO}" rel="noopener">Source on GitHub →</a></div></div></section>"""

@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 from .llm import get_llm
 from .pipeline import check_forward
 from .retrieve import default_retrievers
-from .site import MAX_CHARS, home, ledger_page, result_block
+from .site import MAX_CHARS, REPLY_LANGS, home, ledger_page, result_block
 
 RATE_LIMIT, RATE_WINDOW = 8, 60          # best-effort per-IP checks per minute (serverless instances don't share state)
 _hits: dict = {}
@@ -62,11 +62,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         # single POST route: accept any path (Vercel rewrites hide the original one)
-        text = ""
+        text, lang_choice = "", "auto"
         want_json = "json" in (parse_qs(urlparse(self.path).query).get("format", [""])[0]) or \
                     "application/json" in (self.headers.get("Accept") or "")
         fail = (lambda code, msg: self._json({"error": msg}, code)) if want_json else \
-               (lambda code, msg: self._send(home(prefill=text, error=msg), code))
+               (lambda code, msg: self._send(home(prefill=text, error=msg, reply=lang_choice), code))
         try:
             n = int(self.headers.get("Content-Length", 0))
         except ValueError:
@@ -74,11 +74,16 @@ class Handler(BaseHTTPRequestHandler):
         raw = self.rfile.read(min(n, MAX_CHARS * 8)).decode("utf-8", "replace")
         if "application/json" in (self.headers.get("Content-Type") or ""):
             try:
-                text = str(json.loads(raw).get("text", ""))
+                body = json.loads(raw)
+                text, lang_choice = str(body.get("text", "")), str(body.get("lang") or "")
             except Exception:
                 text = ""
         else:
-            text = parse_qs(raw).get("text", [""])[0]
+            form = parse_qs(raw)
+            text, lang_choice = form.get("text", [""])[0], form.get("lang", [""])[0]
+        lang_choice = (lang_choice or parse_qs(urlparse(self.path).query).get("lang", [""])[0] or "auto").strip().lower()
+        if lang_choice not in REPLY_LANGS:
+            lang_choice = "auto"                      # unknown value: match the forward, never error
         text = text.strip()
         if not text:
             return fail(400, "Please paste a message to check.")
@@ -89,12 +94,12 @@ class Handler(BaseHTTPRequestHandler):
         if Handler.retrievers is None:
             Handler.retrievers, Handler.llm = default_retrievers(), get_llm()   # lazy: serverless has no main()
         try:
-            res = check_forward(text, Handler.retrievers, Handler.llm)
+            res = check_forward(text, Handler.retrievers, Handler.llm, reply_lang=None if lang_choice == "auto" else lang_choice)
         except Exception:
             return fail(500, "Something went wrong while checking. Nothing was recorded. Please try again.")
         if want_json:
             return self._json(res)
-        self._send(home(result=result_block(res), prefill=text))
+        self._send(home(result=result_block(res, chosen=lang_choice != "auto"), prefill=text, reply=lang_choice))
 
 def main():
     Handler.retrievers, Handler.llm = default_retrievers(), get_llm()

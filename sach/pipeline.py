@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as _Timeout, wai
 from . import ledger
 from .card import render_card
 from .extract import clean_text, extract_claims
-from .i18n import NOCLAIM, NOCLAIM_LABEL
+from .i18n import LABEL, NOCLAIM, NOCLAIM_LABEL
 from .lang import detect_language
 from .models import Claim, ClaimVerdict, UNVERIFIED
 from .stance import judge
@@ -44,15 +44,24 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float) -> C
         except Exception:
             e.stance = "none"                           # hung/failed judge call -> no stance -> UNVERIFIED, never a guess
     ex.shutdown(wait=False)
-    return decide(claim, evidence)
+    v = decide(claim, evidence)
+    v.english = q if q != claim.text else ""
+    return v
 
-def check_forward(text: str, retrievers, llm=None, log=True) -> dict:
+def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | None = None) -> dict:
+    """reply_lang: 'en' | 'hi' | 'te' | 'tl' to force the reply language; None/'auto' matches the forward.
+    The INPUT language always drives translation and search; only the reply changes."""
     text = clean_text(text)
-    lang = detect_language(text)
+    lang = detect_language(text)                                   # input language
+    out_lang = reply_lang if reply_lang in LABEL else lang          # reply language
     claims = extract_claims(text, max_claims=MAX_CLAIMS)
     if not claims:        # greeting, emoji, bare URL, numbers: nothing checkable. Say so instead of implying a search failed.
-        return {"language": lang, "verdict": "UNVERIFIED", "no_claims": True, "claims": [], "checked_at": ledger.now(),
-                "card": f"{NOCLAIM_LABEL[lang]}\n{NOCLAIM[lang]}"}
+        out = {"language": out_lang, "input_language": lang, "verdict": "UNVERIFIED", "no_claims": True, "claims": [],
+               "checked_at": ledger.now(), "card": f"{NOCLAIM_LABEL[out_lang]}\n{NOCLAIM[out_lang]}"}
+        if out_lang != "en":
+            out["card_en"] = f"{NOCLAIM_LABEL['en']}\n{NOCLAIM['en']}"
+        return out
+    fails_before = getattr(llm, "failures", 0)
     deadline = time.monotonic() + BUDGET_S
     ex = ThreadPoolExecutor(max_workers=PARALLEL_CLAIMS)
     futs = [ex.submit(_check_claim, c, lang, retrievers, llm, deadline) for c in claims]
@@ -67,8 +76,11 @@ def check_forward(text: str, retrievers, llm=None, log=True) -> dict:
     # card cites the evidence behind the verdict that drove the overall result
     driver = next((v for v in results if v.verdict == overall), None)
     cites = driver.citations if driver else []
-    out = {"language": lang, "verdict": overall, "card": render_card(overall, lang, cites),
+    out = {"language": out_lang, "input_language": lang, "verdict": overall, "card": render_card(overall, out_lang, cites),
            "claims": [v.to_dict() for v in results], "checked_at": ledger.now()}
+    if out_lang != "en":
+        out["card_en"] = render_card(overall, "en", cites)       # same verdict and citations, in English
+    out["degraded"] = llm is None or getattr(llm, "failures", 0) > fails_before   # AI judge missing/at capacity: clear PIB debunks only
     if log:
         for v in results:
             if v.reason_code == "timed_out":

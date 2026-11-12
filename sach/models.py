@@ -33,7 +33,8 @@ class ClaimVerdict:
     verdict: str
     reason_code: str
     citations: list = field(default_factory=list)
+    english: str = ""        # English rendering of a non-English claim (what we actually searched for)
 
     def to_dict(self):
-        return {"claim": asdict(self.claim), "verdict": self.verdict,
+        return {"claim": asdict(self.claim), "verdict": self.verdict, "english": self.english,
                 "reason_code": self.reason_code, "citations": self.citations}

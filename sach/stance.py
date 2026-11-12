@@ -10,9 +10,12 @@ from .pib import DEBUNK_MARKERS
 _STOP = set("the a an and or of to in on for is are was were be been this that it with as by at from will has have "
             "not no all your you we they their our new get free".split())
 
+def _stem(w: str) -> str:
+    return w[:5] if w.isascii() and w.isalpha() and len(w) > 5 else w   # crude stem: reduce~reduction
+
 def tokens(text: str) -> set[str]:
     ws = [w for w in re.findall(r"[\w\u0900-\u097F\u0C00-\u0C7F]+", text.lower()) if w not in _STOP and len(w) > 1]
-    return {w[:5] if w.isascii() and w.isalpha() and len(w) > 5 else w for w in ws}  # crude stem: reduce~reduction
+    return {_stem(w) for w in ws}
 
 def numbers(text: str) -> set[str]:
     return set(re.findall(r"\d[\d,]*(?:\.\d+)?", text))
@@ -25,13 +28,33 @@ _STRICT_DEBUNK = re.compile(r"\b(fake|false|misleading|baseless|fabricated|hoax|
                             r"फर्जी|फ़र्ज़ी|झूठ|भ्रामक|నకిలీ|అబద్ధ|తప్పుడు", re.I)
 _NEGATION = re.compile(r"\b(no|not|never|nahi|nahin|none|without|cannot|won't|isn't|aren't)\b|नहीं|नही|न |లేదు|కాదు|లేవు", re.I)
 
+_GENERIC = set("""government govt central union state cabinet approved approve approves approval announced announces announce declared declare
+declaring declares will give gives giving every all new scheme schemes yojana minister ministry department national india indian day days month months
+year years per under has have been being said says message forward people public citizens everyone everybody rs rupees crore lakh thousand
+total amount new launched launch issued issue order circular notice notification
+today tomorrow yesterday now soon next immediately urgent shortly tonight week weeks""".split())
+_GENERIC = {_stem(w) for w in _GENERIC}   # tokens() returns stems, so compare in stemmed form
+
+def distinctive(text: str) -> set:
+    """Content words that actually identify the subject (not generic government vocabulary, not numbers)."""
+    return {w for w in tokens(text) if w not in _GENERIC and not w.isdigit() and not re.fullmatch(r"[\d,\.]+\w{0,2}", w)}
+
+def subject_coverage(claim: str, evidence_text: str) -> float:
+    """Share of the claim's distinctive words that appear in the supporting text. 'mango' must be in the evidence for a mango claim."""
+    d = distinctive(claim)
+    return 1.0 if not d else len(d & tokens(evidence_text)) / len(d)
+
+_META = re.compile(r"\b(fake|false|hoax|rumou?rs?|misinformation|fact[- ]?check\w*|scam|fraud\w*|misleading)\b", re.I)
+
 def heuristic_stance(claim: str, title: str, text: str, tier: str) -> str:
     """Conservative. FALSE-grade stance needs a strict debunk word IN THE TITLE and the claim to match the title.
     Negated claims are never judged heuristically (they could be the opposite of what the page debunks)."""
     if _NEGATION.search(claim):
         return "none"
+    if _META.search(claim):      # a claim ABOUT fake news ("send suspected fake news to ...") matches every debunk-themed title
+        return "none"
     page = f"{title} {text}"
-    if overlap(claim, page) < 0.6:
+    if overlap(claim, page) < 0.6 or subject_coverage(claim, f"{title} {text}") < 0.7:
         return "none"
     cn = numbers(claim)
     if cn and not cn <= numbers(page):
@@ -63,18 +86,30 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -
         return "none"
     if label == "confirms" and not numbers(claim) <= numbers(quote):
         return "none"
+    if label in ("confirms", "mixed") and subject_coverage(claim, quote) < 0.7:
+        return "none"          # the quote must contain the claim's subject words (a Handloom Day page cannot back a Mango Day claim)
+    if label == "contradicts" and subject_coverage(claim, f"{title} {quote}") < 0.6:
+        return "none"
     if label == "mixed" and (overlap(claim, quote) < 0.6 or not numbers(claim) or not numbers(quote)):
         return "none"      # 'partial' drives MISLEADING: needs a strongly related quote with numbers on both sides
     if label == "contradicts" and not _DENIAL.search(f"{title} {quote}"):
         return "none"
     return label
 
+def degraded_stance(claim: str, title: str, text: str, tier: str) -> str:
+    """Safe fallback when no LLM is available: only a clear PIB debunk can contradict. Never TRUE, never MISLEADING."""
+    st = heuristic_stance(claim, title, text, tier)
+    return st if (st == "contradicts" and tier == "pib_debunk") else "none"
+
 def judge(claim: str, ev, llm=None) -> str:
     if llm is not None:
         try:
-            s = llm.stance(claim, ev.title, ev.text)
+            try:
+                s = llm.stance(claim, ev.title, ev.text, tier=ev.tier)
+            except TypeError:        # judges that do not take a tier (e.g. test fakes)
+                s = llm.stance(claim, ev.title, ev.text)
             if s in ("contradicts", "confirms", "mixed", "none"):
                 return s
         except Exception:
             pass  # bad key / network / rate limit: fall back to the conservative heuristic
-    return heuristic_stance(claim, ev.title, ev.text, ev.tier)
+    return degraded_stance(claim, ev.title, ev.text, ev.tier)

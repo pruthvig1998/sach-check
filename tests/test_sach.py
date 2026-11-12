@@ -157,9 +157,8 @@ def test_parse_label_maps_and_defaults_to_none():
     assert parse_label("**PARTIAL**") == "mixed" and parse_label("NEITHER") == "none"
     assert parse_label("") == "none" and parse_label("The page seems to say it is false") == "none"
 
-def test_gemini_judge_skips_dead_models(monkeypatch):
+def test_gemini_judge_skips_dead_models_and_needs_second_opinion(monkeypatch):
     import urllib.error, sach.llm as L
-    Q = "Cabinet approves the scheme"
     tried = []
     def fake_post(self, model, body):
         tried.append(model)
@@ -169,8 +168,33 @@ def test_gemini_judge_skips_dead_models(monkeypatch):
             raise urllib.error.HTTPError("u", 503, "overloaded", {}, None)
         return {"candidates": [{"content": {"parts": [{"text": "CONTRADICTS | Fake: the scheme claim is a hoax"}]}}]}
     monkeypatch.setattr(L.GeminiJudge, "_post", fake_post)
-    assert L.GeminiJudge(key="k", model="old,busy,good").stance("the scheme claim", "t", "Fake: the scheme claim is a hoax, says ministry") == "contradicts"
-    assert tried == ["old", "busy", "good"]
+    j = L.GeminiJudge(key="k", model="old,busy,good,good2")
+    assert j.stance("the scheme claim", "t", "Fake: the scheme claim is a hoax, says ministry") == "contradicts"
+    assert tried == ["old", "busy", "good", "old", "busy", "good2"][:len(tried)] and tried[2] == "good" and "good2" in tried
+
+def test_decisive_stance_needs_a_second_model_to_agree(monkeypatch):
+    import sach.llm as L
+    page = "Fake: the scheme claim is a hoax, says ministry"
+    def make(replies):
+        def fake_post(self, model, body):
+            r = replies[model]
+            if isinstance(r, Exception): raise r
+            return {"candidates": [{"content": {"parts": [{"text": r}]}}]}
+        return fake_post
+    agree = {"a": "CONTRADICTS | Fake: the scheme claim is a hoax", "b": "CONTRADICTS | Fake: the scheme claim is a hoax"}
+    monkeypatch.setattr(L.GeminiJudge, "_post", make(agree))
+    assert L.GeminiJudge(key="k", model="a,b").stance("the scheme claim", "t", page) == "contradicts"
+    split = {"a": "CONTRADICTS | Fake: the scheme claim is a hoax", "b": "NEITHER"}
+    monkeypatch.setattr(L.GeminiJudge, "_post", make(split))
+    assert L.GeminiJudge(key="k", model="a,b").stance("the scheme claim", "t", page) == "none"      # disagreement -> no verdict
+    down = {"a": "CONTRADICTS | Fake: the scheme claim is a hoax", "b": OSError("down")}
+    monkeypatch.setattr(L.GeminiJudge, "_post", make(down))
+    assert L.GeminiJudge(key="k", model="a,b").stance("the scheme claim", "t", page) == "none"       # lone LLM guess, no backup -> no verdict
+    title = "Fake: the scheme claim is a hoax"      # a clear PIB debunk is backed by the deterministic check
+    assert L.GeminiJudge(key="k", model="a,b").stance("the scheme claim", title, page, tier="pib_debunk") == "contradicts"
+    quiet = {"a": "NEITHER", "b": OSError("never called")}
+    monkeypatch.setattr(L.GeminiJudge, "_post", make(quiet))
+    assert L.GeminiJudge(key="k", model="a,b").stance("the scheme claim", "t", page) == "none"       # 'none' needs no second call
 
 def test_gemini_failure_still_falls_back_safely(monkeypatch):
     import sach.llm as L
@@ -277,9 +301,9 @@ def _post(base, text, path="/", headers=None, raw=None):
 def test_home_has_all_sections_and_features(server):
     h = _ur.urlopen(server + "/").read().decode()
     for needle in ("Got a forward?", 'id="check"', 'id="how"', 'id="rules"', 'id="sources"', 'id="evidence"', 'id="faq"', 'id="api"',
-                   'id="theme"', 'id="paste"', 'id="count"', "26/31", "Hinglish", "MISLEADING", "prefers-color-scheme"):
+                   'id="theme"', 'id="paste"', 'id="count"', "Hinglish", "both mean", "truth", "MISLEADING", "prefers-color-scheme"):
         assert needle in h, needle
-    assert h.count('class="chip"') == 4
+    assert h.count('class="chip"') == 5
 
 def test_result_page_has_card_citation_and_actions(server):
     code, h = _post(server, "Government will give Rs 5000 to every woman.")
@@ -439,3 +463,192 @@ def test_brave_requests_are_throttled_and_429_retried(monkeypatch):
     monkeypatch.setattr(R.urllib.request, "urlopen", fake_open)
     monkeypatch.setattr(R._time, "sleep", lambda s: None)
     assert R.BraveRetriever(key="k")._search("q") == ["https://pib.gov.in/a"] and len(calls) == 2
+
+
+# --- Tinglish (Telugu in English letters)
+@pytest.mark.parametrize("text", [
+    "Prabhutvam andariki Corona Sahayata Yojana kinda Rs 1000 istundi. Link click chesi register cheskondi.",
+    "Central sarkaru employees retirement age ni 50 years ki taggistundi ani message vachindi",
+    "Pension ledu ani cheppaaru kani nijam kaadu"])
+def test_tinglish_detected(text):
+    assert detect_language(text) == "tl"
+
+@pytest.mark.parametrize("text,lang", [
+    ("Government will give free laptops to all students", "en"),
+    ("Please check this message and tell me what you think of it", "en"),
+    ("sarkar sabko free paisa degi yeh yojana kal band ho jayegi jaldi bhejo", "hi"),
+    ("ప్రభుత్వం ప్రతి మహిళకు 5000 రూపాయలు ఇస్తుంది", "te")])
+def test_tinglish_does_not_hijack_other_languages(text, lang):
+    assert detect_language(text) == lang
+
+@pytest.mark.parametrize("verdict", [TRUE, FALSE, MISLEADING, UNVERIFIED])
+def test_tinglish_card_is_latin_script_and_verdict_first(verdict):
+    card = render_card(verdict, "tl", CITE)
+    first = card.splitlines()[0]
+    assert LABEL["tl"][verdict] in first
+    assert not any("\u0C00" <= ch <= "\u0C7F" or "\u0900" <= ch <= "\u097F" for ch in card)   # Latin script only
+    assert "FALSE" not in card and "TRUE" not in card.replace("TRUE", "", 0) or verdict == TRUE
+    if verdict != UNVERIFIED:
+        assert "https://pib.gov.in/x" in card
+
+def test_tinglish_forward_gets_tinglish_card_and_is_searched_in_english():
+    seen = {}
+    class Rec:
+        def search(self, q):
+            seen["q"] = q
+            return [Evidence("PIB", "https://pib.gov.in/x", TIER_PIB, TS, "Fake: Government will give Rs 1000 to every woman", "")]
+    class TL:
+        def translate(self, t): return "Government will give Rs 1000 to every woman"
+        def stance(self, claim, title, text): return "contradicts" if "1000" in claim else "none"
+    res = check_forward("Prabhutvam prathi mahilaku Rs 1000 istundi ani message vachindi, andariki share cheyandi", [Rec()], TL())
+    assert res["language"] == "tl" and seen["q"] == "Government will give Rs 1000 to every woman"
+    assert res["card"].splitlines()[0].endswith("ABADDHAM") and "prakaaram" in res["card"]
+
+
+# --- "what it means in English"
+def test_non_english_result_carries_english_card_and_claim_meaning():
+    class Rec:
+        def search(self, q): return [Evidence("PIB", "https://pib.gov.in/x", TIER_PIB, TS, "Fake: Government will give Rs 1000 to every woman", "")]
+    class TL:
+        def translate(self, t): return "Government will give Rs 1000 to every woman"
+        def stance(self, claim, title, text): return "contradicts"
+    res = check_forward("ప్రభుత్వం ప్రతి మహిళకు 1000 రూపాయలు ఇస్తుంది అని ప్రచారం జరుగుతోంది", [Rec()], TL())
+    assert res["language"] == "te" and "అబద్ధం" in res["card"]
+    assert res["card_en"].splitlines()[0].endswith("FALSE") and "https://pib.gov.in/x" in res["card_en"]
+    assert res["claims"][0]["english"] == "Government will give Rs 1000 to every woman"
+
+def test_english_forward_has_no_redundant_english_panel():
+    res = check_forward("Government will give Rs 1000 to every woman in the country.", [FakeRetriever([])])
+    assert "card_en" not in res and res["claims"][0]["english"] == ""
+
+def test_website_shows_english_meaning_panel(server):
+    import sach.web as W
+    class TL:
+        def translate(self, t): return "Government will give Rs 5000 to every woman"
+        def stance(self, claim, title, text): return "contradicts"
+    W.Handler.llm = TL()
+    code, h = _post(server, "ప్రభుత్వం ప్రతి మహిళకు 5000 రూపాయలు ఇస్తుంది అని ప్రచారం జరుగుతోంది")
+    assert code == 200 and "What this means in English" in h and "We understood the forward as" in h
+    assert "Government will give Rs 5000 to every woman" in h and "Copy both languages" in h
+    code, h = _post(server, "Government will give Rs 5000 to every woman.")
+    assert "What this means in English" not in h            # English forwards don't need it
+    W.Handler.llm = None
+
+def test_no_claim_card_has_english_meaning_for_telugu():
+    res = check_forward("శుభోదయం 🙏 అందరికీ షేర్ చేయండి", [FakeRetriever([])])
+    assert res.get("no_claims") and "NO CLAIM FOUND" in res["card_en"]
+
+
+# --- generic-word matching must not create verdicts (National Mango Day vs National Handloom Day)
+def test_distinctive_words_drive_matching_not_generic_government_words():
+    from sach.stance import distinctive, subject_coverage, _stem
+    claim = "The Cabinet has approved declaring the 14th of every month as National Mango Day."
+    assert "mango" in distinctive(claim) and _stem("cabinet") not in distinctive(claim) and _stem("national") not in distinctive(claim)
+    page = "PM's address at the celebration of National Handloom Day. The Cabinet has approved new schemes on the 7th of August every year."
+    assert subject_coverage(claim, page) < 0.5
+
+def test_unrelated_official_page_cannot_make_misleading_or_true_or_false():
+    claim = "The Cabinet has approved declaring the 14th of every month as National Mango Day."
+    title = "PM's address at the celebration of National Handloom Day"
+    page = "The Cabinet has approved declaring the 7th of August every year as National Handloom Day, the PM said on the 14th."
+    assert heuristic_stance(claim, title, page, TIER_OFFICIAL) == "none"
+    for label in ("mixed", "confirms", "contradicts"):
+        assert validate_stance(label, "The Cabinet has approved declaring the 7th of August every year as National Handloom Day", claim, title, page) == "none"
+
+def test_real_scheme_with_wrong_number_still_reaches_partial():
+    claim = "The Union Cabinet has approved a scheme for coal and lignite gasification projects with an outlay of Rs 50,000 crore."
+    page = "The Union Cabinet has approved a Scheme for Promotion of Surface Coal/Lignite Gasification Projects with a financial outlay of Rs 37,500 crore."
+    q = "Scheme for Promotion of Surface Coal/Lignite Gasification Projects with a financial outlay of Rs 37,500 crore"
+    assert validate_stance("mixed", q, claim, "Cabinet approves Scheme", page) == "mixed"
+
+
+# --- degraded (no-LLM / quota exhausted) mode must be safe
+def test_claim_about_fake_news_is_never_judged_by_the_heuristic():
+    claim = "Suspected fake news can be sent to the PIB Fact Check WhatsApp hotline 8799711259."
+    title = "PIB Fact Check Unit Invites Public to Share Suspected Fake News related to Government on 8799711259"
+    assert heuristic_stance(claim, title, "Send suspected fake news to WhatsApp 8799711259", TIER_PIB) == "none"
+
+def test_degraded_mode_only_ever_contradicts_from_a_pib_debunk():
+    from sach.stance import degraded_stance
+    claim = "Central Government will reduce the retirement age of employees to 50 years."
+    title = "No reduction in retirement age of Central Government employees, PIB Fact Check busts fake news"
+    body = "A media report said the retirement age would be reduced to 50 years. This is fake; no such proposal exists."
+    assert degraded_stance(claim, title, body, TIER_PIB) == "contradicts"
+    assert degraded_stance(claim, title, body, TIER_OFFICIAL) == "none"          # not a PIB debunk page
+    ok = "Cabinet approves continuation of the Samagra Shiksha scheme from April 2021 to March 2026"
+    assert degraded_stance("Cabinet approves continuation of Samagra Shiksha from April 2021 to March 2026", ok, ok, TIER_OFFICIAL) == "none"   # never TRUE
+    assert degraded_stance("Cabinet approves continuation of Samagra Shiksha from April 2021 to March 2030", ok, ok, TIER_OFFICIAL) == "none"   # never MISLEADING
+
+def test_degraded_flag_when_llm_missing_or_failing():
+    class Down:
+        failures = 0
+        def stance(self, *a, **k):
+            Down.failures += 1; raise RuntimeError("429 quota")
+    ev = Evidence("PIB", "https://pib.gov.in/x", TIER_PIB, TS, "Fake: Government will give Rs 1000 to every woman", "")
+    assert check_forward("Government will give Rs 1000 to every woman in the country.", [FakeRetriever([ev])], None)["degraded"] is True
+    d = Down()
+    assert check_forward("Government will give Rs 1000 to every woman in the country.", [FakeRetriever([ev])], d)["degraded"] is True
+    class Fine:
+        failures = 0
+        def stance(self, *a, **k): return "none"
+    assert check_forward("Government will give Rs 1000 to every woman in the country.", [FakeRetriever([ev])], Fine())["degraded"] is False
+
+def test_website_shows_limited_mode_notice(server):
+    code, h = _post(server, "Government will give Rs 5000 to every woman.")     # fixture runs with llm=None
+    assert code == 200 and "Limited mode" in h
+
+# --- user-chosen reply language (independent of the input language)
+class _PibFake:
+    def __init__(self): self.q = None
+    def search(self, q):
+        self.q = q
+        return [Evidence("PIB", "https://pib.gov.in/x", TIER_PIB, TS, "Fake: Government will give Rs 1000 to every woman", "")]
+class _TL:
+    def translate(self, t): return "Government will give Rs 1000 to every woman"
+    def stance(self, claim, title, text, tier=""): return "contradicts"
+
+HI_FWD = "सरकार हर महिला को 1000 रुपये दे रही है, जल्दी शेयर करें।"
+EN_FWD = "Government will give Rs 1000 to every woman in the country."
+
+def test_hindi_forward_with_english_reply_chosen():
+    r = _PibFake(); res = check_forward(HI_FWD, [r], _TL(), reply_lang="en")
+    assert res["input_language"] == "hi" and res["language"] == "en"
+    assert res["card"].splitlines()[0].endswith("FALSE") and "card_en" not in res
+    assert r.q == "Government will give Rs 1000 to every woman"          # still searched in English via the INPUT language
+
+def test_english_forward_with_telugu_and_tinglish_reply_chosen():
+    res = check_forward(EN_FWD, [_PibFake()], _TL(), reply_lang="te")
+    assert res["input_language"] == "en" and res["language"] == "te" and "అబద్ధం" in res["card"]
+    assert res["card_en"].splitlines()[0].endswith("FALSE")                # English meaning accompanies a non-English reply
+    res = check_forward(EN_FWD, [_PibFake()], _TL(), reply_lang="tl")
+    assert res["language"] == "tl" and res["card"].splitlines()[0].endswith("ABADDHAM")
+
+@pytest.mark.parametrize("bad", [None, "auto", "xx", "", "EN ", "klingon"])
+def test_unknown_or_auto_reply_lang_falls_back_to_matching_the_forward(bad):
+    res = check_forward(HI_FWD, [_PibFake()], _TL(), reply_lang=bad)
+    assert res["language"] == "hi" and "झूठ" in res["card"]
+
+def test_no_claim_card_respects_chosen_language():
+    res = check_forward("Good morning 🙏", [FakeRetriever([])], None, reply_lang="hi")
+    assert res["no_claims"] and res["language"] == "hi" and "दावा" in res["card"] and "NO CLAIM FOUND" in res["card_en"]
+
+def test_website_language_selector_form_json_and_query(server):
+    import sach.web as W
+    W.Handler.llm = _TL()
+    h = _ur.urlopen(server + "/").read().decode()
+    assert 'name="lang"' in h and all(f'value="{v}"' in h for v in ("auto", "en", "hi", "te", "tl"))
+    code, h = _post(server, EN_FWD, raw=_up.urlencode({"text": EN_FWD, "lang": "te"}).encode())
+    assert code == 200 and "అబద్ధం" in h and "(your choice)" in h and 'value="te" selected' in h        # choice is remembered on the result page
+    code, body = _post(server, "", "/?format=json", raw=_json.dumps({"text": HI_FWD, "lang": "en"}).encode(), headers={"Content-Type": "application/json"})
+    d = _json.loads(body); assert d["language"] == "en" and d["input_language"] == "hi" and d["card"].splitlines()[0].endswith("FALSE")
+    code, body = _post(server, EN_FWD, "/?format=json&lang=hi")
+    assert _json.loads(body)["language"] == "hi"
+    code, body = _post(server, EN_FWD, "/?format=json&lang=klingon")
+    assert code == 200 and _json.loads(body)["language"] == "en"                                          # bad value never errors
+    code, h = _post(server, EN_FWD)
+    assert "(matched to the forward)" in h
+    W.Handler.llm = None
+
+def test_empty_input_keeps_the_chosen_language_in_the_form(server):
+    code, h = _post(server, "", raw=_up.urlencode({"text": "  ", "lang": "hi"}).encode())
+    assert code == 400 and 'value="hi" selected' in h
