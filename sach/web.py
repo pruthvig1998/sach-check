@@ -7,6 +7,7 @@ from .llm import get_llm
 from .pipeline import check_forward
 from .retrieve import default_retrievers
 from . import razorpay_pay as rzp
+from . import pwa
 from .legal import PAGES as LEGAL_PAGES, legal_page
 from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_png, tip_qr_svg, upi_link
 
@@ -102,6 +103,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("X-Robots-Tag", "noindex")
             self.end_headers()
             return self.wfile.write(svg)
+        if pwa.serve(self, u.path, qs):                      # manifest, icons, service worker, WhatsApp share target
+            return
         if view in LEGAL_PAGES:                              # terms / privacy / refund / contact
             return self._send(legal_page(view))
         if view == "ledger" or u.path == "/ledger":      # query form survives Vercel's rewrite; path form works locally

@@ -2,7 +2,7 @@
 from __future__ import annotations
 import html, json, os
 from urllib.parse import quote
-from . import ledger
+from . import ledger, pwa
 from .i18n import LABEL
 
 REPO = "https://github.com/pruthvig1998/sach-check"
@@ -328,6 +328,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <title>{esc(title)}</title><meta name="description" content="Paste a WhatsApp forward. Sach checks it against PIB and official sources and returns a cited verdict in English, Hindi or Telugu.">
 <meta property="og:title" content="Sach — cited verdicts for viral forwards"><meta property="og:description" content="Got a forward? Get the receipts. PIB-first fact-checking in English, Hindi and Telugu.">
 <meta name="theme-color" content="#f2ebdb"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23c2321f'/%3E%3Ctext x='32' y='45' font-size='40' text-anchor='middle' fill='white' font-family='serif' font-weight='900'%3ES%3C/text%3E%3C/svg%3E">
+{pwa.HEAD}
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="{FONTS}" rel="stylesheet"><style>{CSS}</style></head><body>
 <a class="skip" href="#main">Skip to content</a>
@@ -337,7 +338,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <main id="main">{body}</main>
 <footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Bharat Agentic-AI Hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
 <div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/#api">API</a>{tip_link}<br><a href="/?view=terms">Terms</a> · <a href="/?view=privacy">Privacy</a> · <a href="/?view=refund">Refunds</a> · <a href="/?view=contact">Contact</a></div></div></footer>
-<script>{JS}</script></body></html>""".encode()
+<script>{JS}</script>{pwa.SCRIPT}</body></html>""".encode()
 
 
 def stamp(v: str, cls="") -> str:
@@ -505,6 +506,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <p class="note" style="margin:10px 0 0">Tip: press Ctrl/Cmd + Enter to check. Only the individual claims (never your name) go to the public ledger.</p>
 <div id="busy" role="status"><i></i>Reading PIB and official pages… this usually takes 10 to 30 seconds.</div></form>
 {f'<p role="alert" style="color:var(--false);font-weight:600;margin-top:14px">{esc(error)}</p>' if error else ''}{result}</div></div></section>
+{pwa.HOME_HTML}
 
 <section id="how"><div class="wrap"><h2>How it works</h2><p class="sub">Four steps, all visible. Nothing is invented: a citation appears only if we actually fetched that page.</p>
 <div class="grid4">
