@@ -234,12 +234,12 @@ def tip_amount(raw) -> int | None:
     raw = (raw or "").strip()
     return int(raw) if raw.isascii() and raw.isdigit() and 1 <= int(raw) <= 10000 else None      # ASCII digits only (not "٥٠")
 
-def tip_qr_svg(cfg: dict, amount: int | None = None) -> bytes | None:
+def tip_qr_svg(cfg: dict, amount: int | None = None, decimals: bool = False) -> bytes | None:
     """A QR (generic upi:// so every UPI scanner reads it), drawn on the server so the address never appears in the page's HTML."""
     try:
         import io, segno
         buf = io.BytesIO()
-        segno.make(upi_link(cfg, amount, "Sach tip"), error="m").save(buf, kind="svg", scale=5, border=2, xmldecl=False, svgns=True)
+        segno.make(upi_link(cfg, amount, "Sach tip", decimals=decimals), error="m").save(buf, kind="svg", scale=5, border=2, xmldecl=False, svgns=True)
         return buf.getvalue()
     except Exception:
         return None
@@ -252,10 +252,13 @@ def tip_config():
     name = _re.sub(r"[^A-Za-z0-9 .&'-]", "", os.environ.get("SACH_UPI_NAME") or "Sach")[:40].strip() or "Sach"
     return {"vpa": vpa, "name": name}
 
-def upi_link(cfg: dict, amount: int | None = None, note: str = "Sach tip", app: str = "upi") -> str:
-    base = UPI_APPS.get(app, UPI_APPS["upi"])[1]                     # unknown app name -> the generic scheme, never an error
+_DIAG_SCHEMES = {"tez": "tez://upi/pay"}      # Google Pay's older scheme; reachable only from the unlisted diagnostics page
+
+def upi_link(cfg: dict, amount: int | None = None, note: str = "Sach tip", app: str = "upi", decimals: bool = False) -> str:
+    base = UPI_APPS.get(app, (None, _DIAG_SCHEMES.get(app, UPI_APPS["upi"][1])))[1]    # unknown app name -> the generic scheme, never an error
     q = f"pa={_q(cfg['vpa'], safe='@.-_')}&pn={_q(cfg['name'])}&cu=INR&tn={_q(note)}"
-    return base + "?" + q + (f"&am={int(amount)}" if amount else "")
+    amt = (f"&am={int(amount)}.00" if decimals else f"&am={int(amount)}") if amount else ""
+    return base + "?" + q + amt
 
 
 def eval_summary() -> dict:
@@ -442,6 +445,24 @@ def pay_page(amount: int | None = None, bad_amount: bool = False) -> bytes:
 <p style="margin-top:24px"><a class="btn ghost" href="/#tip" style="text-decoration:none">← Back to the tip jar</a></p>
 <p class="logonote">App names and logos belong to their owners (Google LLC, PayTM Mobile Solutions, NPCI, PhonePe) and are shown only to help you recognise the app. Sach is not affiliated with them. The icons are the apps own App Store icons; the "other app" icon is a generic glyph.</p></div></div>"""
     return layout(body, "Chip in — Sach")
+
+
+def diag_page(amount: int = 20) -> bytes:
+    """Unlisted test page: the same payment written several ways, to find which form payer apps accept. No UPI address in the HTML."""
+    a = amount
+    links = [("A", "Current link, Google Pay, amount " + str(a), f"/?go=tip&amp;amt={a}&amp;app=gpay"),
+             ("B", f"Google Pay, amount written as {a}.00", f"/?go=tip&amp;amt={a}&amp;app=gpay&amp;dec=1"),
+             ("C", f"Google Pay's older tez:// link, {a}.00", f"/?go=tip&amp;amt={a}&amp;app=tez&amp;dec=1"),
+             ("D", f"Generic upi:// link, {a}.00 (Android may show an app picker)", f"/?go=tip&amp;amt={a}&amp;app=upi&amp;dec=1"),
+             ("E", "Google Pay, no amount (type the amount yourself)", "/?go=tip&amp;app=gpay")]
+    qrs = [("F", f"QR with amount {a}", f"/?view=tipqr&amp;amt={a}"), ("G", f"QR with amount {a}.00", f"/?view=tipqr&amp;amt={a}&amp;dec=1"),
+           ("H", "QR with no amount", "/?view=tipqr")]
+    lk = "".join(f'<a class="appbtn" href="{u}" rel="nofollow"><span class="txt"><b>{k}. {esc(t)}</b></span></a>' for k, t, u in links)
+    qr = "".join(f'<div style="display:inline-block;margin:6px 14px 6px 0;text-align:center"><img src="{u}" width="150" height="150" alt="QR {k}"><br><b>{k}</b> {esc(t)}</div>' for k, t, u in qrs)
+    body = f"""<div class="wrap"><div class="paywrap"><p class="kicker">Private test page</p><h1 style="font-size:clamp(30px,7vw,46px);margin:6px 0 10px">Payment link tests</h1>
+<p class="sub">Tap each button (or scan each QR from another screen) and note whether the payment opens correctly and can be completed. Tell the site owner the letters that worked and the ones that failed.</p>
+{lk}<h2 style="font-size:22px;margin:22px 0 8px">QR codes (scan from another screen)</h2>{qr}</div></div>"""
+    return layout(body, "Link tests - Sach")
 
 
 def ledger_page() -> bytes:

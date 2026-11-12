@@ -1217,3 +1217,46 @@ def test_icons_and_forms_leak_no_address(server, monkeypatch):
     for path in ("/?view=pay&amt=50", "/?t=leak", "/?view=pay&amt=abc"):
         h = _raw_get(server, path)[2].decode()
         assert "supporter" not in h and "okbank" not in h and "upi://" not in h and "bhim://" not in h and "gpay://" not in h
+
+
+# --- diagnostics for prefilled-amount failures (Google Pay "bank limit" on a link, while a no-amount QR works)
+def test_amount_can_be_written_with_two_decimals():
+    cfg = {"vpa": "supporter@okbank", "name": "Sach"}
+    assert SITE.upi_link(cfg, 20).endswith("&am=20") and SITE.upi_link(cfg, 20, decimals=True).endswith("&am=20.00")
+    assert "am=" not in SITE.upi_link(cfg, None, decimals=True)                          # no amount: nothing to format
+
+def test_tez_scheme_only_reachable_via_diag_not_in_the_public_app_list():
+    assert "tez" not in SITE.UPI_APPS
+    assert SITE.upi_link({"vpa": "a1@okbank", "name": "Sach"}, 20, app="tez", decimals=True).startswith("tez://upi/pay?pa=a1@okbank")
+
+def test_redirect_supports_decimal_and_tez_variants(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", "Sach Desk")
+    assert _raw_get(server, "/?go=tip&amt=20&app=gpay&dec=1")[1]["Location"].endswith("&am=20.00")
+    assert _raw_get(server, "/?go=tip&amt=20&app=gpay")[1]["Location"].endswith("&am=20")
+    loc = _raw_get(server, "/?go=tip&amt=20&app=tez&dec=1")[1]["Location"]
+    assert loc.startswith("tez://upi/pay?") and loc.endswith("&am=20.00") and "pa=supporter@okbank" in loc
+    assert _raw_get(server, "/?go=tip&app=gpay&dec=1")[1]["Location"].count("am=") == 0     # dec without an amount adds nothing
+    assert _raw_get(server, "/?go=tip&amt=20&app=gpay&dec=yes")[1]["Location"].endswith("&am=20")   # only dec=1 counts
+
+def test_qr_decimal_variant_differs_from_integer_variant(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    a = _raw_get(server, "/?view=tipqr&amt=20")[2]; b = _raw_get(server, "/?view=tipqr&amt=20&dec=1")[2]
+    assert a != b and b.lstrip().startswith(b"<svg")
+
+def test_diag_page_lists_variants_noindex_and_leaks_nothing(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", "Sach Desk")
+    code, hdr, body = _raw_get(server, "/?view=diag")
+    h = body.decode()
+    assert code == 200 and "noindex" in hdr["X-Robots-Tag"] and "Private test page" in h
+    for k in "ABCDE":
+        assert f"<b>{k}." in h
+    assert 'src="/?view=tipqr&amp;amt=20&amp;dec=1"' in h and 'src="/?view=tipqr"' in h
+    assert "supporter" not in h and "okbank" not in h and "Sach Desk" not in h
+    assert "upi://pay" not in h and "tez://upi" not in h and "pa=" not in h                      # labels may name the schemes; no real payment link
+    assert "view=diag" not in _ur.urlopen(server + "/?x=d").read().decode()              # not linked from anywhere
+
+def test_diag_page_404_when_tip_jar_off_and_respects_amount(server, monkeypatch):
+    _tip_env(monkeypatch, None)
+    assert _raw_get(server, "/?view=diag")[0] == 404
+    _tip_env(monkeypatch, "supporter@okbank")
+    assert "amt=50" in _raw_get(server, "/?view=diag&amt=50")[2].decode() and "amt=20" in _raw_get(server, "/?view=diag&amt=abc")[2].decode()
