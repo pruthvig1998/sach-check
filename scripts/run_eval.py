@@ -8,10 +8,11 @@ from sach.llm import get_llm
 
 rows = json.load(open("data/eval_set.json", encoding="utf-8"))
 ret, llm = default_retrievers(), get_llm()
+seed_ids = {str(x["prid"]) for x in json.load(open("data/seed_debunks.json"))}
 res = []
 for r in rows:
     out = check_forward(r["claim"], ret, llm, log=bool(os.environ.get("SACH_SEED_LEDGER")))
-    res.append({**r, "got": out["verdict"], "reasons": [v["reason_code"] for v in out["claims"]], "cites": [c["url"] for v in out["claims"] for c in v["citations"]]})
+    res.append({**r, "seeded": any(("PRID=" + i) in r["source"] for i in seed_ids), "got": out["verdict"], "reasons": [v["reason_code"] for v in out["claims"]], "cites": [c["url"] for v in out["claims"] for c in v["citations"]]})
 n = len(res); ok = sum(r["got"] == r["label"] for r in res)
 false_pos = [r for r in res if r["got"] == "FALSE" and r["label"] != "FALSE"]
 lab = lambda L: [r for r in res if r["label"] == L]
@@ -20,6 +21,10 @@ L = ["# Evaluation", "", f"Mode: {'LLM stance' if llm else 'heuristic stance (no
      f"- **Overclaimed FALSE (the unforgivable failure): {len(false_pos)}**"]
 for l in ("FALSE", "TRUE", "UNVERIFIED"):
     g = lab(l); L.append(f"- Label {l}: {sum(r['got']==l for r in g)}/{len(g)} correct; {sum(r['got']=='UNVERIFIED' for r in g)} abstained as UNVERIFIED")
+for tag, flag in (("Seeded (PIB page was in data/seed_debunks.json; retrieval is partly circular)", True), ("Unseeded (retrieval had to find the page itself)", False)):
+    g = [r for r in res if r["seeded"] == flag and r["label"] != "UNVERIFIED"]
+    if g:
+        L.append(f"- {tag}: {sum(r['got']==r['label'] for r in g)}/{len(g)} correct")
 L += ["", "| Claim | Label | Sach | Result |", "|---|---|---|---|"]
 for r in res:
     tag = "OVERCLAIM" if r in false_pos else ("ok" if r["got"] == r["label"] else "miss (abstained)" if r["got"] == "UNVERIFIED" else "WRONG")

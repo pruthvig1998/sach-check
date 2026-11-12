@@ -2,12 +2,14 @@
 
 Mode: LLM stance; retrieval: PibRetriever, BraveRetriever.
 
-- Claims: **9** (target was 100+; see limitations)
-- Exact-match accuracy: **9/9**
-- **Overclaimed FALSE (the unforgivable failure): 0**
-- Label FALSE: 7/7 correct; 0 abstained as UNVERIFIED
-- Label TRUE: 1/1 correct; 0 abstained as UNVERIFIED
-- Label UNVERIFIED: 1/1 correct; 1 abstained as UNVERIFIED
+- Claims: **31** (target was 100+; see limitations)
+- Exact-match accuracy: **27/31**
+- **Overclaimed FALSE (the unforgivable failure): 1**
+- Label FALSE: 12/14 correct; 1 abstained as UNVERIFIED
+- Label TRUE: 11/12 correct; 0 abstained as UNVERIFIED
+- Label UNVERIFIED: 4/5 correct; 4 abstained as UNVERIFIED
+- Seeded (PIB page was in data/seed_debunks.json; retrieval is partly circular): 10/10 correct
+- Unseeded (retrieval had to find the page itself): 13/16 correct
 
 | Claim | Label | Sach | Result |
 |---|---|---|---|
@@ -20,6 +22,28 @@ Mode: LLM stance; retrieval: PibRetriever, BraveRetriever.
 | Government is giving Rs 1000 to everyone under Corona Sahayata Yojana, click the link to register. | FALSE | FALSE | ok |
 | Union Minister Sarbananda Sonowal's office has issued a letter on this matter. | FALSE | FALSE | ok |
 | A Health Ministry office memorandum on state holidays has been issued. | FALSE | FALSE | ok |
+| Railways has issued a recruitment notification for 19,800 Constable posts in RPF. | FALSE | UNVERIFIED | miss (abstained) |
+| RPF has announced recruitment of 4,208 Constables and 452 Sub-Inspectors. | FALSE | TRUE | WRONG |
+| The Cabinet Secretariat has advertised recruitment for 1,736 Field Assistant posts. | FALSE | FALSE | ok |
+| The Centre has removed 55 lakh ration card holders from Punjab. | FALSE | FALSE | ok |
+| Ration cards of people who do not provide Aadhaar numbers will be cancelled. | FALSE | FALSE | ok |
+| The Railway Recruitment Board introduced a new method of result preparation for Level 1 results. | FALSE | FALSE | ok |
+| India Post is offering subsidies and prizes to people who complete an online survey or quiz. | FALSE | FALSE | ok |
+| The Union Cabinet has approved a scheme for coal and lignite gasification projects with an outlay of Rs 37,500 crore. | TRUE | TRUE | ok |
+| The Union Cabinet has approved a scheme to replace old trucks and buses in the Delhi-NCR area. | TRUE | TRUE | ok |
+| The Union Cabinet has approved Nutrient Based Subsidy rates for Rabi 2026-27 on phosphatic and potassic fertilizers. | TRUE | TRUE | ok |
+| The Union Cabinet has approved modernization of Command Area Development and Water Management under Pradhan Mantri Krishi Sinchayee Yojana. | TRUE | TRUE | ok |
+| The Union Cabinet has approved continuation of the Samagra Shiksha scheme from April 2021 to March 2026. | TRUE | TRUE | ok |
+| The Union Cabinet has approved integration and continuation of two schemes under SARTHAK-PDS. | TRUE | TRUE | ok |
+| Railways has a recruitment process on for 1,20,579 vacancies notified in 2024 and 2025. | TRUE | TRUE | ok |
+| Around 99.8% of ration cards have been seeded with Aadhaar. | TRUE | MISLEADING | WRONG |
+| Railways plans to provide 50,000 jobs in financial year 2025-26. | TRUE | TRUE | ok |
+| The Government has notified PIB's Fact Check Unit as a fact checker of the Central Government under the IT Rules 2021. | TRUE | TRUE | ok |
+| Suspected fake news can be sent to the PIB Fact Check WhatsApp hotline 8799711259. | TRUE | TRUE | ok |
+| The Ministry of Culture has declared turmeric the national spice of India. | UNVERIFIED | UNVERIFIED | ok |
+| The Union Cabinet has approved renaming all national highways after rivers. | UNVERIFIED | UNVERIFIED | ok |
+| The government has declared the first monsoon rain day of each year a national holiday. | UNVERIFIED | UNVERIFIED | ok |
+| Every household in India will receive a free solar-powered refrigerator next month. | UNVERIFIED | FALSE | OVERCLAIM |
 
 ## Limitations (read before citing these numbers)
 - The set is tiny: every item was hand-verified from a PIB page actually fetched, not bulk-scraped. PIB has no listing page for debunks, and the RSS feed returns only the latest 20 items.
