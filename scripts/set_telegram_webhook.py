@@ -1,12 +1,13 @@
 """Point the Telegram bot at Sach (or remove / inspect it). Prints only redacted output; never the token or secret.
-Usage: python scripts/set_telegram_webhook.py [--url https://sach-check-lilac.vercel.app] | --info | --delete
+Usage: python scripts/set_telegram_webhook.py [--url https://your-site.example] | --info | --delete
 Reads TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET from the environment or .env."""
 import argparse, json, os, pathlib, sys
 root = pathlib.Path(__file__).resolve().parents[1]; sys.path.insert(0, str(root))
 import sach  # noqa: loads .env
 from sach import telegram_bot as tg
 
-DEFAULT_URL = "https://sach-check-lilac.vercel.app"
+from sach.siteurl import site_url  # noqa: E402
+DEFAULT_URL = site_url()          # SACH_SITE_URL, else the built-in default
 
 def run(argv=None, client=None, out=print) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])

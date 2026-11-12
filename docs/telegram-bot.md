@@ -36,7 +36,7 @@ The script needs the same two values locally. Put them in `.env` (it is git-igno
 ```
 cd ~/Downloads/sach-check && .venv/bin/python scripts/set_telegram_webhook.py
 ```
-It prints `OK: webhook set`. Check with `--info` (the token is never printed).
+The site address it points Telegram at is `SACH_SITE_URL` (for example your custom domain), or pass `--url https://your-site.example`; unset, it uses the built-in default (currently `https://sach-check-lilac.vercel.app`). It prints `OK: webhook set`. Check with `--info` (the token is never printed).
 
 ## 5. Test
 Open your bot in Telegram, press Start, then forward a message. You should see "typing...", then the verdict card with links. Try `/lang hi`.

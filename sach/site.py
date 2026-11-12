@@ -7,6 +7,7 @@ from .i18n import LABEL
 from .report import report_html, card_data_script
 from .ocr import OCR_BLOCK
 from .scamsigns import CSS as SIGNS_CSS, signs_html
+from .siteurl import site_url        # noqa: F401  (re-exported: the one place that knows the site's public address)
 from .voice import VOICE_JS, VOICE_CSS, voice_controls, progress_panel, listen_buttons
 
 REPO = "https://github.com/pruthvig1998/sach-check"
@@ -318,20 +319,76 @@ def upi_link(cfg: dict, amount: int | None = None, note: str = "Sach tip", app: 
     return base + "?" + q + (f"&am={int(amount)}" if amount else "")
 
 
+EVAL_PATH = os.path.join(ROOT, "data", "eval_summary.json")      # tests point this at a temp file
+EVAL_DOC = f"{REPO}/blob/main/docs/evaluation.md"
+
+
 def eval_summary() -> dict:
     try:
-        return json.load(open(os.path.join(ROOT, "data", "eval_summary.json"), encoding="utf-8"))
+        with open(EVAL_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
     except Exception:
         return {}
 
 
-def layout(body: str, title="Sach — cited verdicts for viral forwards") -> bytes:
+def _int(v):
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
+
+
+def eval_display(ev: dict | None = None) -> dict | None:
+    """What the home page may show about the evaluation, read from data/eval_summary.json at request time (never typed in).
+    None means "Evaluation pending": the file is missing, marks itself degraded, or is the older format (no commit/date, or
+    missing counts). Otherwise {n, correct, overclaims, abstained, commit (short hash), date}."""
+    ev = eval_summary() if ev is None else ev
+    if not isinstance(ev, dict) or not ev or ev.get("degraded") or str(ev.get("mode", "")).lower() in ("fallback", "degraded"):
+        return None
+    n, correct, of = _int(ev.get("n")), _int(ev.get("correct")), _int(ev.get("overclaimed_false"))
+    commit, date = ev.get("commit"), ev.get("date")
+    if not n or correct is None or of is None or not isinstance(commit, str) or not commit.strip() or not isinstance(date, str) or not date.strip():
+        return None
+    ot = _int(ev.get("overclaimed_true"))
+    return {"n": n, "correct": correct, "overclaims": of + (ot or 0), "overclaimed_false": of, "overclaimed_true": ot,
+            "abstained": _int(ev.get("abstained")), "commit": commit.strip()[:7], "date": date.strip()[:10]}
+
+
+def eval_stats_html(d: dict | None) -> str:
+    """The number cards plus the 'measured on' line, or the 'Evaluation pending' box. Every value is escaped."""
+    if not d:
+        return (f'<div class="honest" style="margin-bottom:22px" role="status"><b>Evaluation pending.</b> The last full evaluation run is out of date or incomplete, '
+                f'so no numbers are shown here rather than old ones. <a href="{esc(EVAL_DOC)}" rel="noopener">What we measure and how →</a></div>')
+    cards = (f'<div class="card"><div class="num" style="color:var(--ink)">{d["n"]}</div><p>claims in the evaluation set</p></div>'
+             f'<div class="card"><div class="num g">{d["correct"]}/{d["n"]}</div><p>judged exactly right</p></div>'
+             f'<div class="card"><div class="num{"" if d["overclaims"] else " g"}">{d["overclaims"]}</div><p>overclaims: said TRUE or FALSE without proof, the failure we refuse to ship</p></div>')
+    if d["abstained"] is not None:
+        cards += f'<div class="card"><div class="num" style="color:var(--ink)">{d["abstained"]}</div><p>times it said “unverified” instead of guessing</p></div>'
+    return (f'<div class="grid4" style="margin-bottom:12px">{cards}</div>'
+            f'<p class="note evmeta" style="margin:0 0 22px">Measured on commit <code>{esc(d["commit"])}</code>, {esc(d["date"])}. '
+            f'<a href="{esc(EVAL_DOC)}" rel="noopener">Full table with every claim and failure →</a></p>')
+
+
+DESC = "Paste a WhatsApp forward. Sach checks it against PIB and official sources and returns a cited verdict in English, Hindi or Telugu."
+OG_DESC = "Got a forward? Get the receipts. PIB-first fact-checking in English, Hindi and Telugu."
+OG_ALT = "Sach: a red S mark beside four tilted verdict stamps for true, false, misleading and unverified."
+ROBOTS_INDEX, ROBOTS_NOINDEX = "index,follow", "noindex,follow"
+
+
+def layout(body: str, title="Sach — cited verdicts for viral forwards", path: str = "/", noindex: bool = False) -> bytes:
+    """`path` is the page's canonical path (never personal query params); `noindex` is for result and prefill pages."""
     cfg = tip_config()
     tip_link = ' · <a href="/#tip">Tip jar ☕</a>' if cfg else ""
+    base = site_url()
+    canon = esc(base + path, quote=True)
+    img = esc(base + "/?view=ogimage", quote=True)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{esc(title)}</title><meta name="description" content="Paste a WhatsApp forward. Sach checks it against PIB and official sources and returns a cited verdict in English, Hindi or Telugu.">
-<meta property="og:title" content="Sach — cited verdicts for viral forwards"><meta property="og:description" content="Got a forward? Get the receipts. PIB-first fact-checking in English, Hindi and Telugu.">
+<title>{esc(title)}</title><meta name="description" content="{DESC}">
+<meta name="robots" content="{ROBOTS_NOINDEX if noindex else ROBOTS_INDEX}"><link rel="canonical" href="{canon}">
+<meta property="og:title" content="Sach — cited verdicts for viral forwards"><meta property="og:description" content="{OG_DESC}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Sach"><meta property="og:locale" content="en_IN"><meta property="og:url" content="{canon}">
+<meta property="og:image" content="{img}"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="{esc(OG_ALT)}">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Sach — cited verdicts for viral forwards"><meta name="twitter:description" content="{OG_DESC}"><meta name="twitter:image" content="{img}"><meta name="twitter:image:alt" content="{esc(OG_ALT)}">
 <meta name="theme-color" content="#f2ebdb"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23c2321f'/%3E%3Ctext x='32' y='45' font-size='40' text-anchor='middle' fill='white' font-family='serif' font-weight='900'%3ES%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="/?view=icon&amp;size=192">
 {pwa.HEAD}
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="{FONTS}" rel="stylesheet"><style>{CSS}{VOICE_CSS}</style>
@@ -339,7 +396,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="wrap"><a class="logo" href="/" title="Sach (Hindi सच) and nijam (Telugu నిజం) both mean “truth”">Sach<small><span class="sc">सच · నిజం · </span>truth</small></a>
 <nav aria-label="Main"><a href="/#check">Check</a><a class="opt" href="/#how">How it works</a><a class="opt" href="/#rules">Rules</a><a class="opt" href="/#faq">FAQ</a>
-<a href="/?view=ledger">Ledger</a><a class="opt" href="/?view=impact">Impact</a><a class="opt" href="{REPO}" rel="noopener">GitHub</a><button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button></nav></div></header>
+<a href="/?view=ledger">Ledger</a><a class="opt" href="/?view=impact">Impact</a><a class="opt" href="{REPO}" rel="noopener">GitHub</a></nav><button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button></div></header>
 <main id="main">{body}</main>
 <footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Bharat Agentic-AI Hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
 <div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/?view=impact">Impact</a> · <a href="/#api">API</a>{tip_link}<br><a href="/?view=terms">Terms</a> · <a href="/?view=privacy">Privacy</a> · <a href="/?view=refund">Refunds</a> · <a href="/?view=contact">Contact</a></div></div></footer>
@@ -392,6 +449,34 @@ details.report .rpt-text{font-size:14px;line-height:1.45;min-height:230px;margin
 details.report .rpt-row .btn,#img-share,#dl{min-height:44px;display:inline-flex;align-items:center;justify-content:center;text-align:center}
 #img-share[hidden]{display:none}.result>div{min-width:0}details.report p.note{margin:8px 0}details.report{padding-bottom:6px}
 @media print{details.report{display:none}}
+"""
+# ======== SITE POLISH (phone layout): header rows, action grid, stacked tables, page-title h1. Later rules win over the ones above. ========
+CSS += """
+/* header: the brand and the theme toggle share row 1; the links are row 2 and scroll sideways on a phone (never a third row) */
+.nav .wrap{align-items:center}.logo{order:1;line-height:1.2}.nav nav{order:2}#theme{order:3;flex:none}
+h1.h2{font-size:clamp(28px,4vw,44px);line-height:1.55;letter-spacing:-.02em;margin:0 0 6px}
+/* result actions: WhatsApp first and solid, the rest outlined; two equal columns on a phone */
+.actions .btn{min-height:44px;display:inline-flex;align-items:center;justify-content:center;text-align:center;line-height:1.2}
+.actions .listen-note:empty{display:none}
+@media(max-width:560px){
+.nav .wrap{gap:0 10px;padding-top:3px;padding-bottom:3px;min-height:0}.logo{flex:1 1 0;min-width:0;height:36px;display:flex;align-items:center;font-size:22px;line-height:1;white-space:nowrap;overflow:hidden}
+#theme{order:2;width:36px;height:36px;margin-left:auto;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.nav nav{order:3;flex:0 0 100%;width:100%;margin:0;gap:2px;font-size:14px;flex-wrap:nowrap;white-space:nowrap;justify-content:flex-start;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.nav nav::-webkit-scrollbar{display:none}
+.nav nav a{flex:none;display:inline-flex;align-items:center;min-height:32px;padding:0 9px 0 0;margin-right:5px;border-bottom:0}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.actions .btn{padding:8px 4px;font-size:14px;width:100%;letter-spacing:-.01em}.actions .listen-note{grid-column:1/-1;margin:0}
+/* claims table: each row becomes a card (claim, then verdict, then sources); the real <table> stays for desktop and screen readers (roles are set in the markup) */
+table.stack,table.stack tbody,table.stack tr,table.stack td{display:block;width:100%}
+table.stack thead{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+table.stack tr{background:var(--card);border:1.5px solid var(--rule);border-radius:4px;padding:10px 12px;margin:0 0 10px}
+table.stack td{border:0;padding:3px 0;font-size:15px}
+table.stack td::before{content:attr(data-label);display:block;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);margin-bottom:1px}
+table.stack td:first-child::before{display:none}table.stack td:first-child{font-size:16px;font-weight:500;padding-bottom:6px}
+table.stack td[data-label=Verdict]{display:flex;align-items:center;gap:8px;padding:2px 0 6px}table.stack td[data-label=Verdict]::before{margin:0}
+table.stack td.note{padding-top:0}
+.result .bubble{max-width:none}
+}
 """
 JS += r"""
 /* ---- Report to PIB: copy button (ids prefixed rpt-) ---- */
@@ -455,8 +540,8 @@ def result_block(res: dict, chosen: bool = False) -> str:
         cites = "".join(fmt(x) for x in cs[:3]) or '<span class="note">No source found</span>'
         if len(cs) > 3:
             cites += f'<details><summary class="note">+{len(cs) - 3} more sources</summary>{"".join(fmt(x) for x in cs[3:])}</details>'
-        rows += (f'<tr><td>{esc(c["claim"]["text"])}<br><span class="note">{esc(c["claim"]["domain"])} · {esc(c["reason_code"].replace("_"," "))}</span></td>'
-                 f'<td><span class="tag {c["verdict"]}">{c["verdict"]}</span></td><td>{cites}</td></tr>')
+        rows += (f'<tr role="row"><td role="cell" data-label="Claim">{esc(c["claim"]["text"])}<br><span class="note">{esc(c["claim"]["domain"])} · {esc(c["reason_code"].replace("_"," "))}</span></td>'
+                 f'<td role="cell" data-label="Verdict"><span class="tag {c["verdict"]}">{c["verdict"]}</span></td><td role="cell" data-label="Citations">{cites}</td></tr>')
     card = esc(res["card"])
     softtip = ""
     if tip_config() and v in TIP_QUIPS:
@@ -487,25 +572,19 @@ def result_block(res: dict, chosen: bool = False) -> str:
     return f"""<div class="result" id="result"><div><div class="stamp big {v}">{LABEL['en'][v]}</div></div>
 <div><p class="kicker">Forward this card back to the group · reply language: {esc(LANG_NAME.get(res['language'], res['language'].upper()))}{' (your choice)' if chosen else ' (matched to the forward)'}</p>
 {cachednote}<div class="bubble"><span id="cardtext">{card}</span><small>Sach ✓✓</small></div>
-<div class="row"><button class="btn ghost" id="copy" type="button">Copy card</button><a class="btn" href="{esc(wa)}" rel="noopener">Share on WhatsApp</a>
-<button class="btn ghost" id="dl" type="button">Download image</button><button class="btn" id="img-share" type="button" hidden>Share image</button>{listen_buttons(res.get('language', 'en'), bool(res.get('card_en')))}</div>
+<div class="row actions" role="group" aria-label="Share this verdict"><a class="btn wa" href="{esc(wa)}" rel="noopener">Share on WhatsApp</a><button class="btn ghost" id="copy" type="button">Copy card</button>
+<button class="btn ghost" id="dl" type="button">Download image</button><button class="btn ghost" id="img-share" type="button" hidden>Share image</button>{listen_buttons(res.get('language', 'en'), bool(res.get('card_en')))}</div>
 {signs_html(res.get("warning_signs"), res.get("language", "en"))}{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
-<div style="overflow-x:auto"><table><thead><tr><th>Claim</th><th>Verdict</th><th>Citations</th></tr></thead><tbody>{rows}</tbody></table></div>
+<div style="overflow-x:auto"><table class="stack" role="table"><thead role="rowgroup"><tr role="row"><th role="columnheader">Claim</th><th role="columnheader">Verdict</th><th role="columnheader">Citations</th></tr></thead><tbody role="rowgroup">{rows}</tbody></table></div>
 {tr}<p class="note" style="margin-top:14px">Checked {esc(res['checked_at'][:16].replace('T',' '))} UTC. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
 
 
-def home(result: str = "", prefill: str = "", error: str = "", reply: str = "auto") -> bytes:
+def home(result: str = "", prefill: str = "", error: str = "", reply: str = "auto", noindex: bool = False) -> bytes:
     chips = "".join(f'<button type="button" class="chip" data-text="{esc(e["text"])}"><b class="{e["verdict"]}">{e["verdict"]}</b>{esc(e["title"])} · {e["lang"]}</button>' for e in EXAMPLES)
     opts = "".join(f'<option value="{v}"{" selected" if v == reply else ""}>{esc(t)}</option>' for v, t in
                    (("auto", "Auto (match the forward)"), ("en", "English"), ("hi", "हिन्दी"), ("te", "తెలుగు"), ("tl", "Tinglish")))
-    ev = eval_summary()
-    stats = ""
-    if ev:
-        stats = f"""<div class="grid4" style="margin-bottom:22px">
-<div class="card"><div class="num g">{ev['correct']}/{ev['n']}</div><p>claims judged exactly right</p></div>
-<div class="card"><div class="num g">{ev['overclaimed_false']}</div><p>overclaimed FALSE: the failure we refuse to ship</p></div>
-<div class="card"><div class="num g">{ev['abstained_wrong']}</div><p>wrong TRUE or FALSE verdicts</p></div>
-<div class="card"><div class="num" style="color:var(--ink)">{ev['abstained']}</div><p>times it said “unverified” instead of guessing</p></div></div>"""
+    ev = eval_display()                      # None = "Evaluation pending" (old format, degraded or missing file)
+    stats = eval_stats_html(ev)
     cfg = tip_config()
     faq_items = list(FAQ) + ([("Do tips change what Sach says?", "Never. Verdicts come only from PIB and official sources and the rules above. Tips are optional, go straight from your UPI app to the person who runs Sach, and Sach never sees who paid or how much. Your UPI app will show you who you are paying before you confirm, as it does for every UPI payment.")] if cfg else [])
     faq = "".join(f"<details><summary>{esc(q)}</summary><p>{esc(a)}</p></details>" for q, a in faq_items)
@@ -596,23 +675,23 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 
 <section id="evidence"><div class="wrap"><h2>Does it actually work?</h2><p class="sub">We tested it on real PIB debunks, real government announcements, and invented claims that should be left unverified. The misses are published too.</p>
 {stats}<div class="honest"><b>Read this before trusting the numbers</b><ul>
-<li>It is a small set ({ev.get('n','?')} claims), and two labels were corrected after we looked at the evidence. Treat it as indicative.</li>
-<li>These numbers were measured before our latest safety hardening. A fresh run is waiting for the free AI quota to reset; when the AI checker is unavailable the site says so (“Limited mode”) and reports only clear PIB debunks.</li>
+<li>It is a small set{f" ({ev['n']} claims)" if ev else ""}. Treat any number as indicative, not as a guarantee.</li>
+<li>When the AI checker is unavailable the site says so (“Limited mode”) and reports only clear PIB debunks.</li>
 <li>Many FALSE items are paraphrases of PIB debunk titles, so recall there is optimistic.</li>
 <li>Results move by a claim or two between runs, because live search returns different pages.</li>
 <li>Hindi and Telugu verdict wording is human-written but still awaiting native-speaker review.</li></ul>
-<p class="note" style="margin:10px 0 0"><a href="{REPO}/blob/main/docs/evaluation.md" rel="noopener">Full table with every claim and failure →</a></p></div></div></section>
+<p class="note" style="margin:10px 0 0"><a href="{EVAL_DOC}" rel="noopener">Full table with every claim and failure →</a></p></div></div></section>
 
 {tip_section}<section id="faq"><div class="wrap"><h2>Questions</h2><p class="sub">Short, honest answers.</p>{faq}</div></section>
 
 <section id="api"><div class="wrap"><h2>Use it from code</h2><p class="sub">The same checker is available as JSON. Be kind: each call reads live sources and usually takes 10 to 30 seconds.</p>
-<pre class="code">curl -s -X POST "https://sach-check-lilac.vercel.app/?format=json" \\
+<pre class="code">curl -s -X POST "{esc(site_url())}/?format=json" \\
   --data-urlencode "text=Government is giving Rs 1000 under Corona Sahayata Yojana" \\
   --data-urlencode "lang=te"      # optional reply language: auto (default), en, hi, te, tl
 
 → {{"verdict":"FALSE","language":"en","card":"…","claims":[{{"verdict":"FALSE","citations":[{{"url":"https://pib.gov.in/…"}}]}}]}}</pre>
 <div class="row"><a class="btn ghost" href="/?view=ledger">Open the public ledger →</a><a class="btn ghost" href="{REPO}" rel="noopener">Source on GitHub →</a></div></div></section>"""
-    return layout(body)
+    return layout(body, path="/", noindex=bool(result or prefill or error or noindex))
 
 
 def pay_page(amount: int | None = None, bad_amount: bool = False, alt: bool = False) -> bytes:
@@ -643,7 +722,7 @@ def pay_page(amount: int | None = None, bad_amount: bool = False, alt: bool = Fa
 <p class="note" style="margin:0;max-width:22em">Scan this with any UPI app{f" (it already has {esc(shown)} filled in)" if amount else " and enter any amount"}. Tips are optional and never change a verdict.</p></div>
 <p style="margin-top:24px"><a class="btn ghost" href="/#tip" style="text-decoration:none">← Back to the tip jar</a></p>
 <p class="logonote">App names and logos belong to their owners (Google LLC, PayTM Mobile Solutions, NPCI, PhonePe) and are shown only to help you recognise the app. Sach is not affiliated with them. The icons are the apps own App Store icons; the "other app" icon is a generic glyph.</p></div></div>"""
-    return layout(body, "Chip in — Sach")
+    return layout(body, "Chip in — Sach", path="/?view=pay", noindex=True)
 
 
 def ledger_page() -> bytes:
@@ -652,14 +731,14 @@ def ledger_page() -> bytes:
     for r in data:
         cites = "".join(f'<div class="cite"><a href="{esc(c["url"])}" rel="noopener">{esc(c["source"])}</a> <span>· {esc(c["tier"].replace("_"," "))} · {esc(c["date_accessed"])}</span></div>'
                         for c in r["citations"]) or '<span class="note">none found</span>'
-        rows += (f'<tr data-v="{esc(r["verdict"])}"><td>{esc(r["claim"])}</td><td><span class="tag {esc(r["verdict"])}">{esc(r["verdict"])}</span></td>'
-                 f'<td>{cites}</td><td class="note">{esc(r["checked_at"][:10])}</td></tr>')
+        rows += (f'<tr role="row" data-v="{esc(r["verdict"])}"><td role="cell" data-label="Claim">{esc(r["claim"])}</td><td role="cell" data-label="Verdict"><span class="tag {esc(r["verdict"])}">{esc(r["verdict"])}</span></td>'
+                 f'<td role="cell" data-label="Citations">{cites}</td><td role="cell" data-label="Checked" class="note">{esc(r["checked_at"][:10])}</td></tr>')
     if not rows:
         rows = '<tr data-v="NONE"><td colspan="4" class="note">No claims checked yet.</td></tr>'
     btns = "".join(f'<button type="button" data-v="{v}" aria-pressed="{"true" if v=="ALL" else "false"}">{v.title() if v!="ALL" else "All"}</button>'
                    for v in ("ALL", "FALSE", "TRUE", "MISLEADING", "UNVERIFIED"))
-    body = f"""<div class="wrap"><section style="border:0"><p class="kicker">Public record</p><h2>Evidence ledger</h2>
+    body = f"""<div class="wrap"><section style="border:0"><p class="kicker">Public record</p><h1 class="h2">Evidence ledger</h1>
 <p class="sub">{len(data)} checked claims. Each row lists the sources we actually fetched, with the date we accessed them. On this free deployment the live part of the ledger resets when the server restarts; the repository holds the permanent record.</p>
 <div class="filters" role="group" aria-label="Filter by verdict">{btns}<input id="q" type="search" placeholder="Search claims or sources…" aria-label="Search the ledger"><span class="note" id="shown"></span></div>
-<div style="overflow-x:auto"><table><thead><tr><th>Claim</th><th>Verdict</th><th>Citations</th><th>Checked</th></tr></thead><tbody>{rows}<tr id="empty" style="display:none"><td colspan="4" class="note">No claims match your filter.</td></tr></tbody></table></div></section></div>"""
-    return layout(body, "Evidence ledger — Sach")
+<div style="overflow-x:auto"><table class="stack" role="table"><thead role="rowgroup"><tr role="row"><th role="columnheader">Claim</th><th role="columnheader">Verdict</th><th role="columnheader">Citations</th><th role="columnheader">Checked</th></tr></thead><tbody role="rowgroup">{rows}<tr id="empty" style="display:none"><td colspan="4" class="note">No claims match your filter.</td></tr></tbody></table></div></section></div>"""
+    return layout(body, "Evidence ledger — Sach", path="/?view=ledger")

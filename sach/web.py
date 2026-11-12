@@ -1,6 +1,6 @@
 """Single-container web surface (stdlib only). Run: python -m sach.web"""
 from __future__ import annotations
-import json, os, time, threading
+import html, json, os, time, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 from .llm import get_llm
@@ -11,6 +11,7 @@ from . import razorpay_pay as rzp
 from . import telegram_bot as tg
 from . import ocr
 from . import pwa
+from . import siteurl
 from .legal import PAGES as LEGAL_PAGES, legal_page
 from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_png, tip_qr_svg, upi_link
 
@@ -63,6 +64,26 @@ class Handler(BaseHTTPRequestHandler):
         self.do_GET()
 
     def do_GET(self):
+        siteurl.bind(self)                                 # the request's Host header, for canonical links and report text
+        try:
+            return self._get()
+        finally:
+            siteurl.unbind()
+
+    def _robots(self):
+        site = siteurl.site_url(self)
+        body = ("User-agent: *\nAllow: /\nDisallow: /?api=\nDisallow: /?go=\nDisallow: /?view=pay\nDisallow: /?view=tipqr\n"
+                f"Sitemap: {site}/sitemap.xml\n")
+        self._send(body.encode(), ctype="text/plain; charset=utf-8")
+
+    def _sitemap(self):
+        site = siteurl.site_url(self)
+        paths = ["/", "/impact", "/?view=ledger"] + [f"/?view={slug}" for slug in LEGAL_PAGES]
+        urls = "".join(f"<url><loc>{html.escape(site + p)}</loc></url>" for p in paths)
+        body = f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>\n'
+        self._send(body.encode(), ctype="application/xml; charset=utf-8")
+
+    def _get(self):
         u = urlparse(self.path)
         qs = parse_qs(u.query)
         view = qs.get("view", [""])[0]
@@ -108,6 +129,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.wfile.write(svg)
         if pwa.serve(self, u.path, qs):                      # manifest, icons, service worker, WhatsApp share target
             return
+        if view == "robots" or u.path == "/robots.txt":
+            return self._robots()
+        if view == "sitemap" or u.path == "/sitemap.xml":
+            return self._sitemap()
         if view in LEGAL_PAGES:                              # terms / privacy / refund / contact
             return self._send(legal_page(view))
         if view == "impact" or u.path == "/impact":          # live impact page (+ JSON); query form survives Vercel's rewrite
@@ -127,7 +152,8 @@ class Handler(BaseHTTPRequestHandler):
         elif view == "health" or u.path == "/healthz":
             self._send(b"ok", ctype="text/plain")
         else:
-            self._send(home())
+            # plain "/" (or the Vercel entry path) is the real home page; any other path or an unknown ?view= still shows home, but is not indexed
+            self._send(home(noindex=bool(view) or u.path not in ("", "/", "/api/index")))
 
     def _client_ip(self):
         return (self.headers.get("x-forwarded-for") or self.client_address[0]).split(",")[0].strip()
@@ -211,6 +237,13 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"text": text, "chars": len(text)})
 
     def do_POST(self):
+        siteurl.bind(self)
+        try:
+            return self._post()
+        finally:
+            siteurl.unbind()
+
+    def _post(self):
         api = parse_qs(urlparse(self.path).query).get("api", [""])[0]
         if api == "tg-webhook":
             return self._tg_webhook()

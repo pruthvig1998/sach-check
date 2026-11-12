@@ -172,24 +172,45 @@ UI = {
     "en": {"title": "Warning signs in this message",
            "intro": "These are patterns common in scams. They are not a verdict on the facts, and they never change the verdict above.",
            "advice": "Do not share OTPs or PINs. Do not click links you did not expect. Check on the official website by typing its address yourself.",
-           "more": "and {n} more"},
+           "more": "and {n} more", "count1": "1 warning sign", "countn": "{n} warning signs", "all": "Show all {n} signs"},
     "hi": {"title": "इस संदेश में चेतावनी के संकेत",  # NOT NATIVE-REVIEWED
            "intro": "ये ठगी में आम पैटर्न हैं। ये तथ्यों पर फ़ैसला नहीं हैं, और ऊपर के नतीजे को नहीं बदलते।",
            "advice": "OTP या PIN किसी को न बताएँ। अनजान लिंक न दबाएँ। सरकारी वेबसाइट का पता खुद टाइप करके जाँचें।",
-           "more": "और {n} संकेत"},
+           "more": "और {n} संकेत", "count1": "1 चेतावनी संकेत", "countn": "{n} चेतावनी संकेत", "all": "सभी {n} संकेत देखें"},
     "te": {"title": "ఈ సందేశంలో హెచ్చరిక సంకేతాలు",  # NOT NATIVE-REVIEWED
            "intro": "ఇవి మోసాల్లో సాధారణంగా కనిపించే పద్ధతులు. ఇవి వాస్తవాలపై తీర్పు కాదు, పై ఫలితాన్ని మార్చవు.",
            "advice": "OTP లేదా PIN ఎవరికీ చెప్పకండి. ఊహించని లింక్‌లను క్లిక్ చేయకండి. అధికారిక వెబ్‌సైట్ అడ్రస్‌ను మీరే టైప్ చేసి చూడండి.",
-           "more": "ఇంకా {n}"},
+           "more": "ఇంకా {n}", "count1": "1 హెచ్చరిక సంకేతం", "countn": "{n} హెచ్చరిక సంకేతాలు", "all": "మొత్తం {n} సంకేతాలు చూడండి"},
 }
+# A few words per sign for the one-line summary. NOT NATIVE-REVIEWED (hi, te).
+SHORT = {
+    "en": {"asks_secret": "asks for OTP or PIN", "upi_trap": "asks you to pay first", "claim_prize": "promises a prize",
+           "click_register": "pushes a link", "urgency_threat": "panic or deadline", "forward_chain": "chain forward",
+           "shortened_link": "hidden link", "apk_download": "app file (.apk)", "lookalike_domain": "suspicious link",
+           "impersonation": "fake official"},
+    "hi": {"asks_secret": "OTP या पिन माँगता है", "upi_trap": "पहले पैसे माँगता है", "claim_prize": "इनाम का लालच",
+           "click_register": "लिंक दबाने को कहता है", "urgency_threat": "डर या जल्दबाज़ी", "forward_chain": "आगे भेजने को कहता है",
+           "shortened_link": "छिपा हुआ लिंक", "apk_download": "ऐप फ़ाइल (.apk)", "lookalike_domain": "संदिग्ध लिंक",
+           "impersonation": "सरकारी होने का दिखावा"},
+    "te": {"asks_secret": "OTP లేదా పిన్ అడుగుతోంది", "upi_trap": "ముందు డబ్బు అడుగుతోంది", "claim_prize": "బహుమతి ఆశ",
+           "click_register": "లింక్ క్లిక్ చేయమంటోంది", "urgency_threat": "భయం లేదా తొందర", "forward_chain": "ఫార్వార్డ్ చేయమంటోంది",
+           "shortened_link": "దాచిన లింక్", "apk_download": "యాప్ ఫైల్ (.apk)", "lookalike_domain": "అనుమానాస్పద లింక్",
+           "impersonation": "అధికారికం అని నటన"},
+}
+VISIBLE = 2        # signs shown open; the rest sit inside a <details>
 
 CSS = """
-.signs{margin:20px 0 4px;padding:14px 16px;border:2px solid var(--mis);border-left-width:8px;border-radius:3px;background:color-mix(in srgb,var(--mis) 9%,var(--card))}
-.signs h3{font-family:var(--serif);margin:0 0 4px;font-size:21px}.signs .sg-intro,.signs .sg-adv{font-size:15px;margin:4px 0 10px;color:var(--mute)}
-.signs ul{list-style:none;margin:0;padding:0}.signs li{padding:10px 0;border-top:1px solid color-mix(in srgb,var(--ink) 20%,transparent);overflow-wrap:anywhere}
-.signs li b{display:block}.signs .sg-hi{font-family:var(--mono);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--mis);margin-right:6px}
-.signs .sg-why{display:block;font-size:15px}.signs q{display:block;margin-top:4px;font-family:var(--mono);font-size:13px;color:var(--mute)}
-.signs .sg-more{font-size:14px;color:var(--mute);margin:8px 0 0}.signs .sg-adv{margin:10px 0 0;color:var(--ink);font-weight:600}
+.signs{margin:16px 0 4px;padding:10px 14px 12px;border:2px solid var(--mis);border-left-width:8px;border-radius:3px;background:color-mix(in srgb,var(--mis) 9%,var(--card))}
+.signs h3{font-family:var(--serif);margin:0;font-size:19px;line-height:1.25}
+.signs .sg-sum{margin:2px 0 4px;font-size:15px;font-weight:600;overflow-wrap:anywhere}
+.signs .sg-intro,.signs .sg-adv{font-size:14px;line-height:1.45;margin:6px 0 0;color:var(--mute)}
+.signs ul{list-style:none;margin:0;padding:0}.signs li{padding:8px 0;border-top:1px solid color-mix(in srgb,var(--ink) 20%,transparent);overflow-wrap:anywhere}
+.signs li b{display:block;font-size:16px;line-height:1.35}.signs .sg-hi{font-family:var(--mono);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--mis);margin-right:6px}
+.signs .sg-why{display:block;font-size:14.5px;line-height:1.45}.signs q{display:block;margin-top:3px;font-family:var(--mono);font-size:12.5px;color:var(--mute)}
+.signs details.sg-all{border:0;padding:0;margin:0}.signs details.sg-all summary{display:flex;align-items:center;min-height:44px;font-size:15px;font-weight:600;border-top:1px solid color-mix(in srgb,var(--ink) 20%,transparent)}
+.signs .sg-adv{margin:8px 0 0;color:var(--ink);font-weight:600}
+@media(max-width:560px){.signs{margin:12px 0 2px;padding:8px 12px 10px;border-left-width:6px}.signs h3{font-size:16.5px}.signs .sg-sum{font-size:14px;line-height:1.35}.signs li{padding:5px 0}
+.signs li b{font-size:14.5px;line-height:1.3}.signs .sg-why{font-size:13.5px;line-height:1.35}.signs q{font-size:12px;margin-top:2px}.signs .sg-intro,.signs .sg-adv{font-size:12.5px;line-height:1.4;margin-top:5px}}
 """
 
 
@@ -294,8 +315,29 @@ def analyze(text) -> list:
     return out
 
 
+def _item(s: dict, tx: dict) -> str:
+    sid = s.get("id")
+    title, why = tx.get(sid) or TEXT["en"].get(sid) or (s.get("title", ""), s.get("why", ""))
+    ev = f"<q>{html.escape(str(s.get('evidence', '')))}</q>" if s.get("evidence") else ""
+    return f'<li><b>{html.escape(str(title))}</b><span class="sg-why">{html.escape(str(why))}</span>{ev}</li>'
+
+
+def _summary(ordered: list, lang: str) -> str:
+    """'3 warning signs: asks for OTP or PIN, suspicious link, chain forward' (at most MAX_SHOWN labels, then 'and N more')."""
+    ui, short = UI[lang], SHORT[lang]
+    n = len(ordered)
+    head = ui["count1"] if n == 1 else ui["countn"].format(n=n)
+    labels = []
+    for s in ordered[:MAX_SHOWN]:
+        sid = s.get("id")
+        labels.append(short.get(sid) or SHORT["en"].get(sid) or str(s.get("title", "")))
+    tail = ui["more"].format(n=n - MAX_SHOWN) if n > MAX_SHOWN else ""
+    return f"{head}: " + ", ".join(labels) + (f" {tail}" if tail else "")
+
+
 def signs_html(signs, lang: str = "en") -> str:
-    """The advisory box. Empty string when there is nothing to show. Everything user-controlled is escaped."""
+    """The advisory box, compact: title, a one-line summary, the first two signs open and the rest inside a native <details>.
+    Empty string when there is nothing to show. Everything user-controlled is escaped."""
     if not signs:
         return ""
     lang = lang if lang in UI else "en"
@@ -303,12 +345,11 @@ def signs_html(signs, lang: str = "en") -> str:
     if not ordered:
         return ""
     ui, tx = UI[lang], TEXT[lang]
-    items = ""
-    for s in ordered[:MAX_SHOWN]:
-        sid = s.get("id")
-        title, why = tx.get(sid) or TEXT["en"].get(sid) or (s.get("title", ""), s.get("why", ""))
-        ev = f"<q>{html.escape(str(s.get('evidence', '')))}</q>" if s.get("evidence") else ""
-        items += f'<li><b>{html.escape(str(title))}</b><span class="sg-why">{html.escape(str(why))}</span>{ev}</li>'
-    more = f'<p class="sg-more">{html.escape(ui["more"].format(n=len(ordered) - MAX_SHOWN))}</p>' if len(ordered) > MAX_SHOWN else ""
+    first = "".join(_item(s, tx) for s in ordered[:VISIBLE])
+    rest = ""
+    if len(ordered) > VISIBLE:
+        rest = (f'<details class="sg-all"><summary>{html.escape(ui["all"].format(n=len(ordered)))}</summary>'
+                f'<ul>{"".join(_item(s, tx) for s in ordered[VISIBLE:])}</ul></details>')
     return (f'<section class="signs" id="signs" aria-labelledby="signs-h"><h3 id="signs-h">{html.escape(ui["title"])}</h3>'
-            f'<p class="sg-intro">{html.escape(ui["intro"])}</p><ul>{items}</ul>{more}<p class="sg-adv">{html.escape(ui["advice"])}</p></section>')
+            f'<p class="sg-sum">{html.escape(_summary(ordered, lang))}</p><ul>{first}</ul>{rest}'
+            f'<p class="sg-intro">{html.escape(ui["intro"])}</p><p class="sg-adv">{html.escape(ui["advice"])}</p></section>')

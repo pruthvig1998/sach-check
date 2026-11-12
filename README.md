@@ -2,7 +2,7 @@
 
 **Got a forward? Get the receipts.** Paste a viral WhatsApp-style message in English, Hindi, Telugu, Hinglish or Tinglish (Telugu in English letters). Sach splits it into claims, checks each against PIB and official sources, and returns a **cited verdict card** in the forward's own language (plus what it means in English), ready to paste back into the group. Every check is logged to a public evidence ledger.
 
-- **Live:** https://sach-check-lilac.vercel.app
+- **Live:** https://sach-check-lilac.vercel.app (an example: the site's address is configurable, see `SACH_SITE_URL` below)
 - **Track:** Governance · **License:** MIT · **Cost to run:** ₹0 (Vercel free, Gemini free tier, Brave free plan)
 
 ## Why it exists
@@ -85,6 +85,8 @@ python -m sach.web             # http://localhost:8080
 Optional env (copy `.env.example` to `.env`): AI judge keys, tried in order with **automatic failover**: `GEMINI_API_KEY` (Google AI Studio free tier; several keys may be comma-separated), then `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `MISTRAL_API_KEY` (free tiers), then `ANTHROPIC_API_KEY` (paid, last resort). A key that runs out of quota is skipped for 5 minutes. `BRAVE_API_KEY` enables live search, and `TAVILY_API_KEY` adds a second provider that takes over when Brave fails (Brave answers HTTP 402 once its prepaid credit runs out). Tavily's free plan gives 1,000 credits a month with no card ([source](https://docs.tavily.com/documentation/api-credits)); a basic search costs 1 credit. `SACH_SEARCH_ORDER=tavily,brave` changes the order. A provider that answers 402/401/403 is skipped for 6 hours, one that answers 429 for its `Retry-After` (5 to 600 s); timeouts and 5xx just move on to the next provider. **Search is never lost silently:** every result carries `search_status` (`ok`, `partial`, `down`, or `off` when no search key is set; `degraded` still means only "AI judge unavailable"). When search was `down` or `partial` the page says so, the result is not cached, `scripts/run_eval.py` marks the run as fallback and does not overwrite the headline numbers, and `scripts/red_team.py` prints the status. Run `python scripts/check_search.py` to test each search key with one small query and `python scripts/check_llm.py` to verify every key and model with a live call and a quality probe. With no keys it still runs in a conservative heuristic mode: high precision, low recall, mostly UNVERIFIED.
 
 Deploy: `vercel --prod` (entry point `api/index.py`, config in `vercel.json`); set the two keys as Vercel environment variables.
+
+**Site address.** Set `SACH_SITE_URL` (for example `https://sach.example.org`: https only, host only, no path or query; a trailing slash is ignored) when you move to a custom domain. It is used for canonical links, share previews (`og:` and Twitter tags), `robots.txt`, `sitemap.xml`, the report text and the scripts' default URL. Unset, Sach uses the request's own `Host` header, and falls back to `https://sach-check-lilac.vercel.app`. The old `*.vercel.app` address keeps working, so set `SACH_SITE_URL` to make the custom domain the canonical one.
 
 ## Layout
 ```
