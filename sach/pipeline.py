@@ -9,6 +9,7 @@ from .lang import detect_language
 from . import cache
 from .models import Claim, ClaimVerdict, UNVERIFIED, build_trace, overall_rule
 from .retrieve import canonical_key
+from .search import combine_status, DOWN
 from .stance import judge
 from .verdict import decide, aggregate
 
@@ -28,6 +29,12 @@ def _run_with_deadline(fn, secs, default):
     finally:
         ex.shutdown(wait=False)      # abandon a hung thread instead of blocking on it
 
+def _search_one(r, q):
+    """-> (evidence, SearchRun or None). Retrievers that can report web-search health expose search_with_status; the
+    status object is created per call, so parallel claims never share one."""
+    fn = getattr(r, "search_with_status", None)
+    return fn(q) if fn else (r.search(q), None)
+
 def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float) -> ClaimVerdict:
     left = lambda cap: max(0.3, min(cap, deadline - time.monotonic()))
     q = claim.text                                      # text used for searching + judging
@@ -35,13 +42,19 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float) -> C
         q = _run_with_deadline(lambda: llm.translate(claim.text), left(15), "") or claim.text   # PIB pages are mostly English
     evidence = []
     rex = ThreadPoolExecutor(max_workers=max(1, len(retrievers)))      # PIB and web search in parallel, not one after the other
-    rfuts = [rex.submit(r.search, q) for r in retrievers]
+    rfuts = [rex.submit(_search_one, r, q) for r in retrievers]
     wait(rfuts, timeout=left(RETRIEVE_DEADLINE_S))
-    for f in rfuts:                                     # keep the retrievers' priority order (PIB first)
+    sstat, sprov = [], []
+    for r, f in zip(retrievers, rfuts):                 # keep the retrievers' priority order (PIB first)
+        reports = hasattr(r, "search_with_status")
         try:
-            evidence += f.result(timeout=0) if f.done() else []
+            ev, run = f.result(timeout=0)               # not done yet -> TimeoutError
+            evidence += ev
+            if run is not None:
+                sstat.append(run.status); sprov += run.providers
         except Exception:
-            pass                                        # a failed or hung retriever contributes nothing; never a guess
+            if reports:
+                sstat.append(DOWN)                      # a hung or crashed web search is a lost search, said out loud
     rex.shutdown(wait=False)
     seen, uniq = set(), []
     for e in evidence:                                  # the same PIB release often arrives under several URLs
@@ -61,6 +74,7 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float) -> C
     v = decide(claim, evidence)
     v.english = q if q != claim.text else ""
     v.trace = build_trace(q, evidence, v.reason_code)      # every judged source, cited or not
+    v.search_status, v.search_provider = combine_status(sstat), ",".join(dict.fromkeys(sprov))   # not in to_dict(): read by check_forward
     return v
 
 def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | None = None,
@@ -87,6 +101,7 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
         if out_lang != "en":
             out["card_en"] = f"{NOCLAIM_LABEL['en']}\n{NOCLAIM['en']}"
         out["trace"] = {"claims_extracted": 0, "overall_rule": overall_rule([]), "degraded": False}
+        out["search_status"], out["search_provider"] = "ok", ""      # nothing was searched, so nothing failed
         if log:
             ledger.record_check(out, cached=False)
         return out
@@ -109,6 +124,8 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
            "claims": [v.to_dict() for v in results], "checked_at": ledger.now()}
     if out_lang != "en":
         out["card_en"] = render_card(overall, "en", cites)       # same verdict and citations, in English
+    out["search_status"] = combine_status([getattr(v, "search_status", None) for v in results])   # ok | partial | down | off
+    out["search_provider"] = ",".join(dict.fromkeys(p for v in results for p in getattr(v, "search_provider", "").split(",") if p))
     out["degraded"] = llm is None or getattr(llm, "failures", 0) > fails_before   # AI judge missing/at capacity: clear PIB debunks only
     out["trace"] = {"claims_extracted": len(claims), "overall_rule": overall_rule(results), "degraded": out["degraded"]}
     if log:

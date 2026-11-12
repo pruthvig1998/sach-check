@@ -19,7 +19,7 @@ def key(text: str, reply_lang: str | None) -> str:
     return "cache:" + hashlib.sha256((normalise(text) + "\x00" + rl).encode("utf-8")).hexdigest()
 
 def storable(out: dict) -> bool:
-    if out.get("degraded") or out.get("no_claims"):
+    if out.get("degraded") or out.get("no_claims") or out.get("search_status") in ("down", "partial"):   # an outage must not be cached as an answer
         return False
     return not any(c.get("reason_code") == "timed_out" for c in out.get("claims", []))
 

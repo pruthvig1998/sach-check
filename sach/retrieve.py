@@ -66,41 +66,29 @@ def _page_text(html: str):
     return title, re.sub(r"\s+", " ", s.get_text(" ", strip=True))[:20000]
 
 import threading, time as _time
-_brave_lock = threading.Lock()
-_brave_last = [0.0]
-BRAVE_MIN_INTERVAL_S = 1.1     # Brave free plan: ~1 request/second, shared by all concurrent claims
-
-def _brave_throttle():
-    with _brave_lock:
-        wait = BRAVE_MIN_INTERVAL_S - (_time.monotonic() - _brave_last[0])
-        if wait > 0:
-            _time.sleep(wait)
-        _brave_last[0] = _time.monotonic()
+from .search import (SearchChain, SearchRun, BRAVE_MIN_INTERVAL_S, _brave_last, _brave_throttle)   # noqa: F401 (re-exported: older tests patch them here)
 
 class BraveRetriever:
-    """Optional live web search (needs BRAVE_API_KEY). Official domains first, then fact-checkers."""
+    """Optional live web search (needs BRAVE_API_KEY and/or TAVILY_API_KEY; see sach/search.py for failover). Official
+    domains first, then fact-checkers.
+
+    Search status: `search_with_status(claim)` returns (evidence, SearchRun). The SearchRun is created per call and
+    reached by `_search` through a thread-local (`_tls`), so claims running in parallel threads on one shared retriever
+    never see each other's status. `search(claim)` keeps the plain list interface. The pipeline prefers
+    `search_with_status`. A fake that overrides `_search` simply records nothing (status ok)."""
     OFFICIAL_Q = ("(site:gov.in OR site:nic.in OR site:who.int OR site:rbi.org.in OR site:mygov.in OR site:sansad.in "
                   "OR site:bank.in OR site:licindia.in)")
     # whole-site fact-checkers plus newsmeter (its fact-check section); path-limited outlets are filtered after the search by is_factchecker
     FC_Q = "(" + " OR ".join(f"site:{d}" for d in (*FACTCHECKER_HOSTS, "newsmeter.in")) + ")"
 
-    def __init__(self, key=None, per_query=3):
+    def __init__(self, key=None, per_query=3, chain=None):
         self.key = key or os.environ.get("BRAVE_API_KEY")
+        self.chain = chain or SearchChain.from_env(brave_key=self.key)
         self.per_query = per_query
+        self._tls = threading.local()
 
     def _search(self, q, count=8):
-        import urllib.request
-        url = "https://api.search.brave.com/res/v1/web/search?" + urllib.parse.urlencode({"q": q, "count": count})
-        req = urllib.request.Request(url, headers={"X-Subscription-Token": self.key, "Accept": "application/json", "User-Agent": UA})
-        for attempt in (0, 1):
-            _brave_throttle()
-            try:
-                with urllib.request.urlopen(req, timeout=20) as r:
-                    return [x["url"] for x in json.load(r).get("web", {}).get("results", [])]
-            except urllib.error.HTTPError as e:
-                if e.code == 429 and attempt == 0:
-                    _time.sleep(1.5); continue        # rate limited: back off once
-                raise
+        return self.chain.search(q, count, run=getattr(self._tls, "run", None))
 
     @staticmethod
     def _short(claim: str, n: int = 14) -> str:
@@ -140,10 +128,21 @@ class BraveRetriever:
             return []
 
     def search(self, claim: str) -> list[Evidence]:
-        """PIB first, then the wider official pool (gov.in, nic.in, WHO, RBI, MyGov, Parliament); fact-checkers only if
-        nothing authoritative was found (they can never decide a verdict, so skip the extra query otherwise)."""
-        if not self.key:
-            return []
+        return self.search_with_status(claim)[0]
+
+    def search_with_status(self, claim: str):
+        """-> (evidence, SearchRun). PIB first, then the wider official pool (gov.in, nic.in, WHO, RBI, MyGov, Parliament);
+        fact-checkers only if nothing authoritative was found (they can never decide a verdict, so skip the extra query)."""
+        run = self.chain.new_run()
+        if not self.chain.configured:
+            return [], run                                   # status off: no search key is a deliberate configuration
+        self._tls.run = run
+        try:
+            return self._search_claim(claim), run
+        finally:
+            self._tls.run = None
+
+    def _search_claim(self, claim: str) -> list[Evidence]:
         short, kw = self._short(claim), self._keywords(claim)
         is_pib = lambda u: (urllib.parse.urlparse(u).hostname or "").endswith("pib.gov.in")
         out, seen = [], set()
@@ -175,8 +174,8 @@ class BraveRetriever:
 
 def default_retrievers():
     r = [PibRetriever()]
-    if os.environ.get("BRAVE_API_KEY"):
-        r.append(BraveRetriever())
+    if os.environ.get("BRAVE_API_KEY") or os.environ.get("TAVILY_API_KEY"):
+        r.append(BraveRetriever())              # web search: Brave, then Tavily (sach/search.py)
     if os.environ.get("GOOGLE_FACTCHECK_API_KEY"):
         from .factcheck_api import FactCheckToolsRetriever
         r.append(FactCheckToolsRetriever())     # secondary tier only; one HTTPS call, 6 s cap

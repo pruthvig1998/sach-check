@@ -35,7 +35,7 @@ for i, c in enumerate(cases, 1):
     except Exception as e:        # a crash is reported, never counted as a pass
         out, verdict, err = {"claims": []}, "ERROR", f"{type(e).__name__}: {e}"
     status = "FAIL" if verdict in c["must_not"] else ("UNEXPECTED" if verdict not in c["acceptable"] else "PASS")
-    res.append({**c, "got": verdict, "status": status, "err": err, "degraded": bool(out.get("degraded")),
+    res.append({**c, "got": verdict, "status": status, "err": err, "degraded": bool(out.get("degraded")), "search_status": out.get("search_status", "off"),
                 "reasons": [v["reason_code"] for v in out["claims"]],
                 "cites": [x["url"] for v in out["claims"] for x in v["citations"]]})
     print(verdict, status, flush=True)
@@ -50,6 +50,11 @@ elif failed:
     mode = f"DEGRADED: the AI judge failed on {failed} source judgements (quota/outage), so those sources fell back to the safe PIB-debunk-only check. Not a full-LLM measurement."
 else:
     mode = "FULL LLM: AI stance judge with code-level validation and second-opinion consensus"
+sfail = sum(r["search_status"] in ("down", "partial") for r in res)
+if sfail:
+    mode += f" WEB SEARCH FAILED for {sfail} of {n} cases (out of credits or outage): those cases only had the built-in PIB list, so this is not a full measurement."
+else:
+    mode += " Web search: " + ("off (no search key)" if all(r["search_status"] == "off" for r in res) else "ok") + "."
 try:
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=root).stdout.strip() or "unknown"
 except Exception:

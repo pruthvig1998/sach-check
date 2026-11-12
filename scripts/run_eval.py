@@ -112,7 +112,7 @@ def summarize(res):
 # ---------- checkpoint ----------
 def load_checkpoint(key):
     """Finished results for this (commit, eval-set hash, dirty) key, or a fresh state."""
-    fresh = {"key": key, "results": {}, "llm_failures": 0, "no_llm": False}
+    fresh = {"key": key, "results": {}, "llm_failures": 0, "search_failures": 0, "no_llm": False}
     try:
         c = json.load(open(CHECKPOINT, encoding="utf-8"))
         if c.get("key") == key:
@@ -143,6 +143,8 @@ def run(rows, ret, llm, ckpt, log=False, out=print):
         ckpt["results"][r["claim"]] = {"got": res["verdict"], "reasons": [v["reason_code"] for v in res["claims"]],
                                        "cites": [c["url"] for v in res["claims"] for c in v["citations"]]}
         ckpt["llm_failures"] = base + max(0, getattr(llm, "failures", 0) - start_fail)
+        if res.get("search_status") in ("down", "partial"):
+            ckpt["search_failures"] = ckpt.get("search_failures", 0) + 1       # web search lost for this claim: not a full run
         save_checkpoint(ckpt)
         out(f"[{i}/{len(rows)}] {r['label']:10} -> {ckpt['results'][r['claim']]['got']}")
     return [{**r, **ckpt["results"][r["claim"]]} for r in rows if r["claim"] in ckpt["results"]]
@@ -263,17 +265,20 @@ def main(argv=None):
         return 0
     ret, llm = default_retrievers(), get_llm()
     key = {"commit": commit, "eval_hash": eval_hash(rows), "dirty": dirty}
-    ckpt = load_checkpoint(key) if a.resume else {"key": key, "results": {}, "llm_failures": 0, "no_llm": False}
+    ckpt = load_checkpoint(key) if a.resume else {"key": key, "results": {}, "llm_failures": 0, "search_failures": 0, "no_llm": False}
     judges = [f"{n} ({s})" for n, s in llm.describe()] if llm is not None and hasattr(llm, "describe") else ([] if llm is None else [type(llm).__name__])
     res = run(sel, ret, llm, ckpt, log=bool(os.environ.get("SACH_SEED_LEDGER")))
     failed = ckpt["llm_failures"]
-    degraded = ckpt["no_llm"] or failed > 0
+    sfailed = ckpt.get("search_failures", 0)
+    degraded = ckpt["no_llm"] or failed > 0 or sfailed > 0
     if ckpt["no_llm"]:
         mode = "FALLBACK (no LLM key): clear PIB debunks only, never TRUE or MISLEADING"
     elif failed:
         mode = f"FALLBACK: the LLM failed on {failed} source judgements (quota/outage), so those sources fell back to the safe PIB-debunk-only check"
     else:
         mode = "LLM stance (with second-opinion consensus where more than one judge is configured)"
+    if sfailed:
+        mode = (mode if (ckpt["no_llm"] or failed) else "FALLBACK") + f"; web search failed for {sfailed} claims (out of credits or outage), so those claims only had the built-in PIB list"
     meta = {"commit": commit, "dirty": dirty, "date": datetime.datetime.now(datetime.timezone.utc).date().isoformat(), "mode": mode,
             "retrievers": [type(x).__name__ for x in ret], "judges": judges}
     report = build_report(res, meta, degraded, partial, failed)
