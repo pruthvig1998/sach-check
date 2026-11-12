@@ -106,6 +106,12 @@ table{width:100%;border-collapse:collapse;font-size:15px}th{font-family:var(--mo
 td,th{padding:9px 10px 9px 0;border-bottom:1px solid color-mix(in srgb,var(--ink) 25%,transparent);vertical-align:top}
 .tag{font-family:var(--mono);font-size:12px;font-weight:500;padding:2px 8px;border-radius:3px;color:#fff;white-space:nowrap}
 .cite{font-family:var(--mono);font-size:13px;word-break:break-all}.cite span{color:var(--mute)}
+details.trace{margin-top:22px;border:1px solid color-mix(in srgb,var(--ink) 25%,transparent);border-radius:4px;padding:12px 14px;background:var(--card)}
+details.trace summary{font-size:16px}.trace .tc{margin:14px 0 0;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--ink) 25%,transparent);overflow-wrap:anywhere}
+.trace ul{list-style:none;margin:8px 0;padding:0}.trace li{margin:0 0 10px;font-size:14px;overflow-wrap:anywhere;word-break:break-word}
+.trace .st{font-family:var(--mono);font-size:11px;font-weight:500;padding:1px 6px;border-radius:3px;border:1px solid var(--mute);color:var(--mute);margin-right:6px;white-space:nowrap}
+.trace .st.CONFIRMS{border-color:var(--true);color:var(--true)}.trace .st.CONTRADICTS{border-color:var(--false);color:var(--false)}.trace .st.PARTLY{border-color:var(--mis);color:var(--mis)}
+.trace p{margin:6px 0;font-size:14px;max-width:none}.trace .rule{font-weight:600}
 .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
 @media(max-width:900px){.grid4{grid-template-columns:1fr 1fr}}@media(max-width:600px){.grid4{grid-template-columns:1fr}}
 .card{background:var(--card);border:2px solid var(--rule);padding:18px;border-radius:4px}
@@ -338,6 +344,39 @@ def stamp(v: str, cls="") -> str:
     return f'<span class="stamp {cls} {v}">{LABEL["en"][v]}</span>'
 
 
+_STANCE_WORD = {"confirms": "CONFIRMS", "contradicts": "CONTRADICTS", "mixed": "PARTLY", "none": "NEITHER"}
+_TIER_WORD = {"pib_debunk": "PIB fact-check", "official": "official source", "factchecker": "fact-checker (not official)"}
+
+
+def trace_block(res: dict) -> str:
+    """Expandable 'how this verdict was reached' section. Plain <details>, so it works without JavaScript."""
+    t = res.get("trace") or {}
+    parts = [f'<p>Claims found in the message: <b>{esc(str(t.get("claims_extracted", len(res.get("claims", [])))))}</b></p>']
+    for c in res.get("claims", []):
+        ct = c.get("trace") or {}
+        h = f'<div class="tc"><p><b>{esc(c["claim"]["text"])}</b></p>'
+        if ct.get("searched_as") and ct["searched_as"] != c["claim"]["text"]:
+            h += f'<p class="note">Searched as: {esc(ct["searched_as"])}</p>'
+        srcs = ct.get("sources") or []
+        if srcs:
+            items = ""
+            for x in srcs:
+                w = _STANCE_WORD.get(x.get("stance"), "NEITHER")
+                when = esc(str(x.get("fetched_at", ""))[:16].replace("T", " "))
+                title = f' · {esc(x["title"])}' if x.get("title") else ""
+                items += (f'<li><span class="st {w}">{w}</span><a href="{esc(x.get("url", ""))}" rel="noopener">{esc(x.get("source", ""))}</a>'
+                          f'<br><span class="note">{esc(_TIER_WORD.get(x.get("tier"), str(x.get("tier", ""))))} · fetched {when} UTC{title}</span></li>')
+            h += f'<p class="note">Sources judged for this claim:</p><ul>{items}</ul>'
+        else:
+            h += '<p class="note">No sources were found for this claim.</p>'
+        if ct.get("rule_text"):
+            h += f'<p class="rule">{esc(ct["rule_text"])}</p>'
+        parts.append(h + "</div>")
+    if t.get("overall_rule"):
+        parts.append(f'<div class="tc"><p class="note">Overall result</p><p class="rule">{esc(t["overall_rule"])}</p></div>')
+    return f'<details class="trace"><summary>How this verdict was reached</summary>{"".join(parts)}</details>'
+
+
 def result_block(res: dict, chosen: bool = False) -> str:
     v = res["verdict"]
     if res.get("no_claims"):
@@ -370,17 +409,22 @@ def result_block(res: dict, chosen: bool = False) -> str:
                    + (f'<p class="note" style="margin:8px 0 4px">We understood the forward as:</p><ul style="padding-left:18px;margin:0">{said}</ul>' if said else
                       ('<p class="note" style="margin:8px 0 0">English rendering of the claim itself was not available for this check.</p>' if res.get('input_language', 'en') != 'en' else ''))
                    + '<div class="row"><button class="btn ghost" id="copy2" type="button">Copy both languages</button></div></div>')
+    cachednote = ""
+    if res.get("cached"):
+        first = str(res.get("first_checked_at") or res.get("checked_at") or "")[:10]
+        cachednote = f'<p class="note" role="status" style="margin:0 0 10px">First checked on {esc(first)}. This is a stored result for a repeated message.</p>'
+    tr = trace_block(res)
     wa = "https://wa.me/?text=" + quote(res["card"])
     issue = (f"{REPO}/issues/new?title=" + quote(f"Wrong verdict? {v}") + "&body=" +
              quote("Claim(s):\n" + "\n".join("- " + c["claim"]["text"] for c in res["claims"]) + f"\n\nSach said: {v}\nWhat is wrong:\n"))
     return f"""<div class="result" id="result"><div><div class="stamp big {v}">{LABEL['en'][v]}</div></div>
 <div><p class="kicker">Forward this card back to the group · reply language: {esc(LANG_NAME.get(res['language'], res['language'].upper()))}{' (your choice)' if chosen else ' (matched to the forward)'}</p>
-<div class="bubble"><span id="cardtext">{card}</span><small>Sach ✓✓</small></div>
+{cachednote}<div class="bubble"><span id="cardtext">{card}</span><small>Sach ✓✓</small></div>
 <div class="row"><button class="btn ghost" id="copy" type="button">Copy card</button><a class="btn" href="{esc(wa)}" rel="noopener">Share on WhatsApp</a>
 <button class="btn ghost" id="dl" type="button">Download image</button></div>
 {notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
 <div style="overflow-x:auto"><table><thead><tr><th>Claim</th><th>Verdict</th><th>Citations</th></tr></thead><tbody>{rows}</tbody></table></div>
-<p class="note" style="margin-top:14px">Checked {esc(res['checked_at'][:16].replace('T',' '))} UTC. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
+{tr}<p class="note" style="margin-top:14px">Checked {esc(res['checked_at'][:16].replace('T',' '))} UTC. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
 
 
 def home(result: str = "", prefill: str = "", error: str = "", reply: str = "auto") -> bytes:
