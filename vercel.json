@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/impact",
+      "destination": "/api/index?view=impact"
+    },
+    {
       "source": "/(.*)",
       "destination": "/api/index"
     }

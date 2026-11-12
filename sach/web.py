@@ -104,6 +104,18 @@ class Handler(BaseHTTPRequestHandler):
             return self.wfile.write(svg)
         if view in LEGAL_PAGES:                              # terms / privacy / refund / contact
             return self._send(legal_page(view))
+        if view == "impact" or u.path == "/impact":          # live impact page (+ JSON); query form survives Vercel's rewrite
+            from . import impact
+            if qs.get("format", [""])[0] == "json":
+                body = json.dumps(impact.impact_data(), ensure_ascii=False).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                return self.wfile.write(body)
+            return self._send(impact.impact_page())
         if view == "ledger" or u.path == "/ledger":      # query form survives Vercel's rewrite; path form works locally
             self._send(ledger_page())
         elif view == "health" or u.path == "/healthz":
