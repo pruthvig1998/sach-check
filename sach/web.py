@@ -7,20 +7,23 @@ from .llm import get_llm
 from .pipeline import check_forward
 from .retrieve import default_retrievers
 from . import razorpay_pay as rzp
+from .legal import PAGES as LEGAL_PAGES, legal_page
 from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_png, tip_qr_svg, upi_link
 
 RATE_LIMIT, RATE_WINDOW = 8, 60          # best-effort per-IP checks per minute (serverless instances don't share state)
 _hits: dict = {}
 _hits_lock = threading.Lock()
 
-def rate_limited(ip: str) -> bool:
-    now = time.time()
+TIP_ORDER_LIMIT, TIP_VERIFY_LIMIT = 6, 20      # tips have their own buckets so tipping never eats a person's fact-check allowance
+
+def rate_limited(ip: str, kind: str = "check", limit: int = RATE_LIMIT) -> bool:
+    now, key = time.time(), f"{kind}:{ip}"
     with _hits_lock:
-        q = [t for t in _hits.get(ip, []) if now - t < RATE_WINDOW]
-        limited = len(q) >= RATE_LIMIT
+        q = [t for t in _hits.get(key, []) if now - t < RATE_WINDOW]
+        limited = len(q) >= limit
         if not limited:
             q.append(now)
-        _hits[ip] = q
+        _hits[key] = q
         if len(_hits) > 2000:            # bound memory
             _hits.clear()
     return limited
@@ -99,6 +102,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("X-Robots-Tag", "noindex")
             self.end_headers()
             return self.wfile.write(svg)
+        if view in LEGAL_PAGES:                              # terms / privacy / refund / contact
+            return self._send(legal_page(view))
         if view == "ledger" or u.path == "/ledger":      # query form survives Vercel's rewrite; path form works locally
             self._send(ledger_page())
         elif view == "health" or u.path == "/healthz":
@@ -117,16 +122,37 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return {}
 
+    def _webhook(self):
+        """Razorpay -> us. Verified with the RAW body, answered 2xx so Razorpay stops retrying, logs one non-personal line."""
+        if not rzp.webhook_secret():
+            return self._json({"error": "webhook not configured"}, 503)
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            n = 0
+        if n <= 0 or n > rzp.MAX_WEBHOOK_BYTES:
+            return self._json({"error": "bad size"}, 400)
+        raw = self.rfile.read(n)
+        if not rzp.verify_webhook(raw, self.headers.get("X-Razorpay-Signature")):
+            return self._json({"error": "bad signature"}, 400)
+        ev = rzp.summarize_event(raw)
+        print(f"razorpay-webhook event={ev['event']} payment={ev['payment_id']} order={ev['order_id']} rupees={ev['rupees']}", flush=True)
+        return self._json({"ok": True, "event": ev["event"]})
+
     def _gateway_api(self, api: str):
         """Razorpay tip checkout: ?api=rzp-order creates an order, ?api=rzp-verify checks the payment signature."""
+        if api == "rzp-webhook":
+            return self._webhook()
         body = self._read_json()
         if api == "rzp-order":
-            if rate_limited(self._client_ip()):
+            if rate_limited(self._client_ip(), "tip-order", TIP_ORDER_LIMIT):
                 return self._json({"error": "Too many attempts. Please wait a minute."}, 429)
             try:
                 return self._json(rzp.create_order(body.get("amount")))
             except rzp.GatewayError as e:
                 return self._json({"error": e.message}, e.status)
+        if rate_limited(self._client_ip(), "tip-verify", TIP_VERIFY_LIMIT):
+            return self._json({"verified": False, "error": "Too many attempts. Please wait a minute."}, 429)
         ok = rzp.verify_signature(body.get("razorpay_order_id"), body.get("razorpay_payment_id"), body.get("razorpay_signature"))
         if not ok:
             return self._json({"verified": False, "error": "We couldn't verify that payment."}, 400)
@@ -134,7 +160,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         api = parse_qs(urlparse(self.path).query).get("api", [""])[0]
-        if api in ("rzp-order", "rzp-verify"):
+        if api in ("rzp-order", "rzp-verify", "rzp-webhook"):
             return self._gateway_api(api)
         # single POST route: accept any path (Vercel rewrites hide the original one)
         text, lang_choice = "", "auto"

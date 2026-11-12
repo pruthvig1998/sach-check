@@ -1505,3 +1505,128 @@ def test_checkout_button_only_when_keys_are_set_and_secret_never_in_page(server,
     _rzp_env(monkeypatch, on=False)
     h2 = _ur.urlopen(server + "/?t=rzpoff").read().decode()
     assert 'id="rzpgo"' not in h2 and 'id="rzpbox"' not in h2
+
+
+# --- Terms / Privacy / Refund / Contact (payment-gateway activation needs them)
+import sach.legal as LEGAL
+
+@pytest.mark.parametrize("slug,needles", [
+    ("terms", ["Terms of use", "not</b> a government service", "never affect a verdict", "laws of India"]),
+    ("privacy", ["Privacy policy", "Razorpay", "evidence ledger", "never sees or stores your card"]),
+    ("refund", ["Refund policy", "within 7 days", "5 to 7 business days", "not refundable"]),
+    ("contact", ["Contact", "GitHub issues", "Refund policy"]),
+])
+def test_legal_pages_render_with_their_key_promises(server, slug, needles, monkeypatch):
+    monkeypatch.delenv("SACH_CONTACT_EMAIL", raising=False)
+    code, hdr, body = _raw_get(server, f"/?view={slug}")
+    h = body.decode()
+    assert code == 200 and "<!doctype html>" in h
+    for n in needles:
+        assert n in h, n
+    assert all(f'/?view={s}' in h for s in LEGAL.PAGES)                       # every page links to the others
+
+def test_every_page_links_to_the_four_policies_in_the_footer(server):
+    for path in ("/", "/?view=ledger", "/?view=terms"):
+        h = _ur.urlopen(server + path).read().decode()
+        foot = h.split("<footer>")[1]
+        for s in LEGAL.PAGES:
+            assert f'href="/?view={s}"' in foot, (path, s)
+
+def test_contact_email_is_optional_validated_and_escaped(server, monkeypatch):
+    monkeypatch.setenv("SACH_CONTACT_EMAIL", "help@example.org")
+    h = _ur.urlopen(server + "/?view=contact").read().decode()
+    assert 'mailto:help@example.org' in h
+    for bad in ("not-an-email", "a@b", '"><script>x</script>@e.com', "x@y.z"):
+        monkeypatch.setenv("SACH_CONTACT_EMAIL", bad)
+        h = _ur.urlopen(server + "/?view=contact").read().decode()
+        assert "mailto:" not in h and "<script>x" not in h, bad
+    monkeypatch.delenv("SACH_CONTACT_EMAIL", raising=False)
+    assert "mailto:" not in _ur.urlopen(server + "/?view=privacy").read().decode()
+
+def test_legal_pages_never_leak_the_tip_address(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", "Sach Desk")
+    for s in LEGAL.PAGES:
+        h = _ur.urlopen(server + f"/?view={s}").read().decode()
+        assert "supporter" not in h and "okbank" not in h and "Sach Desk" not in h
+
+def test_checkout_links_to_privacy_and_refunds(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", merchant=False)
+    _rzp_env(monkeypatch)
+    h = _ur.urlopen(server + "/?t=rzplegal").read().decode()
+    box = h.split('id="rzpbox"')[1].split("</div>")[0]
+    assert "/?view=privacy" in box and "/?view=refund" in box
+
+def test_legal_page_unknown_slug_is_none():
+    assert LEGAL.legal_page("nope") is None
+
+
+# --- Razorpay webhook + separate tip rate limits
+import sach.web as WEB
+
+_WH_SECRET = "webhook-secret-for-tests"
+def _wh(monkeypatch, on=True):
+    if on: monkeypatch.setenv("RAZORPAY_WEBHOOK_SECRET", _WH_SECRET)
+    else: monkeypatch.delenv("RAZORPAY_WEBHOOK_SECRET", raising=False)
+
+def _wh_post(base, raw: bytes, sig):
+    h = {"Content-Type": "application/json"}
+    if sig is not None: h["X-Razorpay-Signature"] = sig
+    req = _ur.Request(base + "/?api=rzp-webhook", raw, h)
+    try:
+        r = _ur.urlopen(req); return r.status, _json.loads(r.read())
+    except _ue.HTTPError as e:
+        return e.code, _json.loads(e.read())
+
+_EVENT = _json.dumps({"event": "payment.captured", "payload": {"payment": {"entity": {"id": "pay_ABC12345xyz", "order_id": "order_XYZ98765abc", "amount": 2000, "email": "payer@example.com", "contact": "+919999999999"}}}}).encode()
+def _wsig(raw, secret=_WH_SECRET): return _hmac.new(secret.encode(), raw, _hl.sha256).hexdigest()
+
+def test_webhook_accepts_a_correctly_signed_event_and_logs_no_personal_data(server, monkeypatch, capsys):
+    _wh(monkeypatch)
+    code, body = _wh_post(server, _EVENT, _wsig(_EVENT))
+    assert code == 200 and body == {"ok": True, "event": "payment.captured"}
+    out = capsys.readouterr().out
+    assert "payment=pay_ABC12345xyz" in out and "rupees=20.0" in out
+    assert "payer@example.com" not in out and "9999999999" not in out
+
+def test_webhook_rejects_bad_missing_or_wrong_secret_signatures(server, monkeypatch):
+    _wh(monkeypatch)
+    assert _wh_post(server, _EVENT, "0" * 64)[0] == 400
+    assert _wh_post(server, _EVENT, None)[0] == 400
+    assert _wh_post(server, _EVENT, _wsig(_EVENT, "some-other-secret"))[0] == 400
+    assert _wh_post(server, _EVENT + b" ", _wsig(_EVENT))[0] == 400            # body tampered after signing
+    assert _wh_post(server, b"", _wsig(b""))[0] == 400                          # empty body
+
+def test_webhook_is_503_when_no_secret_is_configured(server, monkeypatch):
+    _wh(monkeypatch, on=False)
+    assert _wh_post(server, _EVENT, _wsig(_EVENT))[0] == 503
+
+def test_webhook_acks_unknown_events_without_trusting_their_content(server, monkeypatch, capsys):
+    _wh(monkeypatch)
+    raw = _json.dumps({"event": "something.new\nINJECT", "payload": {"payment": {"entity": {"id": "bad id\n", "amount": "x"}}}}).encode()
+    code, body = _wh_post(server, raw, _wsig(raw))
+    assert code == 200 and body["event"] == "other"
+    assert "INJECT" not in capsys.readouterr().out
+    assert RZ.summarize_event(b"not json") == {"event": "other", "payment_id": None, "order_id": None, "rupees": None}
+
+def test_webhook_signature_helper(monkeypatch):
+    _wh(monkeypatch)
+    assert RZ.verify_webhook(_EVENT, _wsig(_EVENT)) is True
+    assert RZ.verify_webhook(_EVENT, _wsig(_EVENT).upper()) is True
+    assert RZ.verify_webhook(_EVENT, 5) is False and RZ.verify_webhook("str", _wsig(_EVENT)) is False
+
+def test_tip_orders_have_their_own_rate_limit_and_dont_use_up_fact_checks(monkeypatch):
+    WEB._hits.clear()
+    ip = "203.0.113.9"
+    assert not any(WEB.rate_limited(ip, "tip-order", WEB.TIP_ORDER_LIMIT) for _ in range(WEB.TIP_ORDER_LIMIT))
+    assert WEB.rate_limited(ip, "tip-order", WEB.TIP_ORDER_LIMIT) is True            # 7th order in a minute is refused
+    assert WEB.rate_limited(ip) is False                                            # but this person can still check forwards
+    assert WEB.rate_limited("203.0.113.10", "tip-order", WEB.TIP_ORDER_LIMIT) is False   # and other people are unaffected
+    WEB._hits.clear()
+
+def test_http_order_route_returns_429_after_the_tip_limit(server, monkeypatch):
+    _rzp_env(monkeypatch)
+    WEB._hits.clear()
+    monkeypatch.setattr(RZ, "create_order", lambda amount, **k: {"order_id": "order_TEST12345", "amount": 100, "currency": "INR", "key_id": _FAKE_ID})
+    codes = [_api(server, "rzp-order", {"amount": 1})[0] for _ in range(WEB.TIP_ORDER_LIMIT + 1)]
+    assert codes[:-1] == [200] * WEB.TIP_ORDER_LIMIT and codes[-1] == 429
+    WEB._hits.clear()

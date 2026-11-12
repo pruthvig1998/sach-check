@@ -330,7 +330,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <a href="/?view=ledger">Ledger</a><a class="opt" href="{REPO}" rel="noopener">GitHub</a><button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button></nav></div></header>
 <main id="main">{body}</main>
 <footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Bharat Agentic-AI Hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
-<div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/#api">API</a>{tip_link}</div></div></footer>
+<div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/#api">API</a>{tip_link}<br><a href="/?view=terms">Terms</a> · <a href="/?view=privacy">Privacy</a> · <a href="/?view=refund">Refunds</a> · <a href="/?view=contact">Contact</a></div></div></footer>
 <script>{JS}</script></body></html>""".encode()
 
 
@@ -417,7 +417,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
         gw = public_key_id() is not None
         gwbtn = ('<div id="rzpbox" style="margin:0 0 12px"><button class="btn" type="button" id="rzpgo">Pay <span id="rzpamt">₹30</span> by UPI or card</button>'
                  '<p id="rzpmsg" class="note" role="status" style="margin:6px 0 0"></p>'
-                 '<p class="note" style="margin:4px 0 0">Secure checkout by Razorpay, which can see who paid. Prefer to stay anonymous? Scan the code below.</p></div>') if gw else ""
+                 '<p class="note" style="margin:4px 0 0">Secure checkout by Razorpay, which can see who paid (<a href="/?view=privacy" rel="nofollow">privacy</a> · <a href="/?view=refund" rel="nofollow">refunds</a>). Prefer to stay anonymous? Scan the code below.</p></div>') if gw else ""
         opts_fw = "".join(f'<option value="{n}"{" selected" if n == 3 else ""}>{n}</option>' for n in (1, 3, 5, 10, 20))
         tip_section = f'''<section id="tip"><div class="wrap"><p class="kicker">Nobody asked, but…</p><h2>{esc(tip_headline())} ☕</h2>
 <p class="sub">Sach has no ads, no paywall and no “forward this to 10 groups or bad luck”. If a verdict saved you an awkward family-group moment, a small tip keeps the corrections coming. <b>Tips never change a verdict.</b></p>

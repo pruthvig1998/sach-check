@@ -76,3 +76,35 @@ def verify_signature(order_id, payment_id, signature) -> bool:
         return False
     want = hmac.new(cfg["secret"].encode(), f"{order_id}|{payment_id}".encode(), hashlib.sha256).hexdigest()
     return hmac.compare_digest(want, signature.lower())
+
+
+# ---- webhooks: Razorpay calls us (server to server) when a payment is captured/failed/refunded, even if the payer closed the tab
+WEBHOOK_EVENTS = ("payment.captured", "payment.failed", "order.paid", "refund.processed")
+MAX_WEBHOOK_BYTES = 64 * 1024
+
+def webhook_secret() -> str | None:
+    """RAZORPAY_WEBHOOK_SECRET: a secret YOU choose, entered both in Razorpay's webhook settings and in the environment."""
+    sec = (os.environ.get("RAZORPAY_WEBHOOK_SECRET") or "").strip()
+    return sec if len(sec) >= 8 else None
+
+def verify_webhook(raw: bytes, signature) -> bool:
+    """X-Razorpay-Signature = hex HMAC-SHA256 of the RAW request body with the webhook secret."""
+    sec = webhook_secret()
+    if not sec or not isinstance(raw, (bytes, bytearray)) or not isinstance(signature, str) or not _SIG.match(signature.strip().lower()):
+        return False
+    want = hmac.new(sec.encode(), bytes(raw), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(want, signature.strip().lower())
+
+def summarize_event(raw: bytes) -> dict:
+    """The few non-personal fields worth logging for the operator: event name, payment/order id, amount in rupees."""
+    try:
+        d = json.loads(raw.decode("utf-8", "replace"))
+        ev = d.get("event") if isinstance(d, dict) else None
+        pay = (((d.get("payload") or {}).get("payment") or {}).get("entity") or {}) if isinstance(d, dict) else {}
+        pid, oid, amt = pay.get("id"), pay.get("order_id"), pay.get("amount")
+        return {"event": ev if ev in WEBHOOK_EVENTS else "other",
+                "payment_id": pid if isinstance(pid, str) and _ID.match(pid) else None,
+                "order_id": oid if isinstance(oid, str) and _ID.match(oid) else None,
+                "rupees": round(amt / 100, 2) if isinstance(amt, (int, float)) and not isinstance(amt, bool) and 0 < amt <= 100000000 else None}
+    except Exception:
+        return {"event": "other", "payment_id": None, "order_id": None, "rupees": None}
