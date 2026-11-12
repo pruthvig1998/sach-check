@@ -925,7 +925,10 @@ def test_comma_formatted_claim_matches_plain_number_in_debunk_title_degraded_mod
 # --- tip jar (UPI): off by default, env-configured, safe
 import sach.site as SITE
 
-def _tip_env(monkeypatch, vpa="supporter@okbank", name=None):
+def _tip_env(monkeypatch, vpa="supporter@okbank", name=None, merchant=True):
+    """Most tip tests exercise the full feature set, i.e. a MERCHANT UPI ID (app buttons allowed). Personal-ID tests pass merchant=False."""
+    if merchant: monkeypatch.setenv("SACH_UPI_MERCHANT", "1")
+    else: monkeypatch.delenv("SACH_UPI_MERCHANT", raising=False)
     if vpa is None: monkeypatch.delenv("SACH_UPI_ID", raising=False)
     else: monkeypatch.setenv("SACH_UPI_ID", vpa)
     if name is None: monkeypatch.delenv("SACH_UPI_NAME", raising=False)
@@ -1223,13 +1226,13 @@ def test_tip_section_other_amount_is_a_plain_input_not_a_form(server, monkeypatc
 def test_tip_section_demotes_app_buttons_with_an_honest_warning(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank")
     tip = _tip_part(_ur.urlopen(server + "/?t=warn").read().decode())
-    assert 'href="/?view=pay"' in tip and "limit exceeded" in tip and "use the QR code above" in tip
-    assert tip.index("Scan this code") < tip.index('href="/?view=pay"')                   # the QR comes first, the button fallback second
+    assert 'href="/?view=pay"' in tip and "Open my UPI app" in tip                          # merchant mode: app route offered
+    assert tip.index("Scan this code") < tip.index('href="/?view=pay"')                   # the QR comes first, the button second
 
 def test_chooser_page_warns_that_link_payments_often_fail(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank")
     h = _raw_get(server, "/?view=pay&amt=50")[2].decode()
-    assert "Heads up" in h and "limit exceeded" in h and "scan the QR code" in h
+    assert "If your app shows an error" in h and "scan the QR code" in h
 
 def test_png_qr_is_a_real_png_without_the_address_text(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank")
@@ -1268,9 +1271,8 @@ def test_tip_section_has_a_pay_panel_for_tiles_picker_and_other_amount(server, m
     assert '<dialog id="paydlg"' in tip and '<form method="dialog" class="x">' in tip and 'aria-label="Close"' in tip
     dlg = tip.split('<dialog id="paydlg"')[1].split("</dialog>")[0]
     assert 'id="dlgamt">₹30' in dlg and 'id="dlgamt2">₹30' in dlg and 'src="/?view=tipqr&amp;fmt=png"' in dlg
-    assert 'download="sach-tip-qr.png"' in dlg and 'id="dlgapps" href="/?view=pay&amp;amt=30"' in dlg and "Try opening my UPI app instead" in dlg
-    assert "On a phone:" in dlg and "gallery" in dlg and "often fails" in dlg and "Easiest:" in dlg
-    assert 'class="btn ghost" id="dlgapps"' not in dlg                                     # the app link is a small note now, not a button
+    assert 'download="sach-tip-qr.png"' in dlg and 'class="btn ghost" id="dlgapps" href="/?view=pay&amp;amt=30"' in dlg and "Open my UPI app" in dlg
+    assert "On a phone:" in dlg and "gallery" in dlg                                        # merchant mode: app button offered alongside the QR
     assert 'id="fwgo"' in tip and "Chip in ₹30" in tip                                      # picker has a button that opens the panel
     assert 'id="oago"' in tip and 'id="oaerr"' in tip and 'role="alert"' in tip              # other amount: Continue button + inline error
     assert '<a class="tipcard"' not in tip and 'role="button"' in tip and tip.count('data-amt=') == 4
@@ -1349,3 +1351,34 @@ def test_page_script_has_the_code_toggle(server, monkeypatch):
     h = _ur.urlopen(server + "/?t=altjs").read().decode()
     for needle in ("let alt=false;", "$$('.altswap')", "'Back to code A'", "&alt=1", "qsAlt()"):
         assert needle in h, needle
+
+
+# --- personal UPI ID (NPCI OC-76A: payer apps must reject link/"intent" payments to a person) -> no app buttons at all
+def test_personal_id_shows_no_app_buttons_and_explains_why(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", merchant=False)
+    h = _ur.urlopen(server + "/?t=personal").read().decode()
+    tip = h.split('id="tip"')[1].split("</section>")[0]
+    assert "?view=pay" not in tip and 'id="dlgapps"' not in tip and "?go=tip" not in tip
+    assert "UPI rules (NPCI)" in tip and "personal UPI ID" in tip and "Easiest:" in tip
+    assert 'id="upiqr"' in tip and 'id="paydlg"' in tip and "Download QR image" in tip            # the working route is all still there
+
+def test_personal_id_app_routes_go_back_to_the_tip_jar_without_leaking(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", merchant=False)
+    for path in ("/?go=tip&amt=20&app=gpay", "/?go=tip", "/?view=pay&amt=50", "/?view=pay"):
+        code, hdr, body = _raw_get(server, path)
+        assert code == 302 and hdr["Location"] == "/#tip" and b"supporter" not in body and "upi" not in hdr["Location"], path
+
+def test_personal_mode_panel_script_does_not_break_without_the_app_link(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", merchant=False)
+    h = _ur.urlopen(server + "/?t=personaljs").read().decode()
+    assert "const ap2=$('#dlgapps');if(ap2)" in h and "$('#dlgapps').href=" not in h            # guarded: no null dereference
+
+@pytest.mark.parametrize("val,expected", [("1", True), ("true", True), ("YES", True), ("", False), ("0", False), ("no", False), ("maybe", False)])
+def test_merchant_flag_parsing(monkeypatch, val, expected):
+    monkeypatch.setenv("SACH_UPI_ID", "supporter@okbank"); monkeypatch.setenv("SACH_UPI_MERCHANT", val)
+    assert SITE.tip_config()["merchant"] is expected
+
+def test_merchant_mode_keeps_tap_to_pay_routes(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", merchant=True)
+    assert _raw_get(server, "/?go=tip&amt=20&app=gpay")[1]["Location"].startswith("gpay://upi/pay?pa=supporter@okbank")
+    assert _raw_get(server, "/?view=pay&amt=50")[0] == 200

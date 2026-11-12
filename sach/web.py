@@ -44,6 +44,13 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, obj, code=200):
         self._send(json.dumps(obj, ensure_ascii=False).encode(), code, "application/json; charset=utf-8")
 
+    def _redirect_home_tip(self):
+        self.send_response(302)
+        self.send_header("Location", "/#tip")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_HEAD(self):
         self.do_GET()
 
@@ -55,6 +62,8 @@ class Handler(BaseHTTPRequestHandler):
             cfg = tip_config()
             if not cfg:
                 return self._send(b"not found", 404, "text/plain")
+            if not cfg.get("merchant"):                      # NPCI OC-76A: link payments to a personal UPI ID are always rejected
+                return self._redirect_home_tip()
             self.send_response(302)
             app = qs.get("app", ["upi"])[0].lower()
             app = app if app in UPI_APPS else "upi"          # unknown app name: generic scheme, never an error
@@ -64,8 +73,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             return self.end_headers()
         if view == "pay":                                    # choose your UPI app (avoids iOS picking WhatsApp for you)
-            if not tip_config():
+            cfg = tip_config()
+            if not cfg:
                 return self._send(b"not found", 404, "text/plain")
+            if not cfg.get("merchant"):
+                return self._redirect_home_tip()
             raw_amt = qs.get("amt", [""])[0]
             amt = tip_amount(raw_amt)
             return self._send(pay_page(amt, bad_amount=bool(raw_amt.strip()) and amt is None, alt=qs.get("alt", [""])[0] == "1"))

@@ -176,7 +176,7 @@ $$('.qrlabel').forEach(l=>{l.textContent=alt?'Code B':'Code A'});$$('.altswap').
 const ap=$('#dlgapps');if(ap)ap.href=ap.href.replace(/&alt=1/,'')+qsAlt()}));
 const want=$('#want'),dlg=$('#paydlg');
 const setAmt=a=>{if(want)want.textContent=a?('₹'+a):'any amount';$$('.tipcard[data-amt]').forEach(c=>c.classList.toggle('on',String(c.dataset.amt)===String(a)))};
-const openPay=a=>{setAmt(a);if(!dlg)return;$('#dlgamt').textContent='₹'+a;$('#dlgamt2').textContent='₹'+a;$('#dlgapps').href='/?view=pay&amt='+a+qsAlt();
+const openPay=a=>{setAmt(a);if(!dlg)return;$('#dlgamt').textContent='₹'+a;$('#dlgamt2').textContent='₹'+a;const ap2=$('#dlgapps');if(ap2)ap2.href='/?view=pay&amt='+a+qsAlt();
 if(typeof dlg.showModal==='function'){if(!dlg.open)dlg.showModal()}else{$('#upiqr').scrollIntoView({behavior:'smooth',block:'center'})}};
 $$('.tipcard[data-amt]').forEach(c=>{const go=()=>openPay(c.dataset.amt);c.addEventListener('click',go);c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}})});
 const fw=$('#fw'),fwgo=$('#fwgo');
@@ -281,7 +281,10 @@ def tip_config():
     if not _VPA.match(vpa):
         return None
     name = _re.sub(r"[^A-Za-z0-9 .&'-]", "", os.environ.get("SACH_UPI_NAME") or "Sach")[:40].strip() or "Sach"
-    cfg = {"vpa": vpa, "name": name}
+    cfg = {"vpa": vpa, "name": name,
+           # NPCI OC-76A: payer apps must reject link ("intent") payments to a PERSONAL UPI ID, so app buttons only make sense
+           # when the operator marks the address as a merchant UPI ID.
+           "merchant": (os.environ.get("SACH_UPI_MERCHANT") or "").strip().lower() in ("1", "true", "yes")}
     alt = (os.environ.get("SACH_UPI_ID_ALT") or "").strip()          # optional second UPI address for the SAME bank account
     if _VPA.match(alt) and alt.lower() != vpa.lower():
         cfg["alt_vpa"] = alt
@@ -390,6 +393,15 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
                         for amt, t, d in TIP_TIERS)
         altnote = ('<p class="note" style="margin:8px 0"><b class="qrlabel">Code A</b> &middot; <button type="button" class="altswap linklike">Code not working? Try code B</button>'
                    ' <span>(same bank account, a different UPI address)</span></p>') if cfg.get("alt_vpa") else ""
+        if cfg.get("merchant"):
+            appnote = '<p class="note" style="margin:8px 0 0">Prefer a button? <a href="/?view=pay" rel="nofollow">Open my UPI app</a> with the amount filled in.</p>'
+            dlgnote = (f'<p style="margin:12px 0 0"><a class="btn ghost" id="dlgapps" href="/?view=pay&amp;amt={3 * PER_FORWARD}" rel="nofollow" '
+                       f'style="text-decoration:none">Open my UPI app</a></p>')
+        else:
+            appnote = ('<p class="note" style="margin:8px 0 0">Why no “open my app” button? UPI rules (NPCI) don\'t let a payment app start a payment '
+                       'to a personal UPI ID from a website link, so scanning the code is the way to pay.</p>')
+            dlgnote = ('<p class="note" style="margin:12px 0 0"><b>Easiest:</b> show this code on another screen (a laptop, or a friend\'s phone) '
+                       'and scan it with your UPI app\'s scanner.</p>')
         opts_fw = "".join(f'<option value="{n}"{" selected" if n == 3 else ""}>{n}</option>' for n in (1, 3, 5, 10, 20))
         tip_section = f'''<section id="tip"><div class="wrap"><p class="kicker">Nobody asked, but…</p><h2>{esc(tip_headline())} ☕</h2>
 <p class="sub">Sach has no ads, no paywall and no “forward this to 10 groups or bad luck”. If a verdict saved you an awkward family-group moment, a small tip keeps the corrections coming. <b>Tips never change a verdict.</b></p>
@@ -402,7 +414,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <p style="margin:0 0 8px"><b>On a computer:</b> scan it with the UPI app on your phone.<br><b>On a phone:</b> save the image (tap Download, or press and hold it), then open your UPI app, choose <i>Scan QR</i> and pick the image from your gallery.</p>
 <div class="row"><a class="btn dlpng" href="/?view=tipqr&amp;fmt=png" download="sach-tip-qr.png" style="text-decoration:none">Download QR image</a></div>{altnote}
 <p class="note" style="margin:10px 0 0">Your UPI app shows who you're paying before you confirm; that's UPI's own safety check. Tips are optional and go straight from your app to the person who runs Sach. Sach never sees who paid or how much.</p>
-<p class="note" style="margin:8px 0 0">Prefer a button? <a href="/?view=pay" rel="nofollow">Try opening your UPI app directly</a>. It works on some phones, but many banks block payments started from a link and show a “limit exceeded” message even for ₹20. If that happens, use the QR code above.</p></div></div>
+{appnote}</div></div>
 <dialog id="paydlg" aria-labelledby="paytitle"><form method="dialog" class="x"><button aria-label="Close">✕</button></form>
 <p class="kicker">Chip in for the corrections desk ☕</p>
 <h3 id="paytitle" style="font-family:var(--serif);font-size:36px;margin:4px 0 6px">Pay <span id="dlgamt">₹{3 * PER_FORWARD}</span></h3>
@@ -411,8 +423,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <p class="note" style="margin:0 0 10px"><b>On a phone:</b> tap Download, then in your UPI app choose <i>Scan QR</i> and pick the image from your gallery.</p>
 <div class="row"><a class="btn dlpng" href="/?view=tipqr&amp;fmt=png" download="sach-tip-qr.png" style="text-decoration:none">Download QR image</a>
 </div>
-<p class="note" style="margin:12px 0 0"><b>Easiest:</b> show this code on another screen (a laptop, or a friend's phone) and scan it with your UPI app's scanner.<br>
-<a id="dlgapps" href="/?view=pay&amp;amt={3 * PER_FORWARD}" rel="nofollow">Try opening my UPI app instead</a> (this often fails with a "limit exceeded" message, even for ₹20).</p></dialog>
+{dlgnote}</dialog>
 </div></section>'''
     body = f"""<div class="wrap"><div class="hero"><div>
 <p class="kicker">A corrections desk for your family group</p>
@@ -492,7 +503,7 @@ def pay_page(amount: int | None = None, bad_amount: bool = False, alt: bool = Fa
            'You can also pick an app now and type the amount there.</p>') if bad_amount else ""
     body = f"""<div class="wrap"><div class="paywrap"><p class="kicker">Chip in for the corrections desk ☕</p>
 <h1 style="font-size:clamp(34px,8vw,54px);margin:6px 0 10px">Pay {esc(shown)}</h1>
-{err}<p role="note" style="background:var(--paper2);border-left:6px solid var(--mis);padding:12px 16px;margin:0 0 16px"><b>Heads up:</b> payments started from a link often fail for tips to a personal UPI ID (some banks show “limit exceeded” even for ₹20). If it fails, go back and <b>scan the QR code</b> instead; that always works.</p>
+{err}<p role="note" style="background:var(--paper2);border-left:6px solid var(--mis);padding:12px 16px;margin:0 0 16px">If your app shows an error, go back and <b>scan the QR code</b> instead.</p>
 <p class="sub" style="margin-bottom:14px">Pick the app you use. Your phone may ask “open another application?”; say yes. The amount is filled in and <b>you confirm the payment inside that app</b>.</p>
 {buttons}
 {switch}{amount_form(amount, compact=True)}
