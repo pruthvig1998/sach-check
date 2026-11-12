@@ -298,7 +298,7 @@ def signs_html(signs, lang: str = "en") -> str:
     """The advisory box. Empty string when there is nothing to show. Everything user-controlled is escaped."""
     if not signs:
         return ""
-    lang = lang if lang in UI else "en"
+    lang = lang if lang in UI else "en"      # only en, hi and te are translated; every other language shows the English box (NOT translated yet)
     ordered = sorted((s for s in signs if isinstance(s, dict)), key=lambda s: 0 if s.get("severity") == "high" else 1)
     if not ordered:
         return ""
@@ -310,5 +310,5 @@ def signs_html(signs, lang: str = "en") -> str:
         ev = f"<q>{html.escape(str(s.get('evidence', '')))}</q>" if s.get("evidence") else ""
         items += f'<li><b>{html.escape(str(title))}</b><span class="sg-why">{html.escape(str(why))}</span>{ev}</li>'
     more = f'<p class="sg-more">{html.escape(ui["more"].format(n=len(ordered) - MAX_SHOWN))}</p>' if len(ordered) > MAX_SHOWN else ""
-    return (f'<section class="signs" id="signs" aria-labelledby="signs-h"><h3 id="signs-h">{html.escape(ui["title"])}</h3>'
+    return (f'<section class="signs" id="signs" lang="{lang}" aria-labelledby="signs-h"><h3 id="signs-h">{html.escape(ui["title"])}</h3>'
             f'<p class="sg-intro">{html.escape(ui["intro"])}</p><ul>{items}</ul>{more}<p class="sg-adv">{html.escape(ui["advice"])}</p></section>')

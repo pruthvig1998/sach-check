@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 from . import store as _store
 from . import pipeline as _pipeline
 from .site import MAX_CHARS, REPLY_LANGS
+from .lang import NAMES, SUPPORTED
 
 API = "https://api.telegram.org"
 MAX_UPDATE_BYTES = 256 * 1024
@@ -24,7 +25,8 @@ LANG_TTL_S, SEEN_TTL_S = 365 * 24 * 3600, 3600
 SECRET_HEADER = "X-Telegram-Bot-Api-Secret-Token"
 _TOKEN = re.compile(r"^\d{5,16}:[A-Za-z0-9_-]{35,}$")
 _SECRET = re.compile(r"^[A-Za-z0-9_-]{16,256}$")
-LANG_NAMES = {"en": "English", "hi": "Hindi", "te": "Telugu", "tl": "Tinglish"}
+LANG_NAMES = dict(NAMES)
+LANG_CODES = ", ".join(f"{c} {NAMES[c].split(' (')[0]}" for c in SUPPORTED)      # "en English, hi Hindi, bn Bengali, ..."
 
 def check_forward(*a, **k):                    # indirection so tests can swap it; pipeline.py itself is untouched
     return _pipeline.check_forward(*a, **k)
@@ -106,7 +108,7 @@ WELCOME = (
     "with a verdict and links: TRUE, FALSE, MISLEADING or UNVERIFIED.\n\n"
     "UNVERIFIED does not mean false. It means I could not find a clear official answer.\n"
     "Sach is not a government service. Please do not send private data such as OTPs, bank details or Aadhaar numbers.\n\n"
-    "Reply language: /lang en, /lang hi, /lang te, /lang tl or /lang auto (match the message).\n\n"
+    "Reply language: /lang auto (match the message), or /lang with a code: " + LANG_CODES + ".\n\n"
     "हिंदी: कोई भी फ़ॉरवर्ड यहाँ भेजें, मैं स्रोत के साथ जाँच बताऊँगा। भाषा बदलने के लिए /lang hi\n"
     "తెలుగు: ఏదైనా ఫార్వర్డ్ ఇక్కడ పంపండి, నేను ఆధారాలతో తనిఖీ చేస్తాను. భాష మార్చడానికి /lang te")
 NOT_TEXT = "I can only read text for now. Please paste or forward the message as text."
@@ -268,7 +270,8 @@ def handle_update(update: dict, retrievers, llm, send=None, bot_id=None, usernam
             arg = rest.split()[0].lower() if rest.split() else ""
             if arg not in REPLY_LANGS:
                 cur = _lang_get(chat_id)
-                say("Choose the reply language: /lang en, /lang hi, /lang te, /lang tl or /lang auto.\n"
+                say("Choose the reply language, for example /lang en or /lang auto (match the message).\n"
+                    f"Codes: {LANG_CODES}.\n"
                     f"Now: {LANG_NAMES.get(cur, 'auto (matches the message)')}.")
                 return {"ok": True, "action": "lang-usage"}
             saved = _lang_set(chat_id, arg)

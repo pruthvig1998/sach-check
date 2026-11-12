@@ -1,6 +1,6 @@
 # Sach (सच · నిజం)
 
-**Got a forward? Get the receipts.** Paste a viral WhatsApp-style message in English, Hindi, Telugu, Hinglish or Tinglish (Telugu in English letters). Sach splits it into claims, checks each against PIB and official sources, and returns a **cited verdict card** in the forward's own language (plus what it means in English), ready to paste back into the group. Every check is logged to a public evidence ledger.
+**Got a forward? Get the receipts.** Paste a viral WhatsApp-style message in English or in 15 Indian languages (Hindi, Bengali, Marathi, Telugu, Tamil, Gujarati, Urdu, Kannada, Odia, Malayalam, Punjabi, Assamese, Konkani, Nepali, Manipuri), plus Hinglish and Tinglish (Telugu in English letters). See [docs/languages.md](docs/languages.md). Sach splits it into claims, checks each against PIB and official sources, and returns a **cited verdict card** in the forward's own language (plus what it means in English), ready to paste back into the group. Every check is logged to a public evidence ledger.
 
 - **Live:** https://sach-check-lilac.vercel.app
 - **Track:** Governance · **License:** MIT · **Cost to run:** ₹0 (Vercel free, Gemini free tier, Brave free plan)
@@ -35,7 +35,7 @@ A citation appears only if the page was actually fetched (source, URL, date acce
 | *Every household in India will receive a free solar-powered refrigerator next month.* | **UNVERIFIED** (invented; we say so plainly) |
 
 ## The website
-Landing page, live checker with one-click examples, a reply-language selector (Auto, English, हिन्दी, తెలుగు, Tinglish) that works whatever the forward is written in, WhatsApp-style verdict card with **Copy**, **Share on WhatsApp** and **Download image**, per-claim citation table, public **evidence ledger** (filter + search), FAQ, dark mode, mobile-first layout, keyboard shortcut (Ctrl/Cmd+Enter), and a JSON API:
+Landing page, live checker with one-click examples, a "Reply in" selector (Auto, English, every supported Indian language, Tinglish) that works whatever the forward is written in, WhatsApp-style verdict card with **Copy**, **Share on WhatsApp** and **Download image**, per-claim citation table, public **evidence ledger** (filter + search), FAQ, dark mode, mobile-first layout, keyboard shortcut (Ctrl/Cmd+Enter), and a JSON API:
 
 ```bash
 curl -s -X POST "https://sach-check-lilac.vercel.app/?format=json" \
@@ -99,7 +99,7 @@ sach/web.py       HTTP handlers, JSON API            tests/            60+ tests
 
 ## Known gaps
 - **Free-tier quota.** The AI judge runs on free tiers, which can run out under heavy use. With several keys or providers configured it fails over automatically; when every one is out, Sach shows a "Limited mode" notice and only reports FALSE for a clear PIB debunk (never TRUE or MISLEADING).
-- **Hindi and Telugu strings are human-written templates but have not been reviewed by a native speaker.** Do that before relying on them publicly.
+- **Hindi and Telugu strings are human-written templates, and the strings for the other Indian languages are AI-written; none has been reviewed by a native speaker.** Manipuri cards are English until a native speaker supplies the wording. See [docs/languages.md](docs/languages.md) before relying on them publicly.
 - Live checks usually take 10 to 30 seconds. Every check has a 48-second budget inside Vercel's 60-second limit; a claim that runs out of time is reported as unverified, never guessed.
 - The live ledger on Vercel is ephemeral (resets between instances); it ships with a starter set, and the repository is the permanent record.
 - Translation for non-English claims can drift; numbers and quotes are still verified against the English page, but a mistranslated claim could be matched to the wrong source.

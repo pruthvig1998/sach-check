@@ -3,12 +3,13 @@ from __future__ import annotations
 import re
 from bs4 import BeautifulSoup
 from .fetch import fetch
+from .langwords import DEBUNK_RE
 
 PR_URL = "https://pib.gov.in/PressReleasePage.aspx?PRID={}"
 RSS_URL = "https://www.pib.gov.in/RssMain.aspx?ModId={mod}&Lang={lang}&Regid={reg}"
 DEBUNK_MARKERS = re.compile(
     r"\b(fake|false|misleading|baseless|fabricated|hoax|no such|#?PIBFactCheck|not true|incorrect|"
-    r"clarif\w+|misinformation|rumou?rs?)\b|फर्जी|फ़र्ज़ी|झूठ|भ्रामक|अफवाह|నకిలీ|అబద్ధ|తప్పుడు", re.I)
+    r"clarif\w+|misinformation|rumou?rs?)\b|फर्जी|फ़र्ज़ी|झूठ|भ्रामक|अफवाह|నకిలీ|అబద్ధ|తప్పుడు|" + DEBUNK_RE, re.I)
 
 def parse_release(html: str) -> dict:
     s = BeautifulSoup(html, "html.parser")

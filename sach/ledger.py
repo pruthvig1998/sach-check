@@ -2,6 +2,7 @@ from __future__ import annotations
 import json, os, threading
 from datetime import datetime, timezone
 from . import store
+from .lang import SUPPORTED
 _lock = threading.Lock()
 
 def path():
@@ -10,7 +11,7 @@ def path():
 _SEED = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "ledger_seed.json")
 
 COUNTERS = ("checks_total", "cache_hits", "no_claims", "verdict:TRUE", "verdict:FALSE", "verdict:MISLEADING", "verdict:UNVERIFIED",
-            "lang:en", "lang:hi", "lang:te", "lang:tl")
+            ) + tuple("lang:" + c for c in SUPPORTED)
 
 def _row_key(r):
     return (r.get("claim"), r.get("checked_at")) if isinstance(r, dict) else None

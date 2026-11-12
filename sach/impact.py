@@ -5,11 +5,12 @@ If a source is unavailable the figure is None in the data and "not available" on
 from __future__ import annotations
 import json, os
 from . import fetch, ledger, store
+from .lang import NAMES, SUPPORTED
 from .site import ROOT, esc, layout
 
 VERDICTS = ("TRUE", "FALSE", "MISLEADING", "UNVERIFIED")
-LANGS = ("en", "hi", "te", "tl")
-LANG_NAME = {"en": "English", "hi": "Hindi", "te": "Telugu", "tl": "Tinglish"}
+LANGS = SUPPORTED          # every language Sach detects (lang.SUPPORTED); counters for ones never seen simply read zero
+LANG_NAME = NAMES
 RECENT = 5            # how many recent FALSE verdicts to list
 NA = "not available"
 
@@ -109,7 +110,7 @@ def impact_data() -> dict:
             "no_claims": "Counter no_claims: forwards with nothing checkable (greetings, emoji, bare links). They are not in the verdict breakdown.",
             "verdicts": "Counters verdict:TRUE, verdict:FALSE, verdict:MISLEADING, verdict:UNVERIFIED (overall verdict of each check). "
                         "Each share = that count / the sum of the four, and the denominator is shown.",
-            "languages": "Counters lang:en, lang:hi, lang:te, lang:tl (language of the forward as detected). Each share = count / the sum of those four.",
+            "languages": "Counters lang:<code> for every supported language code, e.g. lang:en, lang:hi, lang:bn (language of the forward as detected). Each share = count / the sum of those counters.",
             "ledger": "Rows returned by ledger.load(): the bundled starter ledger plus rows recorded by this server. "
                       "One row per claim (a forward can hold several claims), so this is not the same number as checks.",
             "recent_false": "The latest rows in that ledger whose verdict is FALSE, newest first, with the first citation on each.",
@@ -185,7 +186,7 @@ def impact_page() -> bytes:
         "" if persistent else ": they reset when the server restarts",
         esc(d["storage_note"]))
     vblock = _share_block("Verdicts", VERDICTS, {}, v, "the sum of the four verdict counters")
-    lblock = _share_block("Languages of the forwards", LANGS, LANG_NAME, lg, "the sum of the four language counters")
+    lblock = _share_block("Languages of the forwards", LANGS, LANG_NAME, lg, "the sum of the language counters")
     if ev["available"]:
         miss = ev["missing_fields"]
         facts = [("Claims in the evaluation set", ev["n"]), ("Judged exactly right", ev["correct"]),
