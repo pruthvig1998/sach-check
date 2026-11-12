@@ -18,30 +18,34 @@ def parse_label(raw: str) -> str:
 def _user(claim, title, text):
     return f"CLAIM: {claim}\n\nPAGE TITLE: {title}\nPAGE TEXT: {text[:6000]}"
 
-class GeminiJudge:
-    def __init__(self, key=None, model=None):
-        self.key = key or os.environ["GEMINI_API_KEY"]
-        self.model = model or os.environ.get("SACH_GEMINI_MODEL", "gemini-2.5-flash")
+DEFAULT_GEMINI_MODELS = "gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-3.8-flash,gemini-flash-latest"
 
-    def _post(self, body):
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+class GeminiJudge:
+    """Tries each model in turn; a model that is retired (404), overloaded (503), rate-limited (429) or slow is skipped."""
+    def __init__(self, key=None, model=None, timeout=45):
+        self.key = key or os.environ["GEMINI_API_KEY"]
+        self.models = [m.strip() for m in (model or os.environ.get("SACH_GEMINI_MODEL", DEFAULT_GEMINI_MODELS)).split(",") if m.strip()]
+        self.timeout = timeout
+
+    def _post(self, model, body):
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         req = urllib.request.Request(url, json.dumps(body).encode(),
                                      {"Content-Type": "application/json", "x-goog-api-key": self.key})
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=self.timeout) as r:
             return json.load(r)
 
     def stance(self, claim, title, text):
         body = {"systemInstruction": {"parts": [{"text": PROMPT}]},
                 "contents": [{"role": "user", "parts": [{"text": _user(claim, title, text)}]}],
-                "generationConfig": {"temperature": 0, "maxOutputTokens": 8}}
-        for attempt in (0, 1):
+                "generationConfig": {"temperature": 0, "maxOutputTokens": 64}}
+        last = None
+        for model in self.models:
             try:
-                d = self._post(body)
+                d = self._post(model, body)
                 return parse_label(d["candidates"][0]["content"]["parts"][0]["text"])
-            except urllib.error.HTTPError as e:
-                if e.code == 429 and attempt == 0:
-                    time.sleep(6); continue   # free-tier rate limit: one retry
-                raise
+            except Exception as e:      # 404/429/503/timeout/odd payload: try the next model
+                last = e
+        raise last
 
 class ClaudeJudge:
     def __init__(self):

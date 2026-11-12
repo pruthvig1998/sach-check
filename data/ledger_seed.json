@@ -13,6 +13,20 @@
     "fetched_at": "2026-11-12T06:17:35+00:00"
    },
    {
+    "source": "doptcirculars.nic.in",
+    "url": "https://doptcirculars.nic.in/OM/ViewOM.aspx?id=325&headid=14",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:41:59+00:00"
+   },
+   {
+    "source": "www.pib.gov.in",
+    "url": "https://www.pib.gov.in/newsite/erelcontent.aspx?relid=113690&reg=48&lang=2",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:00+00:00"
+   },
+   {
     "source": "www.boomlive.in",
     "url": "https://www.boomlive.in/fake-news/ministry-of-personnel-refutes-rumours-about-reducing-age-of-retirement-7838",
     "tier": "factchecker",
@@ -35,7 +49,7 @@
    }
   ],
   "language": "en",
-  "checked_at": "2026-11-12T06:52:54+00:00"
+  "checked_at": "2026-11-12T07:02:44+00:00"
  },
  {
   "claim": "Government has ordered the closure of Ministries.",
@@ -49,6 +63,20 @@
     "tier": "pib_debunk",
     "date_accessed": "2026-11-12",
     "fetched_at": "2026-11-12T06:17:36+00:00"
+   },
+   {
+    "source": "www.pib.gov.in",
+    "url": "https://www.pib.gov.in/newsite/PrintRelease.aspx?relid=202457&reg=48&lang=2",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:07+00:00"
+   },
+   {
+    "source": "www.pib.gov.in",
+    "url": "https://www.pib.gov.in/PressReleseDetailm.aspx?PRID=1616896&reg=48&lang=2",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:08+00:00"
    },
    {
     "source": "www.vishvasnews.com",
@@ -73,7 +101,7 @@
    }
   ],
   "language": "en",
-  "checked_at": "2026-11-12T06:52:56+00:00"
+  "checked_at": "2026-11-12T07:03:02+00:00"
  },
  {
   "claim": "Air India passengers from Chicago were made to pay three times the fare.",
@@ -87,6 +115,13 @@
     "tier": "pib_debunk",
     "date_accessed": "2026-11-12",
     "fetched_at": "2026-11-12T06:17:38+00:00"
+   },
+   {
+    "source": "www.pib.gov.in",
+    "url": "https://www.pib.gov.in/PressReleseDetailm.aspx?PRID=1622056&reg=3&lang=2",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:15+00:00"
    },
    {
     "source": "www.boomlive.in",
@@ -111,14 +146,35 @@
    }
   ],
   "language": "en",
-  "checked_at": "2026-11-12T06:52:59+00:00"
+  "checked_at": "2026-11-12T07:03:12+00:00"
  },
  {
   "claim": "WHO doctors are advising against wearing masks and social distancing.",
   "domain": "health",
-  "verdict": "UNVERIFIED",
-  "reason_code": "factchecker_only",
+  "verdict": "FALSE",
+  "reason_code": "official_contradiction",
   "citations": [
+   {
+    "source": "www.who.int",
+    "url": "https://www.who.int/emergencies/diseases/novel-coronavirus-2019/advice-for-public/",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:25+00:00"
+   },
+   {
+    "source": "www.who.int",
+    "url": "https://www.who.int/health-topics/coronavirus",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:26+00:00"
+   },
+   {
+    "source": "www.who.int",
+    "url": "https://www.who.int/emergencies/diseases/novel-coronavirus-2019/advice-for-public/when-and-how-to-use-masks",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:59:57+00:00"
+   },
    {
     "source": "www.boomlive.in",
     "url": "https://www.boomlive.in/fake-news/no-who-did-not-do-a-u-turn-on-masks-social-distancing-8929",
@@ -142,14 +198,35 @@
    }
   ],
   "language": "en",
-  "checked_at": "2026-11-12T06:53:02+00:00"
+  "checked_at": "2026-11-12T07:03:20+00:00"
  },
  {
   "claim": "PIB Fact-Check Unit has issued over 2,900 fact checks.",
   "domain": "other",
-  "verdict": "UNVERIFIED",
-  "reason_code": "factchecker_only",
+  "verdict": "TRUE",
+  "reason_code": "official_confirmation",
   "citations": [
+   {
+    "source": "PIB (Press Information Bureau)",
+    "url": "https://pib.gov.in/PressReleasePage.aspx?PRID=2247720",
+    "tier": "pib_debunk",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:17:39+00:00"
+   },
+   {
+    "source": "www.pib.gov.in",
+    "url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2247720&reg=3&lang=1",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:34+00:00"
+   },
+   {
+    "source": "ddnews.gov.in",
+    "url": "https://ddnews.gov.in/en/pib-fact-check-unit-issues-over-2900-verifications-to-combat-misinformation/",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:42:52+00:00"
+   },
    {
     "source": "www.altnews.in",
     "url": "https://www.altnews.in/it-rules-amendments-can-pib-be-given-carte-blanche-to-decide-what-is-fake/",
@@ -163,48 +240,41 @@
     "tier": "factchecker",
     "date_accessed": "2026-11-12",
     "fetched_at": "2026-11-12T06:42:59+00:00"
-   },
-   {
-    "source": "www.altnews.in",
-    "url": "https://www.altnews.in/political-misinformation-in-2025-who-shared-who-was-targeted-how-did-it-shape-narratives/",
-    "tier": "factchecker",
-    "date_accessed": "2026-11-12",
-    "fetched_at": "2026-11-12T06:43:00+00:00"
    }
   ],
   "language": "en",
-  "checked_at": "2026-11-12T06:53:04+00:00"
+  "checked_at": "2026-11-12T07:03:28+00:00"
  },
  {
-  "claim": "Government will give free laptops to all students.",
-  "domain": "news",
+  "claim": "The Cabinet has approved declaring the 14th of every month as National Mango Day.",
+  "domain": "other",
   "verdict": "UNVERIFIED",
   "reason_code": "factchecker_only",
   "citations": [
    {
     "source": "www.vishvasnews.com",
-    "url": "https://www.vishvasnews.com/viral/fact-check-prime-minister-free-laptop-scheme-2023-24-is-fake/",
+    "url": "https://www.vishvasnews.com/explainer/hindi-diwas-2024-why-it-is-celebrated-on-14th-sept-significance-history-explained/",
     "tier": "factchecker",
     "date_accessed": "2026-11-12",
-    "fetched_at": "2026-11-12T06:43:37+00:00"
+    "fetched_at": "2026-11-12T07:03:43+00:00"
    },
    {
-    "source": "www.vishvasnews.com",
-    "url": "https://www.vishvasnews.com/education/fact-check-aicte-free-laptop-scheme-for-students-viral-with-fake-claim/",
+    "source": "www.altnews.in",
+    "url": "https://www.altnews.in/wp-content/uploads/2024/05/Holiday-2022-2023.pdf",
     "tier": "factchecker",
     "date_accessed": "2026-11-12",
-    "fetched_at": "2026-11-12T06:43:38+00:00"
+    "fetched_at": "2026-11-12T07:03:44+00:00"
    },
    {
-    "source": "www.vishvasnews.com",
-    "url": "https://www.vishvasnews.com/english/society/fact-check-dont-fall-for-the-viral-message-claiming-schools-distributing-free-laptops-and-tablets-to-students/",
+    "source": "www.boomlive.in",
+    "url": "https://www.boomlive.in/fact-check/israel-ram-temple-india-january-22-public-holiday-fact-check-24148",
     "tier": "factchecker",
     "date_accessed": "2026-11-12",
-    "fetched_at": "2026-11-12T06:43:39+00:00"
+    "fetched_at": "2026-11-12T07:03:45+00:00"
    }
   ],
   "language": "en",
-  "checked_at": "2026-11-12T06:53:15+00:00"
+  "checked_at": "2026-11-12T07:03:49+00:00"
  },
  {
   "claim": "Government is giving Rs 1000 to everyone under Corona Sahayata Yojana, click the link to register.",
@@ -218,6 +288,20 @@
     "tier": "pib_debunk",
     "date_accessed": "2026-11-12",
     "fetched_at": "2026-11-12T06:41:45+00:00"
+   },
+   {
+    "source": "www.pib.gov.in",
+    "url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=1618314&reg=3&lang=2",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:42+00:00"
+   },
+   {
+    "source": "www.pib.gov.in",
+    "url": "https://www.pib.gov.in/newsite/PrintRelease.aspx?relid=202575",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:43+00:00"
    },
    {
     "source": "www.vishvasnews.com",
@@ -242,14 +326,21 @@
    }
   ],
   "language": "en",
-  "checked_at": "2026-11-12T06:53:17+00:00"
+  "checked_at": "2026-11-12T07:03:56+00:00"
  },
  {
   "claim": "Union Minister Sarbananda Sonowal's office has issued a letter on this matter.",
   "domain": "news",
-  "verdict": "UNVERIFIED",
-  "reason_code": "factchecker_only",
+  "verdict": "FALSE",
+  "reason_code": "official_contradiction",
   "citations": [
+   {
+    "source": "www.pib.gov.in",
+    "url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2216041&reg=3&lang=2",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:43:52+00:00"
+   },
    {
     "source": "www.altnews.in",
     "url": "https://www.altnews.in/namo-seva-students-made-to-act-in-play-glorifying-modi-chant-modi-hai-toh-mumkin-hai-jai-sri-ram/",
@@ -265,22 +356,36 @@
     "fetched_at": "2026-11-12T06:43:58+00:00"
    },
    {
-    "source": "www.boomlive.in",
-    "url": "https://www.boomlive.in/fake-news/derogatory-painting-of-krishna-from-2015-passed-off-as-recent-9355",
+    "source": "www.vishvasnews.com",
+    "url": "https://www.vishvasnews.com/assamese/politics/fact-check-viral-going-post-claiming-assam-cm-sitting-with-bangladeshi-guru-is-fake/",
     "tier": "factchecker",
     "date_accessed": "2026-11-12",
-    "fetched_at": "2026-11-12T06:43:59+00:00"
+    "fetched_at": "2026-11-12T07:00:45+00:00"
    }
   ],
   "language": "en",
-  "checked_at": "2026-11-12T06:53:19+00:00"
+  "checked_at": "2026-11-12T07:04:10+00:00"
  },
  {
   "claim": "A Health Ministry office memorandum on state holidays has been issued.",
   "domain": "other",
-  "verdict": "UNVERIFIED",
-  "reason_code": "factchecker_only",
+  "verdict": "FALSE",
+  "reason_code": "official_contradiction",
   "citations": [
+   {
+    "source": "PIB (Press Information Bureau)",
+    "url": "https://pib.gov.in/PressReleasePage.aspx?PRID=2216041",
+    "tier": "pib_debunk",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:41:46+00:00"
+   },
+   {
+    "source": "www.pib.gov.in",
+    "url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=1606395&reg=48&lang=2",
+    "tier": "official",
+    "date_accessed": "2026-11-12",
+    "fetched_at": "2026-11-12T06:44:01+00:00"
+   },
    {
     "source": "www.boomlive.in",
     "url": "https://www.boomlive.in/fast-check/fake-letter-claiming-health-ministry-declared-holidays-in-4-states-7209",
@@ -304,6 +409,6 @@
    }
   ],
   "language": "en",
-  "checked_at": "2026-11-12T06:53:21+00:00"
+  "checked_at": "2026-11-12T07:04:21+00:00"
  }
 ]

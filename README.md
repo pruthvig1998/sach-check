@@ -17,7 +17,7 @@ A first run wrongly returned FALSE on the genuine claim; fixed and covered by re
 
 ## Setup
 ```
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 python -m pytest -q          # offline, recorded fixtures
 python scripts/run_eval.py   # writes docs/evaluation.md
 python -m sach.web           # http://localhost:8080

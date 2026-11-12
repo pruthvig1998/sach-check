@@ -157,22 +157,24 @@ def test_parse_label_maps_and_defaults_to_none():
     assert parse_label("**PARTIAL**") == "mixed" and parse_label("NEITHER") == "none"
     assert parse_label("") == "none" and parse_label("The page seems to say it is false") == "none"
 
-def test_gemini_judge_parses_response_and_retries_429(monkeypatch):
+def test_gemini_judge_skips_dead_models(monkeypatch):
     import urllib.error, sach.llm as L
-    calls = []
-    def fake_post(self, body):
-        calls.append(1)
-        if len(calls) == 1:
-            raise urllib.error.HTTPError("u", 429, "rate", {}, None)
+    tried = []
+    def fake_post(self, model, body):
+        tried.append(model)
+        if model == "old":
+            raise urllib.error.HTTPError("u", 404, "retired", {}, None)
+        if model == "busy":
+            raise urllib.error.HTTPError("u", 503, "overloaded", {}, None)
         return {"candidates": [{"content": {"parts": [{"text": "CONTRADICTS"}]}}]}
     monkeypatch.setattr(L.GeminiJudge, "_post", fake_post)
-    monkeypatch.setattr(L.time, "sleep", lambda s: None)
-    assert L.GeminiJudge(key="k").stance("c", "t", "x") == "contradicts" and len(calls) == 2
+    assert L.GeminiJudge(key="k", model="old,busy,good").stance("c", "t", "x") == "contradicts"
+    assert tried == ["old", "busy", "good"]
 
 def test_gemini_failure_still_falls_back_safely(monkeypatch):
     import sach.llm as L
     from sach.stance import judge
-    monkeypatch.setattr(L.GeminiJudge, "_post", lambda self, b: (_ for _ in ()).throw(OSError("down")))
+    monkeypatch.setattr(L.GeminiJudge, "_post", lambda self, m, b: (_ for _ in ()).throw(OSError("down")))
     e = Evidence("PIB", "https://pib.gov.in/x", TIER_PIB, TS, "Fake: PM Mahila Yojana gives Rs 5000 to every woman", "")
     assert judge("PM Mahila Yojana gives Rs 5000 to every woman", e, L.GeminiJudge(key="k")) == "contradicts"
 

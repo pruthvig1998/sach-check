@@ -11,7 +11,7 @@ ret, llm = default_retrievers(), get_llm()
 res = []
 for r in rows:
     out = check_forward(r["claim"], ret, llm, log=bool(os.environ.get("SACH_SEED_LEDGER")))
-    res.append({**r, "got": out["verdict"], "cites": [c["url"] for v in out["claims"] for c in v["citations"]]})
+    res.append({**r, "got": out["verdict"], "reasons": [v["reason_code"] for v in out["claims"]], "cites": [c["url"] for v in out["claims"] for c in v["citations"]]})
 n = len(res); ok = sum(r["got"] == r["label"] for r in res)
 false_pos = [r for r in res if r["got"] == "FALSE" and r["label"] != "FALSE"]
 lab = lambda L: [r for r in res if r["label"] == L]
@@ -27,7 +27,9 @@ for r in res:
 L += ["", "## Limitations (read before citing these numbers)",
       "- The set is tiny: every item was hand-verified from a PIB page actually fetched, not bulk-scraped. PIB has no listing page for debunks, and the RSS feed returns only the latest 20 items.",
       "- The FALSE claims are paraphrases of PIB debunk titles and the retriever indexes those same pages, so FALSE recall here is optimistic (circular).",
-      "- Heuristic stance cannot confirm TRUE claims, so TRUE items abstain. An LLM key is needed to test confirmation.",
+      "- Stance was judged by Gemini when GEMINI_API_KEY is set; the heuristic alone cannot confirm TRUE claims and abstains.",
+      "- Relabel disclosure: the first control (\"free laptops to all students\") scored as an overclaim, but Brave found genuine official debunks of it (newsonair.gov.in), so the LLM was right and the label was wrong. Control replaced with an invented claim after seeing that result.",
+      "- Official-domain rule is *.gov.in / *.nic.in / who.int, so news sites such as newsonair.gov.in count as official; PIB is treated as the strongest tier.",
       "- A real 100+ evaluation needs a search provider (BRAVE_API_KEY) or a bulk crawl of PIB press releases."]
 open("docs/evaluation.md", "w", encoding="utf-8").write("\n".join(L) + "\n")
 print("\n".join(L[:9]))

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from concurrent.futures import ThreadPoolExecutor
 from . import ledger
 from .card import render_card
 from .extract import extract_claims
@@ -14,8 +15,10 @@ def check_forward(text: str, retrievers, llm=None, log=True) -> dict:
         evidence = []
         for r in retrievers:
             evidence += r.search(claim.text)
-        for e in evidence:
-            e.stance = judge(claim.text, e, llm)
+        evidence = evidence[:8]
+        with ThreadPoolExecutor(max_workers=8) as ex:     # LLM calls are slow; judge sources in parallel
+            for e, st in zip(evidence, ex.map(lambda e: judge(claim.text, e, llm), evidence)):
+                e.stance = st
         results.append(decide(claim, evidence))
     overall = aggregate(results)
     # card cites the evidence behind the verdict that drove the overall result
