@@ -25,7 +25,8 @@ SUMMARY = ROOT / "data" / "eval_summary.json"
 DOCS = ROOT / "docs"
 CHECKPOINT = ROOT / "cache" / "eval_progress.json"
 LABELS = ("TRUE", "FALSE", "MISLEADING", "UNVERIFIED")
-LANGS = ("en", "hi", "te", "hinglish", "tinglish")
+LANGS = ("en", "hi", "te", "hinglish", "tinglish",
+         "bn", "mr", "ta", "gu", "ur", "kn", "or", "ml", "pa", "as", "kok", "ne", "mni")   # forwards in 13 more Indian languages
 FIELDS = ("claim", "label", "source", "lang", "seeded", "verified_on", "note")
 
 
