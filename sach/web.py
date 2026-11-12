@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 from .llm import get_llm
 from .pipeline import check_forward
 from .retrieve import default_retrievers
-from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, _DIAG_SCHEMES, diag_page, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_svg, upi_link
+from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_png, tip_qr_svg, upi_link
 
 RATE_LIMIT, RATE_WINDOW = 8, 60          # best-effort per-IP checks per minute (serverless instances don't share state)
 _hits: dict = {}
@@ -57,21 +57,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(b"not found", 404, "text/plain")
             self.send_response(302)
             app = qs.get("app", ["upi"])[0].lower()
-            app = app if (app in UPI_APPS or app in _DIAG_SCHEMES) else "upi"    # unknown app name: generic scheme, never an error
-            dec = qs.get("dec", [""])[0] == "1"
-            self.send_header("Location", upi_link(cfg, tip_amount(qs.get("amt", [""])[0]), "Sach tip", app=app, decimals=dec))
+            app = app if app in UPI_APPS else "upi"          # unknown app name: generic scheme, never an error
+            self.send_header("Location", upi_link(cfg, tip_amount(qs.get("amt", [""])[0]), "Sach tip", app=app))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Robots-Tag", "noindex, nofollow")
             self.send_header("Content-Length", "0")
             return self.end_headers()
-        if view == "diag":                                   # unlisted test page (not linked anywhere); noindex
-            if not tip_config():
-                return self._send(b"not found", 404, "text/plain")
-            self.send_response(200)
-            body = diag_page(tip_amount(qs.get("amt", [""])[0]) or 20)
-            self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(body)))
-            self.send_header("X-Robots-Tag", "noindex, nofollow"); self.send_header("Cache-Control", "no-store"); self.end_headers()
-            return self.wfile.write(body)
         if view == "pay":                                    # choose your UPI app (avoids iOS picking WhatsApp for you)
             if not tip_config():
                 return self._send(b"not found", 404, "text/plain")
@@ -80,11 +71,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(pay_page(amt, bad_amount=bool(raw_amt.strip()) and amt is None))
         if view == "tipqr":                                  # QR drawn on the server (pay-any-amount link)
             cfg = tip_config()
-            svg = tip_qr_svg(cfg, tip_amount(qs.get("amt", [""])[0]), decimals=qs.get("dec", [""])[0] == "1") if cfg else None
+            as_png = qs.get("fmt", [""])[0] == "png"
+            amt = tip_amount(qs.get("amt", [""])[0])
+            svg = (tip_qr_png(cfg, amt) if as_png else tip_qr_svg(cfg, amt)) if cfg else None
             if not svg:
                 return self._send(b"not found", 404, "text/plain")
             self.send_response(200)
-            self.send_header("Content-Type", "image/svg+xml")
+            self.send_header("Content-Type", "image/png" if as_png else "image/svg+xml")
             self.send_header("Content-Length", str(len(svg)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Robots-Tag", "noindex")

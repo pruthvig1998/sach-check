@@ -138,6 +138,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-bet
 .appbtn{flex-direction:row!important;align-items:center;gap:14px!important}.appbtn .ico{flex:none;width:50px;height:50px;display:grid;place-items:center;background:var(--paper2);border-radius:12px;color:var(--ink)}
 .appbtn .txt{display:flex;flex-direction:column;gap:2px}.appimg{display:block;width:50px;height:50px;border-radius:12px}
 .otheramt{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center;margin:14px 0}.otheramt input[type=number]{width:9em;font:inherit;font-size:18px;padding:9px 12px;border:2px solid var(--rule);background:var(--field);color:var(--ink);border-radius:3px}
+.tipcard[data-amt]{cursor:pointer}.tipcard.on{background:var(--paper2);box-shadow:4px 4px 0 var(--rule)}.tipcard:focus-visible{outline:3px solid var(--mis);outline-offset:2px}
 .tipcard.other{grid-column:1/-1;cursor:default}.tipcard.other:hover{transform:none;box-shadow:none}
 .logonote{font-size:12px;color:var(--mute);margin-top:18px}
 @media print{.tipcard,#upiqr{display:none}}
@@ -163,7 +164,10 @@ const dl=$('#dl');if(dl)dl.addEventListener('click',()=>{const lines=$('#cardtex
 const c=document.createElement('canvas');c.width=W;c.height=pad*2+lines.length*lh+60;const x=c.getContext('2d');x.fillStyle='#dcf8c6';x.fillRect(0,0,W,c.height);
 x.fillStyle='#17140f';x.font='600 30px sans-serif';let y=pad+30;lines.forEach(l=>{x.fillText(l.slice(0,70),pad,y);y+=lh});x.font='20px monospace';x.fillStyle='#555';x.fillText('Sach · checked '+new Date().toISOString().slice(0,10),pad,c.height-24);
 const a=document.createElement('a');a.download='sach-verdict.png';a.href=c.toDataURL('image/png');a.click()});
-const fw=$('#fw');if(fw){const go=$('#fwgo'),amt=$('#fwamt');const upd2=()=>{const n=parseInt(fw.value,10)||1,a=n*10;amt.textContent='₹'+a;go.href='/?view=pay&amt='+a;go.textContent='Chip in ₹'+a};fw.addEventListener('change',upd2);upd2()}
+const want=$('#want');const setAmt=a=>{if(want)want.textContent=a?('₹'+a):'any amount';$$('.tipcard[data-amt]').forEach(c=>c.classList.toggle('on',String(c.dataset.amt)===String(a)))};
+$$('.tipcard[data-amt]').forEach(c=>{c.addEventListener('click',()=>setAmt(c.dataset.amt));c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setAmt(c.dataset.amt)}})});
+const fw=$('#fw');if(fw){const upd2=()=>{const a=(parseInt(fw.value,10)||1)*10;$('#fwamt').textContent='₹'+a;setAmt(a)};fw.addEventListener('change',upd2)}
+const oa=$('#oa');if(oa)oa.addEventListener('input',()=>{const v=parseInt(oa.value,10);setAmt(v>=1&&v<=10000?v:null)});
 const r=$('#result');if(r)r.scrollIntoView({behavior:'smooth',block:'start'});
 let fv='ALL';const apply=()=>{const q=($('#q')?.value||'').toLowerCase();let n=0;$$('tbody tr[data-v]').forEach(tr=>{const ok=(fv==='ALL'||tr.dataset.v===fv)&&tr.innerText.toLowerCase().includes(q);tr.style.display=ok?'':'none';if(ok)n++});const s=$('#shown');if(s)s.textContent=n+' shown';const e=$('#empty');if(e)e.style.display=n?'none':''};
 $$('.filters button').forEach(b=>b.addEventListener('click',()=>{$$('.filters button').forEach(x=>x.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true');fv=b.dataset.v;apply()}));
@@ -234,12 +238,22 @@ def tip_amount(raw) -> int | None:
     raw = (raw or "").strip()
     return int(raw) if raw.isascii() and raw.isdigit() and 1 <= int(raw) <= 10000 else None      # ASCII digits only (not "٥٠")
 
-def tip_qr_svg(cfg: dict, amount: int | None = None, decimals: bool = False) -> bytes | None:
+def tip_qr_png(cfg: dict, amount: int | None = None) -> bytes | None:
+    """The same QR as a PNG, so a phone can save it to the gallery and scan it from there inside the UPI app."""
+    try:
+        import io, segno
+        buf = io.BytesIO()
+        segno.make(upi_link(cfg, amount, "Sach tip"), error="m").save(buf, kind="png", scale=8, border=4)
+        return buf.getvalue()
+    except Exception:
+        return None
+
+def tip_qr_svg(cfg: dict, amount: int | None = None) -> bytes | None:
     """A QR (generic upi:// so every UPI scanner reads it), drawn on the server so the address never appears in the page's HTML."""
     try:
         import io, segno
         buf = io.BytesIO()
-        segno.make(upi_link(cfg, amount, "Sach tip", decimals=decimals), error="m").save(buf, kind="svg", scale=5, border=2, xmldecl=False, svgns=True)
+        segno.make(upi_link(cfg, amount, "Sach tip"), error="m").save(buf, kind="svg", scale=5, border=2, xmldecl=False, svgns=True)
         return buf.getvalue()
     except Exception:
         return None
@@ -252,13 +266,10 @@ def tip_config():
     name = _re.sub(r"[^A-Za-z0-9 .&'-]", "", os.environ.get("SACH_UPI_NAME") or "Sach")[:40].strip() or "Sach"
     return {"vpa": vpa, "name": name}
 
-_DIAG_SCHEMES = {"tez": "tez://upi/pay"}      # Google Pay's older scheme; reachable only from the unlisted diagnostics page
-
-def upi_link(cfg: dict, amount: int | None = None, note: str = "Sach tip", app: str = "upi", decimals: bool = False) -> str:
-    base = UPI_APPS.get(app, (None, _DIAG_SCHEMES.get(app, UPI_APPS["upi"][1])))[1]    # unknown app name -> the generic scheme, never an error
+def upi_link(cfg: dict, amount: int | None = None, note: str = "Sach tip", app: str = "upi") -> str:
+    base = UPI_APPS.get(app, UPI_APPS["upi"])[1]                     # unknown app name -> the generic scheme, never an error
     q = f"pa={_q(cfg['vpa'], safe='@.-_')}&pn={_q(cfg['name'])}&cu=INR&tn={_q(note)}"
-    amt = (f"&am={int(amount)}.00" if decimals else f"&am={int(amount)}") if amount else ""
-    return base + "?" + q + amt
+    return base + "?" + q + (f"&am={int(amount)}" if amount else "")
 
 
 def eval_summary() -> dict:
@@ -353,18 +364,21 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
     faq = "".join(f"<details><summary>{esc(q)}</summary><p>{esc(a)}</p></details>" for q, a in faq_items)
     tip_section = ""
     if cfg:
-        cards = "".join(f'<a class="tipcard" href="/?view=pay&amp;amt={amt}" rel="nofollow"><div class="amt">₹{amt}</div><b>{esc(t)}</b><span class="d">{esc(d)}</span></a>'
+        cards = "".join(f'<div class="tipcard" data-amt="{amt}" role="button" tabindex="0"><div class="amt">₹{amt}</div><b>{esc(t)}</b><span class="d">{esc(d)}</span></div>'
                         for amt, t, d in TIP_TIERS)
         opts_fw = "".join(f'<option value="{n}"{" selected" if n == 3 else ""}>{n}</option>' for n in (1, 3, 5, 10, 20))
         tip_section = f'''<section id="tip"><div class="wrap"><p class="kicker">Nobody asked, but…</p><h2>{esc(tip_headline())} ☕</h2>
 <p class="sub">Sach has no ads, no paywall and no “forward this to 10 groups or bad luck”. If a verdict saved you an awkward family-group moment, a small tip keeps the corrections coming. <b>Tips never change a verdict.</b></p>
-<div class="tipmeter card"><label for="fw">You were about to forward</label><select id="fw" aria-label="Forwards we stopped">{opts_fw}</select><span>messages. At ₹{PER_FORWARD} a forward that's <b id="fwamt">₹{3 * PER_FORWARD}</b></span>
-<a class="btn" id="fwgo" href="/?view=pay&amp;amt={3 * PER_FORWARD}" rel="nofollow" style="text-decoration:none">Chip in ₹{3 * PER_FORWARD}</a></div>
-<div class="tipgrid">{cards}<div class="tipcard other"><div class="amt" style="font-size:24px">Other amount</div><span class="d">Any amount from ₹1 to ₹10,000</span>{amount_form()}</div></div>
-<div class="tipbox"><img id="upiqr" src="/?view=tipqr" width="170" height="170" alt="UPI QR code for tips">
-<div><p style="margin:0 0 8px"><b>On a phone:</b> tap an amount, then pick your UPI app (Google Pay, PhonePe, Paytm…). It opens with the amount filled in and you confirm there.<br><b>On a computer:</b> scan the QR code with any UPI app and enter any amount.</p>
-<div class="row"><a class="btn" href="/?view=pay" rel="nofollow" style="text-decoration:none">Pay any amount</a></div>
-<p class="note" style="margin:10px 0 0">Your UPI app shows who you're paying before you confirm; that's UPI's own safety check. Tips are optional and go straight from your app to the person who runs Sach. Sach never sees who paid or how much.</p></div></div></div></section>'''
+<div class="tipmeter card"><label for="fw">You were about to forward</label><select id="fw" aria-label="Forwards we stopped">{opts_fw}</select><span>messages. At ₹{PER_FORWARD} a forward that's <b id="fwamt">₹{3 * PER_FORWARD}</b></span></div>
+<p class="note" style="margin:0 0 8px">Pick a suggestion (or type your own), then scan the code below and enter that amount in your UPI app.</p>
+<div class="tipgrid">{cards}<div class="tipcard other"><div class="amt" style="font-size:24px">Other amount</div><span class="d">Any amount from ₹1 to ₹10,000</span>
+<div class="otheramt"><label for="oa"><b>Amount</b> (₹)</label><input id="oa" type="number" inputmode="numeric" min="1" max="10000" step="1" placeholder="e.g. 75"></div></div></div>
+<div class="tipbox"><img id="upiqr" src="/?view=tipqr&amp;fmt=png" width="190" height="190" alt="UPI QR code for tips">
+<div><p style="margin:0 0 8px"><b>Scan this code</b> with Google Pay, PhonePe, Paytm or BHIM and enter <b id="want">₹{3 * PER_FORWARD}</b> when asked.</p>
+<p style="margin:0 0 8px"><b>On a computer:</b> scan it with the UPI app on your phone.<br><b>On a phone:</b> save the image (tap Download, or press and hold it), then open your UPI app, choose <i>Scan QR</i> and pick the image from your gallery.</p>
+<div class="row"><a class="btn" href="/?view=tipqr&amp;fmt=png" download="sach-tip-qr.png" style="text-decoration:none">Download QR image</a></div>
+<p class="note" style="margin:10px 0 0">Your UPI app shows who you're paying before you confirm; that's UPI's own safety check. Tips are optional and go straight from your app to the person who runs Sach. Sach never sees who paid or how much.</p>
+<p class="note" style="margin:8px 0 0">Prefer a button? <a href="/?view=pay" rel="nofollow">Try opening your UPI app directly</a>. It works on some phones, but many banks block payments started from a link and show a “limit exceeded” message even for ₹20. If that happens, use the QR code above.</p></div></div></div></section>'''
     body = f"""<div class="wrap"><div class="hero"><div>
 <p class="kicker">A corrections desk for your family group</p>
 <h1>Got a forward? Get the <em>receipts.</em></h1>
@@ -435,7 +449,8 @@ def pay_page(amount: int | None = None, bad_amount: bool = False) -> bytes:
            'You can also pick an app now and type the amount there.</p>') if bad_amount else ""
     body = f"""<div class="wrap"><div class="paywrap"><p class="kicker">Chip in for the corrections desk ☕</p>
 <h1 style="font-size:clamp(34px,8vw,54px);margin:6px 0 10px">Pay {esc(shown)}</h1>
-{err}<p class="sub" style="margin-bottom:14px">Pick the app you use. Your phone may ask “open another application?”; say yes. The amount is filled in and <b>you confirm the payment inside that app</b>.</p>
+{err}<p role="note" style="background:var(--paper2);border-left:6px solid var(--mis);padding:12px 16px;margin:0 0 16px"><b>Heads up:</b> payments started from a link often fail for tips to a personal UPI ID (some banks show “limit exceeded” even for ₹20). If it fails, go back and <b>scan the QR code</b> instead; that always works.</p>
+<p class="sub" style="margin-bottom:14px">Pick the app you use. Your phone may ask “open another application?”; say yes. The amount is filled in and <b>you confirm the payment inside that app</b>.</p>
 {buttons}
 {amount_form(amount, compact=True)}
 <p class="note">iPhone tip: if you choose “Any other UPI app”, iOS decides which app opens and it may not be the one you wanted (for example WhatsApp). Choosing your app above avoids that. App not installed? Use the QR below or go back.</p>
@@ -445,24 +460,6 @@ def pay_page(amount: int | None = None, bad_amount: bool = False) -> bytes:
 <p style="margin-top:24px"><a class="btn ghost" href="/#tip" style="text-decoration:none">← Back to the tip jar</a></p>
 <p class="logonote">App names and logos belong to their owners (Google LLC, PayTM Mobile Solutions, NPCI, PhonePe) and are shown only to help you recognise the app. Sach is not affiliated with them. The icons are the apps own App Store icons; the "other app" icon is a generic glyph.</p></div></div>"""
     return layout(body, "Chip in — Sach")
-
-
-def diag_page(amount: int = 20) -> bytes:
-    """Unlisted test page: the same payment written several ways, to find which form payer apps accept. No UPI address in the HTML."""
-    a = amount
-    links = [("A", "Current link, Google Pay, amount " + str(a), f"/?go=tip&amp;amt={a}&amp;app=gpay"),
-             ("B", f"Google Pay, amount written as {a}.00", f"/?go=tip&amp;amt={a}&amp;app=gpay&amp;dec=1"),
-             ("C", f"Google Pay's older tez:// link, {a}.00", f"/?go=tip&amp;amt={a}&amp;app=tez&amp;dec=1"),
-             ("D", f"Generic upi:// link, {a}.00 (Android may show an app picker)", f"/?go=tip&amp;amt={a}&amp;app=upi&amp;dec=1"),
-             ("E", "Google Pay, no amount (type the amount yourself)", "/?go=tip&amp;app=gpay")]
-    qrs = [("F", f"QR with amount {a}", f"/?view=tipqr&amp;amt={a}"), ("G", f"QR with amount {a}.00", f"/?view=tipqr&amp;amt={a}&amp;dec=1"),
-           ("H", "QR with no amount", "/?view=tipqr")]
-    lk = "".join(f'<a class="appbtn" href="{u}" rel="nofollow"><span class="txt"><b>{k}. {esc(t)}</b></span></a>' for k, t, u in links)
-    qr = "".join(f'<div style="display:inline-block;margin:6px 14px 6px 0;text-align:center"><img src="{u}" width="150" height="150" alt="QR {k}"><br><b>{k}</b> {esc(t)}</div>' for k, t, u in qrs)
-    body = f"""<div class="wrap"><div class="paywrap"><p class="kicker">Private test page</p><h1 style="font-size:clamp(30px,7vw,46px);margin:6px 0 10px">Payment link tests</h1>
-<p class="sub">Tap each button (or scan each QR from another screen) and note whether the payment opens correctly and can be completed. Tell the site owner the letters that worked and the ones that failed.</p>
-{lk}<h2 style="font-size:22px;margin:22px 0 8px">QR codes (scan from another screen)</h2>{qr}</div></div>"""
-    return layout(body, "Link tests - Sach")
 
 
 def ledger_page() -> bytes:

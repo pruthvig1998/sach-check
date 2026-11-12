@@ -1002,18 +1002,6 @@ def test_page_html_never_contains_the_upi_address_or_upi_links(server, monkeypat
     code, h = _post(server, "Government will give Rs 5000 to every woman.")            # result page too
     assert "supporter" not in h and "upi://" not in h
 
-def test_tip_section_has_funny_copy_tiers_picker_and_qr_image_but_no_copy_button(server, monkeypatch):
-    _tip_env(monkeypatch, "supporter@okbank")
-    h = _ur.urlopen(server + "/?t=2").read().decode()
-    assert 'id="tip"' in h and "Nobody asked, but" in h and "Tips never change a verdict" in h
-    assert any(t in h for t in SITE.TIP_HEADLINES) or any(SITE.esc(t) in h for t in SITE.TIP_HEADLINES)
-    assert h.count('class="tipcard"') == 4 and "Samosa for the fact-checker" in h and "Sponsor a family-group intervention" in h
-    for amt in (20, 50, 100, 500):
-        assert f'href="/?view=pay&amp;amt={amt}"' in h
-    assert 'id="fw"' in h and 'id="fwgo"' in h and "You were about to forward" in h                # forwards-saved picker
-    assert '<img id="upiqr" src="/?view=tipqr"' in h
-    assert 'id="copyupi"' not in h and "Copy UPI ID" not in h and "qrcode-generator" not in h and "cdnjs" not in h
-    assert "Do tips change what Sach says?" in h and "Tip jar" in h and "will show you who you are paying" in h
 
 def test_tip_button_redirects_to_the_upi_app_with_the_amount(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank", "Sach Desk")
@@ -1057,19 +1045,8 @@ def test_soft_prompt_quips_differ_by_verdict_and_unverified_gets_none(server, mo
     assert set(SITE.TIP_QUIPS) == {"FALSE", "TRUE", "MISLEADING"}
 
 
-def test_forwards_picker_defaults_to_three_matching_the_server_rendered_amount(server, monkeypatch):
-    _tip_env(monkeypatch, "supporter@okbank")
-    h = _ur.urlopen(server + "/?t=picker").read().decode()
-    assert '<option value="3" selected>3</option>' in h and 'amt=30"' in h and "Chip in ₹30" in h
-
 
 # --- UPI app chooser (iPhone: the generic upi:// link opened WhatsApp instead of letting the payer choose)
-def test_tier_buttons_open_the_chooser_not_a_random_app(server, monkeypatch):
-    _tip_env(monkeypatch, "supporter@okbank")
-    h = _ur.urlopen(server + "/?t=choose").read().decode()
-    assert 'href="/?view=pay&amp;amt=20"' in h and 'href="/?view=pay"' in h and 'href="/?view=pay&amp;amt=30"' in h
-    assert "?go=tip" not in h.split('id="tip"')[1].split("</section>")[0]                 # nothing in the tip section jumps straight to an app
-    assert "then pick your UPI app" in h
 
 def test_chooser_page_lists_apps_amount_and_qr_without_the_address(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank", "Sach")
@@ -1187,12 +1164,6 @@ def test_chooser_has_a_change_amount_form_prefilled(server, monkeypatch):
     assert 'class="otheramt compact"' in h and 'name="view" value="pay"' in h and 'name="amt" type="number"' in h and 'min="1" max="10000"' in h
     assert 'value="75"' in h and "Change amount" in h and 'method="get" action="/"' in h
 
-def test_tip_section_has_an_other_amount_tile(server, monkeypatch):
-    _tip_env(monkeypatch, "supporter@okbank")
-    h = _ur.urlopen(server + "/?t=other").read().decode()
-    tip = h.split('id="tip"')[1].split("</section>")[0]
-    assert 'class="tipcard other"' in tip and "Other amount" in tip and 'name="amt" type="number"' in tip and "₹1 to ₹10,000" in tip
-    assert tip.count('class="tipcard"') == 4                                # the four preset tiers are unchanged
 
 @pytest.mark.parametrize("bad", ["abc", "0", "-5", "10001", "99999999", "5.5", "1e3"])
 def test_invalid_custom_amount_shows_a_clear_message_and_still_lets_them_pay(server, monkeypatch, bad):
@@ -1220,43 +1191,70 @@ def test_icons_and_forms_leak_no_address(server, monkeypatch):
 
 
 # --- diagnostics for prefilled-amount failures (Google Pay "bank limit" on a link, while a no-amount QR works)
-def test_amount_can_be_written_with_two_decimals():
-    cfg = {"vpa": "supporter@okbank", "name": "Sach"}
-    assert SITE.upi_link(cfg, 20).endswith("&am=20") and SITE.upi_link(cfg, 20, decimals=True).endswith("&am=20.00")
-    assert "am=" not in SITE.upi_link(cfg, None, decimals=True)                          # no amount: nothing to format
 
-def test_tez_scheme_only_reachable_via_diag_not_in_the_public_app_list():
-    assert "tez" not in SITE.UPI_APPS
-    assert SITE.upi_link({"vpa": "a1@okbank", "name": "Sach"}, 20, app="tez", decimals=True).startswith("tez://upi/pay?pa=a1@okbank")
 
-def test_redirect_supports_decimal_and_tez_variants(server, monkeypatch):
-    _tip_env(monkeypatch, "supporter@okbank", "Sach Desk")
-    assert _raw_get(server, "/?go=tip&amt=20&app=gpay&dec=1")[1]["Location"].endswith("&am=20.00")
-    assert _raw_get(server, "/?go=tip&amt=20&app=gpay")[1]["Location"].endswith("&am=20")
-    loc = _raw_get(server, "/?go=tip&amt=20&app=tez&dec=1")[1]["Location"]
-    assert loc.startswith("tez://upi/pay?") and loc.endswith("&am=20.00") and "pa=supporter@okbank" in loc
-    assert _raw_get(server, "/?go=tip&app=gpay&dec=1")[1]["Location"].count("am=") == 0     # dec without an amount adds nothing
-    assert _raw_get(server, "/?go=tip&amt=20&app=gpay&dec=yes")[1]["Location"].endswith("&am=20")   # only dec=1 counts
 
-def test_qr_decimal_variant_differs_from_integer_variant(server, monkeypatch):
+
+
+
+# --- QR-first tip jar (links to a personal UPI ID are rejected by many banks; scanning a QR works)
+def _tip_part(h):
+    return h.split('id="tip"')[1].split("</section>")[0]
+
+def test_tip_section_is_qr_first_with_funny_copy_and_suggestion_tiles(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank")
-    a = _raw_get(server, "/?view=tipqr&amt=20")[2]; b = _raw_get(server, "/?view=tipqr&amt=20&dec=1")[2]
-    assert a != b and b.lstrip().startswith(b"<svg")
+    h = _ur.urlopen(server + "/?t=qrfirst").read().decode()
+    tip = _tip_part(h)
+    assert "Nobody asked, but" in tip and "Tips never change a verdict" in tip and any(SITE.esc(t) in tip for t in SITE.TIP_HEADLINES)
+    assert tip.count('class="tipcard"') == 4 and 'role="button"' in tip and 'data-amt="20"' in tip and 'data-amt="500"' in tip
+    assert "Samosa for the fact-checker" in tip and "Sponsor a family-group intervention" in tip
+    assert '<a class="tipcard"' not in tip and "?go=tip" not in tip                      # tiles are suggestions, not payment links
+    assert '<img id="upiqr" src="/?view=tipqr&amp;fmt=png"' in tip and 'download="sach-tip-qr.png"' in tip
+    assert "Scan this code" in tip and 'enter <b id="want">₹30</b>' in tip and "On a phone:" in tip and "gallery" in tip
+    assert '<option value="3" selected>3</option>' in tip and 'id="fwamt">₹30' in tip   # picker defaults to 3 forwards = ₹30
+    assert "Copy UPI ID" not in tip and "copyupi" not in tip
 
-def test_diag_page_lists_variants_noindex_and_leaks_nothing(server, monkeypatch):
-    _tip_env(monkeypatch, "supporter@okbank", "Sach Desk")
-    code, hdr, body = _raw_get(server, "/?view=diag")
-    h = body.decode()
-    assert code == 200 and "noindex" in hdr["X-Robots-Tag"] and "Private test page" in h
-    for k in "ABCDE":
-        assert f"<b>{k}." in h
-    assert 'src="/?view=tipqr&amp;amt=20&amp;dec=1"' in h and 'src="/?view=tipqr"' in h
-    assert "supporter" not in h and "okbank" not in h and "Sach Desk" not in h
-    assert "upi://pay" not in h and "tez://upi" not in h and "pa=" not in h                      # labels may name the schemes; no real payment link
-    assert "view=diag" not in _ur.urlopen(server + "/?x=d").read().decode()              # not linked from anywhere
+def test_tip_section_other_amount_is_a_plain_input_not_a_form(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    tip = _tip_part(_ur.urlopen(server + "/?t=other2").read().decode())
+    assert 'class="tipcard other"' in tip and 'id="oa"' in tip and 'type="number"' in tip and 'min="1" max="10000"' in tip and "₹1 to ₹10,000" in tip
+    assert "<form" not in tip                                                              # typing an amount never navigates away
 
-def test_diag_page_404_when_tip_jar_off_and_respects_amount(server, monkeypatch):
+def test_tip_section_demotes_app_buttons_with_an_honest_warning(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    tip = _tip_part(_ur.urlopen(server + "/?t=warn").read().decode())
+    assert 'href="/?view=pay"' in tip and "limit exceeded" in tip and "use the QR code above" in tip
+    assert tip.index("Scan this code") < tip.index('href="/?view=pay"')                   # the QR comes first, the button fallback second
+
+def test_chooser_page_warns_that_link_payments_often_fail(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    h = _raw_get(server, "/?view=pay&amt=50")[2].decode()
+    assert "Heads up" in h and "limit exceeded" in h and "scan the QR code" in h
+
+def test_png_qr_is_a_real_png_without_the_address_text(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank")
+    code, hdr, body = _raw_get(server, "/?view=tipqr&fmt=png")
+    assert code == 200 and hdr["Content-Type"] == "image/png" and body[:8] == b"\x89PNG\r\n\x1a\n" and hdr["Cache-Control"] == "no-store"
+    import struct
+    w, h = struct.unpack(">II", body[16:24])                                                  # IHDR width/height
+    assert w == h and w >= 200 and b"supporter" not in body and b"okbank" not in body      # a real, square, scannable-size image
+    assert _raw_get(server, "/?view=tipqr&fmt=png&amt=50")[2] != body                       # amount variant differs
+    assert _raw_get(server, "/?view=tipqr&fmt=svg")[1]["Content-Type"] == "image/svg+xml"   # anything but fmt=png stays SVG
+
+def test_png_qr_404_when_tip_jar_is_off(server, monkeypatch):
     _tip_env(monkeypatch, None)
-    assert _raw_get(server, "/?view=diag")[0] == 404
+    assert _raw_get(server, "/?view=tipqr&fmt=png")[0] == 404
+
+def test_page_with_the_qr_first_section_still_leaks_nothing(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", "Sach Desk")
+    h = _ur.urlopen(server + "/?t=leak3").read().decode()
+    assert "supporter" not in h and "okbank" not in h and "Sach Desk" not in h and "upi://pay" not in h
+
+
+def test_diagnostics_page_and_experimental_variants_are_gone(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank")
-    assert "amt=50" in _raw_get(server, "/?view=diag&amt=50")[2].decode() and "amt=20" in _raw_get(server, "/?view=diag&amt=abc")[2].decode()
+    assert "Private test page" not in _raw_get(server, "/?view=diag")[2].decode()                  # falls through to the home page
+    loc = _raw_get(server, "/?go=tip&amt=20&app=tez&dec=1")[1]["Location"]
+    assert loc.startswith("upi://pay?") and loc.endswith("&am=20")                                  # tez / dec are ignored now
+    import inspect
+    assert not hasattr(SITE, "diag_page") and "decimals" not in inspect.signature(SITE.upi_link).parameters
