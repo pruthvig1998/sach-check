@@ -788,18 +788,50 @@ def test_quota_exhausted_judge_is_skipped_during_cooldown_then_retried(monkeypat
     f = LL.FailoverJudge([a, b]); now = [1000.0]
     monkeypatch.setattr(LL.time, "time", lambda: now[0])
     f.stance(CLAIM, "t", PAGE); first_calls = a.calls
-    assert first_calls == 1 and not a.available()    # one 429 and its sibling models are not hammered
+    assert first_calls == len(a.models) and not a.available()   # each model gets one 429, then the whole judge is paused
     f.stance(CLAIM, "t", PAGE); f.stance(CLAIM, "t", PAGE)
-    assert a.calls == first_calls                    # skipped without a call while cooling down
-    now[0] += LL.COOLDOWN_S + 1
+    assert a.calls == first_calls                    # skipped without a call while paused (b answers)
+    now[0] += 61                                     # no Retry-After header: a model is paused for a minute
     assert a.available(); f.stance(CLAIM, "t", PAGE)
-    assert a.calls == first_calls + 1                # retried after the cooldown
+    assert a.calls > first_calls                     # retried after the pause
 
-@pytest.mark.parametrize("err", [_http(503), _http(404), TimeoutError("slow"), ValueError("odd payload")])
+def test_a_429_honours_retry_after_and_only_pauses_that_model(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(LL.time, "time", lambda: now[0])
+    e = _http(429)
+    try:
+        e.headers = {"retry-after": "7"}
+    except Exception:
+        pass
+    a = _Scripted("a", e)
+    with pytest.raises(Exception): a.stance(CLAIM, "t", PAGE)
+    assert not a.available()
+    now[0] += 8
+    assert a.available()
+
+def test_auth_errors_bench_the_whole_key(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(LL.time, "time", lambda: now[0])
+    a = _Scripted("a", _http(401))
+    with pytest.raises(Exception): a.stance(CLAIM, "t", PAGE)
+    assert a.calls == 1 and not a.available()        # a bad key: do not try its other models
+    now[0] += LL.COOLDOWN_S + 1
+    assert a.available()
+
+@pytest.mark.parametrize("err", [_http(503), _http(404), ValueError("odd payload")])
 def test_transient_errors_do_not_start_a_cooldown(err):
     a = _Scripted("a", err)
     with pytest.raises(Exception): a.stance(CLAIM, "t", PAGE)
     assert a.available() and a.calls == 2            # both models tried, judge stays usable
+
+def test_timeouts_pause_only_the_slow_models_briefly(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(LL.time, "time", lambda: now[0])
+    a = _Scripted("a", TimeoutError("slow"))
+    with pytest.raises(Exception): a.stance(CLAIM, "t", PAGE)
+    assert a.calls == 2 and not a.available()        # both models timed out, so both are briefly paused
+    now[0] += LL.SLOW_MODEL_S + 1
+    assert a.available()
 
 def test_all_judges_down_raises_counts_failure_and_site_falls_back_safely():
     f = LL.FailoverJudge([_Scripted("a", _http(429)), _Scripted("b", OSError("down"))])

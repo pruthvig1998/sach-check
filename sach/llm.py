@@ -22,6 +22,14 @@ _MAP = {"CONTRADICTS": "contradicts", "CONFIRMS": "confirms", "PARTIAL": "mixed"
 COOLDOWN_S = 300      # a key that returned 429/401/403 is skipped this long instead of being hammered on every source
 SLOW_MODEL_S = 90          # a model that timed out is skipped for this long (the key itself stays usable)
 
+def _retry_after(err) -> float:
+    """Seconds the provider asked us to wait (Retry-After header), clamped to 5..600; a minute when it does not say."""
+    try:
+        v = float((getattr(err, "headers", None) or {}).get("retry-after") or 0)
+    except (TypeError, ValueError):
+        v = 0
+    return min(max(v, 5.0), 600.0) if v else 60.0
+
 def _is_timeout(err) -> bool:
     import socket, urllib.error
     if isinstance(err, (TimeoutError, socket.timeout)):
@@ -51,20 +59,28 @@ class _Judge:
     failures = 0
 
     def available(self) -> bool:
-        return time.time() >= self.exhausted_until
+        return time.time() >= self.exhausted_until and bool(self._usable_models())
+
+    def _pauses(self) -> dict:
+        return self.__dict__.setdefault("_pause", {})
+
+    def _usable_models(self):
+        now, p = time.time(), self._pauses()
+        return [m for m in self.models if p.get(m, 0) <= now]
 
     def _note_failure(self, err, model=None):
+        """401/403: the key itself is unusable, bench the whole judge. 429 or a timeout: free-tier limits are per model, so
+        pause only that model (for as long as the provider asks, else a minute) and let the next model or provider answer."""
         code = getattr(err, "code", None)
-        if code in (429, 401, 403):               # quota / auth: skip this judge for a while (timeouts and 503s do not trigger it)
+        if code in (401, 403):
             self.exhausted_until = time.time() + COOLDOWN_S
-        elif model and _is_timeout(err):          # an overloaded model: skip just that model briefly so the next one answers in time
-            slow = self.__dict__.setdefault("_slow", {})
-            slow[model] = time.time() + SLOW_MODEL_S
+        elif model and code == 429:
+            self._pauses()[model] = time.time() + _retry_after(err)
+        elif model and _is_timeout(err):
+            self._pauses()[model] = time.time() + SLOW_MODEL_S
 
     def _models_now(self):
-        slow = self.__dict__.get("_slow", {})
-        now = time.time()
-        return [m for m in self.models if slow.get(m, 0) <= now] or list(self.models)
+        return self._usable_models() or list(self.models)
 
     def _label(self, model, claim, title, text):
         st, q = parse_reply(self._raw(model, PROMPT, _user(claim, title, text), 200))
@@ -138,12 +154,12 @@ class GeminiJudge(_Judge):
                                                          {"inlineData": {"mimeType": mime, "data": base64.b64encode(image_bytes).decode()}}]}],
                 "generationConfig": {"temperature": 0, "maxOutputTokens": max_tokens}}
         last = None
-        for m in self.models:
+        for m in self._models_now():
             try:
                 return self._post(m, body)["candidates"][0]["content"]["parts"][0]["text"]
             except Exception as e:
                 last = e
-                self._note_failure(e)
+                self._note_failure(e, m)
                 if not self.available():
                     break
         self.failures += 1
@@ -165,7 +181,10 @@ class OpenAICompatJudge(_Judge):
     def _raw(self, model, system, user, max_tokens):
         body = {"model": model, "temperature": 0, "max_tokens": max_tokens,
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
-        return self._post(model, body)["choices"][0]["message"]["content"]
+        if self.name == "groq" and "gpt-oss" in model:
+            # reasoning models spend tokens thinking before they answer; with a small budget the answer can come back empty
+            body.update({"reasoning_effort": "low", "max_tokens": max(max_tokens, 700)})
+        return self._post(model, body)["choices"][0]["message"]["content"] or ""
 
 
 class ClaudeJudge:
@@ -199,6 +218,11 @@ class ClaudeJudge:
         return r.content[0].text.strip()
 
 
+import threading as _threading
+LLM_MAX_CONCURRENT = int(os.environ.get("SACH_LLM_MAX_CONCURRENT", "4"))
+_LLM_SLOTS = _threading.BoundedSemaphore(max(1, LLM_MAX_CONCURRENT))
+
+
 class FailoverJudge:
     """Tries judges in order. A judge that raised (all its models failed) is skipped; one in cooldown is skipped without a call.
     Raises only when every judge failed, which makes stance.judge() use the safe rules-only fallback ('Limited mode')."""
@@ -211,6 +235,10 @@ class FailoverJudge:
         return [m for j in self.judges for m in getattr(j, "models", [])]
 
     def _run(self, method, *args, **kw):
+        with _LLM_SLOTS:                     # at most a few AI calls in flight: bursts trip free-tier per-minute limits
+            return self._run_unlimited(method, *args, **kw)
+
+    def _run_unlimited(self, method, *args, **kw):
         last = None
         pool = [j for j in self.judges if j.available()] or []
         for j in pool:

@@ -70,3 +70,12 @@ def test_judge_timeouts_are_shorter_than_the_judging_window():
     import sach.pipeline as P
     assert LL.GeminiJudge(key="k").timeout < P.JUDGE_DEADLINE_S
     assert LL.OpenAICompatJudge("groq", "https://x", "k", "m").timeout < P.JUDGE_DEADLINE_S
+
+def test_groq_reasoning_models_get_room_to_answer():
+    j = LL.OpenAICompatJudge("groq", "https://x", "k", "openai/gpt-oss-120b,qwen/qwen3.8-27b")
+    sent = []
+    j._post = lambda model, body: sent.append(body) or {"choices": [{"message": {"content": None}}]}
+    assert j._raw("openai/gpt-oss-120b", "s", "u", 200) == ""          # an empty answer is returned as "", never None
+    assert sent[-1]["reasoning_effort"] == "low" and sent[-1]["max_tokens"] >= 700
+    j._raw("qwen/qwen3.8-27b", "s", "u", 200)
+    assert "reasoning_effort" not in sent[-1] and sent[-1]["max_tokens"] == 200

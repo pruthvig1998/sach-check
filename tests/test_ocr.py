@@ -155,10 +155,10 @@ def test_cooldown_honoured_with_real_gemini_judge(srv):
     ok = FakeJudge("fallback")
     use(g, ok)
     assert call(srv, img())[1]["text"] == "fallback"
-    assert len(n) == 1 and not g.available()          # 429 stops the other models of this key
+    assert len(n) == len(g.models) and not g.available()   # a 429 pauses that model; once every model is paused the key is skipped
     W._hits.clear()
     assert call(srv, img())[1]["text"] == "fallback"
-    assert len(n) == 1                                 # cooling: not called again
+    assert len(n) == len(g.models)                          # paused: not called again
 
 
 def test_gemini_request_shape():
