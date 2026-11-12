@@ -1,0 +1,15 @@
+# Only the app (sach/, api/) and its small data files should be deployed.
+cache/
+.git/
+.env*
+.vercel/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+tests/
+scripts/
+docs/
+data/ledger.json
+data/eval_ledger.json
+data/checkpoint_ledger.json
