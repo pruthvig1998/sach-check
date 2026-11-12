@@ -48,6 +48,8 @@ _PRIVACY = lambda: f"""
 <ul><li><b>Card / UPI checkout:</b> payment is handled by <b>Razorpay</b>. Razorpay collects the details needed to process the payment and may show the operator your name, contact and payment method in its dashboard. Sach itself never sees or stores your card, UPI or bank details. Razorpay's own privacy policy applies to that data.</li>
 <li><b>UPI QR code:</b> the payment goes directly between your UPI app and the operator's bank account. Sach doesn't see it.</li>
 <li>Sach doesn't link tips to the claims you checked.</li></ul>
+<h3>Visit statistics</h3>
+<p>Sach uses Vercel Web Analytics to count page views. It does not use cookies and does not identify you; it does not see what you paste into the checker.</p>
 <h3>Cookies</h3>
 <p>Sach doesn't set tracking cookies. Your browser may store your light/dark preference locally. Razorpay's checkout window, when opened, may set its own cookies.</p>
 <h3>Your choices</h3>

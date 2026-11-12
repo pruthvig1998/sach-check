@@ -334,7 +334,8 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <meta name="theme-color" content="#f2ebdb"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23c2321f'/%3E%3Ctext x='32' y='45' font-size='40' text-anchor='middle' fill='white' font-family='serif' font-weight='900'%3ES%3C/text%3E%3C/svg%3E">
 {pwa.HEAD}
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="{FONTS}" rel="stylesheet"><style>{CSS}{VOICE_CSS}</style></head><body>
+<link href="{FONTS}" rel="stylesheet"><style>{CSS}{VOICE_CSS}</style>
+<script defer src="https://cdn.vercel-insights.com/v1/script.js"></script></head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="wrap"><a class="logo" href="/" title="Sach (Hindi सच) and nijam (Telugu నిజం) both mean “truth”">Sach<small><span class="sc">सच · నిజం · </span>truth</small></a>
 <nav aria-label="Main"><a href="/#check">Check</a><a class="opt" href="/#how">How it works</a><a class="opt" href="/#rules">Rules</a><a class="opt" href="/#faq">FAQ</a>
