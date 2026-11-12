@@ -1382,3 +1382,126 @@ def test_merchant_mode_keeps_tap_to_pay_routes(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank", merchant=True)
     assert _raw_get(server, "/?go=tip&amt=20&app=gpay")[1]["Location"].startswith("gpay://upi/pay?pa=supporter@okbank")
     assert _raw_get(server, "/?view=pay&amt=50")[0] == 200
+
+
+# --- Razorpay Standard Checkout (test-mode keys only in tests; fake values, no network)
+import hmac as _hmac, hashlib as _hl, io as _io
+import sach.razorpay_pay as RZ
+
+_FAKE_ID, _FAKE_SECRET = "rzp_test_ABCDEFGH12345", "fakesecret-for-tests-only"
+
+def _rzp_env(monkeypatch, on=True):
+    if on:
+        monkeypatch.setenv("RAZORPAY_KEY_ID", _FAKE_ID); monkeypatch.setenv("RAZORPAY_KEY_SECRET", _FAKE_SECRET)
+    else:
+        monkeypatch.delenv("RAZORPAY_KEY_ID", raising=False); monkeypatch.delenv("RAZORPAY_KEY_SECRET", raising=False)
+
+def _sig(order, pay, secret=_FAKE_SECRET):
+    return _hmac.new(secret.encode(), f"{order}|{pay}".encode(), _hl.sha256).hexdigest()
+
+def _api(base, api, obj):
+    req = _ur.Request(base + "/?api=" + api, _json.dumps(obj).encode(), {"Content-Type": "application/json"})
+    try:
+        r = _ur.urlopen(req); return r.status, _json.loads(r.read())
+    except _ue.HTTPError as e:
+        return e.code, _json.loads(e.read())
+
+@pytest.mark.parametrize("kid,sec,ok", [(_FAKE_ID, _FAKE_SECRET, True), ("rzp_live_ABCDEFGH12345", _FAKE_SECRET, True), ("", _FAKE_SECRET, False),
+                                        (_FAKE_ID, "", False), ("not-a-key", _FAKE_SECRET, False), (_FAKE_ID, "short", False)])
+def test_gateway_config_needs_both_keys_in_the_right_shape(monkeypatch, kid, sec, ok):
+    monkeypatch.setenv("RAZORPAY_KEY_ID", kid); monkeypatch.setenv("RAZORPAY_KEY_SECRET", sec)
+    assert (RZ.gateway_config() is not None) is ok
+
+@pytest.mark.parametrize("raw,paise", [(1, 100), ("20", 2000), (" 500 ", 50000), (10000, 1000000)])
+def test_rupees_to_paise(raw, paise):
+    assert RZ.rupees_to_paise(raw) == paise
+
+@pytest.mark.parametrize("bad", [0, -5, 10001, "", "abc", "1.5", "٥٠", None, True, 12.5, [], {}])
+def test_rupees_to_paise_rejects_junk(bad):
+    with pytest.raises(RZ.GatewayError) as e:
+        RZ.rupees_to_paise(bad)
+    assert e.value.status == 400
+
+def test_verify_signature_accepts_only_the_exact_hmac(monkeypatch):
+    _rzp_env(monkeypatch)
+    o, p = "order_ABC12345", "pay_XYZ98765"
+    assert RZ.verify_signature(o, p, _sig(o, p)) is True
+    assert RZ.verify_signature(o, p, _sig(o, p).upper()) is True            # hex case doesn't matter
+    assert RZ.verify_signature(o, "pay_OTHER9999", _sig(o, p)) is False     # signature for a different payment
+    assert RZ.verify_signature(o, p, _sig(o, p, "wrong-secret-000")) is False
+    for bad in (None, "", "zz", 5, "a" * 64):
+        assert RZ.verify_signature(o, p, bad) is False
+    assert RZ.verify_signature(None, p, _sig(o, p)) is False
+
+def test_verify_signature_is_false_when_gateway_off(monkeypatch):
+    _rzp_env(monkeypatch, on=False)
+    assert RZ.verify_signature("order_ABC12345", "pay_XYZ98765", _sig("order_ABC12345", "pay_XYZ98765")) is False
+
+class _Resp(_io.BytesIO):
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+def test_create_order_sends_paise_and_basic_auth_and_returns_no_secret(monkeypatch):
+    _rzp_env(monkeypatch)
+    seen = {}
+    def fake(req, timeout=0):
+        seen["url"], seen["body"], seen["auth"] = req.full_url, _json.loads(req.data), req.headers["Authorization"]
+        return _Resp(b'{"id":"order_TEST12345","amount":2000}')
+    out = RZ.create_order("20", _open=fake)
+    assert seen["url"] == "https://api.razorpay.com/v1/orders" and seen["body"]["amount"] == 2000 and seen["body"]["currency"] == "INR"
+    import base64 as _b; assert _b.b64decode(seen["auth"].split()[1]).decode() == f"{_FAKE_ID}:{_FAKE_SECRET}"
+    assert out == {"order_id": "order_TEST12345", "amount": 2000, "currency": "INR", "key_id": _FAKE_ID}
+    assert _FAKE_SECRET not in _json.dumps(out)
+
+def test_create_order_maps_upstream_failures(monkeypatch):
+    _rzp_env(monkeypatch)
+    def http(code):
+        def f(req, timeout=0): raise urllib.error.HTTPError(req.full_url, code, "x", {}, _io.BytesIO(b"{}"))
+        return f
+    with pytest.raises(RZ.GatewayError) as e: RZ.create_order(20, _open=http(401))
+    assert e.value.status == 401
+    with pytest.raises(RZ.GatewayError) as e: RZ.create_order(20, _open=http(500))
+    assert e.value.status == 502
+    def down(req, timeout=0): raise urllib.error.URLError("down")
+    with pytest.raises(RZ.GatewayError) as e: RZ.create_order(20, _open=down)
+    assert e.value.status == 502
+    with pytest.raises(RZ.GatewayError) as e: RZ.create_order(20, _open=lambda r, timeout=0: _Resp(b'{"id":"../evil"}'))
+    assert e.value.status == 502
+    with pytest.raises(RZ.GatewayError) as e: RZ.create_order(0, _open=http(500))
+    assert e.value.status == 400
+
+def test_create_order_off_when_no_keys(monkeypatch):
+    _rzp_env(monkeypatch, on=False)
+    with pytest.raises(RZ.GatewayError) as e: RZ.create_order(20)
+    assert e.value.status == 503
+
+def test_http_order_route_validates_before_calling_razorpay(server, monkeypatch):
+    _rzp_env(monkeypatch)
+    monkeypatch.setattr(RZ, "urlopen", lambda *a, **k: pytest.fail("must not reach Razorpay with a bad amount"))
+    assert _api(server, "rzp-order", {"amount": 0})[0] == 400
+    assert _api(server, "rzp-order", {"amount": "abc"})[0] == 400
+    assert _api(server, "rzp-order", {})[0] == 400
+
+def test_http_order_route_is_503_without_keys(server, monkeypatch):
+    _rzp_env(monkeypatch, on=False)
+    assert _api(server, "rzp-order", {"amount": 20})[0] == 503
+
+def test_http_verify_route(server, monkeypatch):
+    _rzp_env(monkeypatch)
+    o, p = "order_ABC12345", "pay_XYZ98765"
+    code, body = _api(server, "rzp-verify", {"razorpay_order_id": o, "razorpay_payment_id": p, "razorpay_signature": _sig(o, p)})
+    assert code == 200 and body == {"verified": True}
+    code, body = _api(server, "rzp-verify", {"razorpay_order_id": o, "razorpay_payment_id": p, "razorpay_signature": "0" * 64})
+    assert code == 400 and body["verified"] is False
+    assert _api(server, "rzp-verify", {})[0] == 400                          # missing fields
+
+def test_checkout_button_only_when_keys_are_set_and_secret_never_in_page(server, monkeypatch):
+    _tip_env(monkeypatch, "supporter@okbank", merchant=False)
+    _rzp_env(monkeypatch)
+    h = _ur.urlopen(server + "/?t=rzpon").read().decode()
+    assert 'id="rzpgo"' in h and "checkout.razorpay.com/v1/checkout.js" in h and "can see who paid" in h
+    assert _FAKE_SECRET not in h and _FAKE_ID not in h                       # key id arrives only in the order response, secret never
+    assert '<script src="https://checkout.razorpay.com' not in h             # loaded on click, not on every page view
+    _rzp_env(monkeypatch, on=False)
+    h2 = _ur.urlopen(server + "/?t=rzpoff").read().decode()
+    assert 'id="rzpgo"' not in h2 and 'id="rzpbox"' not in h2

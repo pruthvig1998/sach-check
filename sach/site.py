@@ -176,7 +176,7 @@ $$('.qrlabel').forEach(l=>{l.textContent=alt?'Code B':'Code A'});$$('.altswap').
 const ap=$('#dlgapps');if(ap)ap.href=ap.href.replace(/&alt=1/,'')+qsAlt()}));
 const want=$('#want'),dlg=$('#paydlg');
 const setAmt=a=>{if(want)want.textContent=a?('₹'+a):'any amount';$$('.tipcard[data-amt]').forEach(c=>c.classList.toggle('on',String(c.dataset.amt)===String(a)))};
-const openPay=a=>{setAmt(a);if(!dlg)return;$('#dlgamt').textContent='₹'+a;$('#dlgamt2').textContent='₹'+a;const ap2=$('#dlgapps');if(ap2)ap2.href='/?view=pay&amt='+a+qsAlt();
+let curAmt=30;const openPay=a=>{curAmt=a;const ra=$('#rzpamt');if(ra)ra.textContent='₹'+a;const rm=$('#rzpmsg');if(rm)rm.textContent='';setAmt(a);if(!dlg)return;$('#dlgamt').textContent='₹'+a;$('#dlgamt2').textContent='₹'+a;const ap2=$('#dlgapps');if(ap2)ap2.href='/?view=pay&amt='+a+qsAlt();
 if(typeof dlg.showModal==='function'){if(!dlg.open)dlg.showModal()}else{$('#upiqr').scrollIntoView({behavior:'smooth',block:'center'})}};
 $$('.tipcard[data-amt]').forEach(c=>{const go=()=>openPay(c.dataset.amt);c.addEventListener('click',go);c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}})});
 const fw=$('#fw'),fwgo=$('#fwgo');
@@ -184,6 +184,17 @@ if(fw&&fwgo){const fwa=()=>(parseInt(fw.value,10)||1)*10;fw.addEventListener('ch
 const oa=$('#oa'),oago=$('#oago'),oaerr=$('#oaerr');
 if(oa&&oago){const val=()=>{const v=parseInt(oa.value,10);return v>=1&&v<=10000?v:null};oa.addEventListener('input',()=>{oaerr.textContent='';setAmt(val())});
 const go=()=>{const v=val();if(!v){oaerr.textContent='Enter a whole number from 1 to 10,000.';oa.focus();return}openPay(v)};oago.addEventListener('click',go);oa.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();go()}})}
+const rgo=$('#rzpgo'),rmsg=$('#rzpmsg');
+if(rgo){const say=t=>{if(rmsg)rmsg.textContent=t};
+const loadRzp=()=>window.Razorpay?Promise.resolve():new Promise((ok,no)=>{const s=document.createElement('script');s.src='https://checkout.razorpay.com/v1/checkout.js';s.onload=ok;s.onerror=()=>no(new Error('load'));document.head.appendChild(s)});
+const post=(api,b)=>fetch('/?api='+api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json().then(j=>({ok:r.ok,j})));
+rgo.addEventListener('click',async()=>{rgo.disabled=true;say('Opening secure checkout…');
+try{await loadRzp();const o=await post('rzp-order',{amount:curAmt});if(!o.ok)throw new Error(o.j.error||'Could not start checkout.');
+const k=o.j;const rz=new window.Razorpay({key:k.key_id,amount:k.amount,currency:k.currency,order_id:k.order_id,name:'Sach',description:'Tip for the corrections desk',theme:{color:'#17140f'},
+handler:async resp=>{say('Confirming…');const v=await post('rzp-verify',resp);say(v.ok&&v.j.verified?'Thank you! Your tip went through. 🙏':'Paid, but we could not confirm it here. Your bank will show the status.');rgo.disabled=false},
+modal:{ondismiss:()=>{say('No problem. Nothing was charged.');rgo.disabled=false}}});
+rz.on('payment.failed',r=>{say('Payment failed: '+((r.error&&r.error.description)||'please try again')+'.');rgo.disabled=false});rz.open();}
+catch(e){say(e.message==='load'?'Could not load checkout. Check your connection, or scan the code instead.':e.message);rgo.disabled=false}})}
 if(dlg)dlg.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
 const r=$('#result');if(r)r.scrollIntoView({behavior:'smooth',block:'start'});
 let fv='ALL';const apply=()=>{const q=($('#q')?.value||'').toLowerCase();let n=0;$$('tbody tr[data-v]').forEach(tr=>{const ok=(fv==='ALL'||tr.dataset.v===fv)&&tr.innerText.toLowerCase().includes(q);tr.style.display=ok?'':'none';if(ok)n++});const s=$('#shown');if(s)s.textContent=n+' shown';const e=$('#empty');if(e)e.style.display=n?'none':''};
@@ -402,6 +413,11 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
                        'to a personal UPI ID from a website link, so scanning the code is the way to pay.</p>')
             dlgnote = ('<p class="note" style="margin:12px 0 0"><b>Easiest:</b> show this code on another screen (a laptop, or a friend\'s phone) '
                        'and scan it with your UPI app\'s scanner.</p>')
+        from .razorpay_pay import public_key_id
+        gw = public_key_id() is not None
+        gwbtn = ('<div id="rzpbox" style="margin:0 0 12px"><button class="btn" type="button" id="rzpgo">Pay <span id="rzpamt">₹30</span> by UPI or card</button>'
+                 '<p id="rzpmsg" class="note" role="status" style="margin:6px 0 0"></p>'
+                 '<p class="note" style="margin:4px 0 0">Secure checkout by Razorpay, which can see who paid. Prefer to stay anonymous? Scan the code below.</p></div>') if gw else ""
         opts_fw = "".join(f'<option value="{n}"{" selected" if n == 3 else ""}>{n}</option>' for n in (1, 3, 5, 10, 20))
         tip_section = f'''<section id="tip"><div class="wrap"><p class="kicker">Nobody asked, but…</p><h2>{esc(tip_headline())} ☕</h2>
 <p class="sub">Sach has no ads, no paywall and no “forward this to 10 groups or bad luck”. If a verdict saved you an awkward family-group moment, a small tip keeps the corrections coming. <b>Tips never change a verdict.</b></p>
@@ -418,6 +434,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <dialog id="paydlg" aria-labelledby="paytitle"><form method="dialog" class="x"><button aria-label="Close">✕</button></form>
 <p class="kicker">Chip in for the corrections desk ☕</p>
 <h3 id="paytitle" style="font-family:var(--serif);font-size:36px;margin:4px 0 6px">Pay <span id="dlgamt">₹{3 * PER_FORWARD}</span></h3>
+{gwbtn}
 <img class="qrimg" src="/?view=tipqr&amp;fmt=png" width="190" height="190" alt="UPI QR code for tips">{altnote}
 <p style="margin:0 0 8px"><b>Scan this code</b> with Google Pay, PhonePe, Paytm or BHIM and enter <b id="dlgamt2">₹{3 * PER_FORWARD}</b> when asked.</p>
 <p class="note" style="margin:0 0 10px"><b>On a phone:</b> tap Download, then in your UPI app choose <i>Scan QR</i> and pick the image from your gallery.</p>
