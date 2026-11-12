@@ -4,6 +4,7 @@ import html, json, os
 from urllib.parse import quote
 from . import ledger
 from .i18n import LABEL
+from .voice import VOICE_JS, VOICE_CSS, voice_controls, progress_panel, listen_buttons
 
 REPO = "https://github.com/pruthvig1998/sach-check"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -169,12 +170,12 @@ const lg=$('#lang');if(lg){try{const v=localStorage.getItem('sach-lang');if(v&&!
 const clr=$('#clear');if(clr)clr.addEventListener('click',()=>{ta.value='';upd();ta.focus()});
 const f=$('#form');if(f)f.addEventListener('submit',e=>{if(!ta.value.trim()){e.preventDefault();ta.focus();return}$('#busy').classList.add('on');$('#go').disabled=true;$('#go').textContent='Checking…'});
 window.addEventListener('pageshow',()=>{const g=$('#go');if(g){g.disabled=false;g.textContent='Check it';$('#busy').classList.remove('on')}});
-const cp=$('#copy');if(cp)cp.addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('#cardtext').innerText);cp.textContent='Copied ✓'}catch(e){const r=document.createRange();r.selectNodeContents($('#cardtext'));getSelection().removeAllRanges();getSelection().addRange(r);cp.textContent='Selected — press Ctrl/Cmd+C'}});
+window.sachBindResult=()=>{const cp=$('#copy');if(cp)cp.addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('#cardtext').innerText);cp.textContent='Copied ✓'}catch(e){const r=document.createRange();r.selectNodeContents($('#cardtext'));getSelection().removeAllRanges();getSelection().addRange(r);cp.textContent='Selected — press Ctrl/Cmd+C'}});
 const c2=$('#copy2');if(c2)c2.addEventListener('click',async()=>{const t=$('#cardtext').innerText+'\\n\\n—— English ——\\n'+$('#cardtext_en').innerText;try{await navigator.clipboard.writeText(t);c2.textContent='Copied ✓'}catch(e){c2.textContent='Select & copy manually'}});
 const dl=$('#dl');if(dl)dl.addEventListener('click',()=>{const lines=$('#cardtext').innerText.split('\\n'),W=900,pad=40,lh=44;
 const c=document.createElement('canvas');c.width=W;c.height=pad*2+lines.length*lh+60;const x=c.getContext('2d');x.fillStyle='#dcf8c6';x.fillRect(0,0,W,c.height);
 x.fillStyle='#17140f';x.font='600 30px sans-serif';let y=pad+30;lines.forEach(l=>{x.fillText(l.slice(0,70),pad,y);y+=lh});x.font='20px monospace';x.fillStyle='#555';x.fillText('Sach · checked '+new Date().toISOString().slice(0,10),pad,c.height-24);
-const a=document.createElement('a');a.download='sach-verdict.png';a.href=c.toDataURL('image/png');a.click()});
+const a=document.createElement('a');a.download='sach-verdict.png';a.href=c.toDataURL('image/png');a.click()})};window.sachBindResult();
 let alt=false;const qsAlt=()=>alt?'&alt=1':'';
 $$('.altswap').forEach(b=>b.addEventListener('click',()=>{alt=!alt;
 $$('.qrimg').forEach(i=>{i.src='/?view=tipqr&fmt=png'+qsAlt()});$$('.dlpng').forEach(a=>{a.href='/?view=tipqr&fmt=png'+qsAlt()});
@@ -329,7 +330,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <meta property="og:title" content="Sach — cited verdicts for viral forwards"><meta property="og:description" content="Got a forward? Get the receipts. PIB-first fact-checking in English, Hindi and Telugu.">
 <meta name="theme-color" content="#f2ebdb"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23c2321f'/%3E%3Ctext x='32' y='45' font-size='40' text-anchor='middle' fill='white' font-family='serif' font-weight='900'%3ES%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="{FONTS}" rel="stylesheet"><style>{CSS}</style></head><body>
+<link href="{FONTS}" rel="stylesheet"><style>{CSS}{VOICE_CSS}</style></head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="wrap"><a class="logo" href="/" title="Sach (Hindi सच) and nijam (Telugu నిజం) both mean “truth”">Sach<small><span class="sc">सच · నిజం · </span>truth</small></a>
 <nav aria-label="Main"><a href="/#check">Check</a><a class="opt" href="/#how">How it works</a><a class="opt" href="/#rules">Rules</a><a class="opt" href="/#faq">FAQ</a>
@@ -337,7 +338,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <main id="main">{body}</main>
 <footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Bharat Agentic-AI Hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
 <div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/#api">API</a>{tip_link}<br><a href="/?view=terms">Terms</a> · <a href="/?view=privacy">Privacy</a> · <a href="/?view=refund">Refunds</a> · <a href="/?view=contact">Contact</a></div></div></footer>
-<script>{JS}</script></body></html>""".encode()
+<script>{JS}</script><script>{VOICE_JS}</script></body></html>""".encode()
 
 
 def stamp(v: str, cls="") -> str:
@@ -421,7 +422,7 @@ def result_block(res: dict, chosen: bool = False) -> str:
 <div><p class="kicker">Forward this card back to the group · reply language: {esc(LANG_NAME.get(res['language'], res['language'].upper()))}{' (your choice)' if chosen else ' (matched to the forward)'}</p>
 {cachednote}<div class="bubble"><span id="cardtext">{card}</span><small>Sach ✓✓</small></div>
 <div class="row"><button class="btn ghost" id="copy" type="button">Copy card</button><a class="btn" href="{esc(wa)}" rel="noopener">Share on WhatsApp</a>
-<button class="btn ghost" id="dl" type="button">Download image</button></div>
+<button class="btn ghost" id="dl" type="button">Download image</button>{listen_buttons(res.get('language', 'en'), bool(res.get('card_en')))}</div>
 {notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
 <div style="overflow-x:auto"><table><thead><tr><th>Claim</th><th>Verdict</th><th>Citations</th></tr></thead><tbody>{rows}</tbody></table></div>
 {tr}<p class="note" style="margin-top:14px">Checked {esc(res['checked_at'][:16].replace('T',' '))} UTC. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
@@ -497,14 +498,14 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 
 <section id="check"><div class="wrap"><h2>Check a forward</h2><p class="sub">Paste the whole message or a single claim. We reply in the language it was written in, or in any language you choose below. Checks usually take 10 to 30 seconds because we read the sources live.</p>
 <div class="checker" id="checker"><form id="form" method="post" action="/#result"><label for="text" class="kicker">The forward</label>
-<textarea id="text" name="text" placeholder="Paste the message here…" required maxlength="{MAX_CHARS}">{esc(prefill)}</textarea>
+<textarea id="text" name="text" placeholder="Paste the message here…" required maxlength="{MAX_CHARS}">{esc(prefill)}</textarea>{voice_controls()}
 <div class="chips" role="group" aria-label="Try an example"><span class="note" style="align-self:center">Try:</span>{chips}</div>
 <div class="row"><label for="lang" class="note" style="margin-right:-4px">Reply in:</label><select id="lang" name="lang" aria-label="Reply language">{opts}</select>
 <button class="btn" id="go" type="submit">Check it</button><button class="btn ghost" id="paste" type="button">Paste</button><button class="btn ghost" id="clear" type="button">Clear</button>
 <span id="count" aria-live="off"></span></div>
 <p class="note" style="margin:10px 0 0">Tip: press Ctrl/Cmd + Enter to check. Only the individual claims (never your name) go to the public ledger.</p>
-<div id="busy" role="status"><i></i>Reading PIB and official pages… this usually takes 10 to 30 seconds.</div></form>
-{f'<p role="alert" style="color:var(--false);font-weight:600;margin-top:14px">{esc(error)}</p>' if error else ''}{result}</div></div></section>
+<div id="busy" role="status"><i></i>Reading PIB and official pages… this usually takes 10 to 30 seconds.</div>{progress_panel()}</form>
+<div id="results">{f'<p role="alert" style="color:var(--false);font-weight:600;margin-top:14px">{esc(error)}</p>' if error else ''}{result}</div></div></div></section>
 
 <section id="how"><div class="wrap"><h2>How it works</h2><p class="sub">Four steps, all visible. Nothing is invented: a citation appears only if we actually fetched that page.</p>
 <div class="grid4">
