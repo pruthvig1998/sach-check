@@ -191,17 +191,13 @@ def test_trailing_dot_on_genuine_host_is_safe_either_way():
     assert is_official("https://pib.gov.in./x") in (True, False)
     assert not is_official("https://pib.gov.in.evil.com./x")
 
-@pytest.mark.xfail(strict=True, reason="FINDING (sach/fetch.py is out of scope for this package): backslash before '@' makes urlparse see host pib.gov.in "
-                                       "while browsers/requests treat the backslash as a path start and go to evil.com")
 def test_backslash_userinfo_trick_is_not_official():
-    # a failure (once fixed, strict xfail flips) means a URL a browser sends to evil.com is classified as pib.gov.in
+    # a failure means a URL a browser sends to evil.com is classified as pib.gov.in
     assert not is_official("https://evil.com\\@pib.gov.in/x")
 
-@pytest.mark.xfail(strict=True, reason="FINDING (sach/fetch.py is out of scope for this package): the who.int suffix is matched with a bare "
-                                       "endswith, so evilwho.int and notwho.int count as official. Fix: h == 'who.int' or h.endswith('.who.int')")
 @pytest.mark.parametrize("url", ["https://evilwho.int/x", "https://notwho.int/x"])
 def test_who_int_lookalikes_are_not_official(url):
-    # a failure (once fixed, strict xfail flips) means an attacker can register <anything>who.int and be treated as an official source
+    # a failure means an attacker can register <anything>who.int and be treated as an official source
     assert not is_official(url)
 
 @pytest.mark.parametrize("url", ["https://www.boomlive.in/a", "https://BOOMLIVE.IN/a", "https://altnews.in/a", "https://vishvasnews.com/a"])
