@@ -465,6 +465,9 @@ def result_block(res: dict, chosen: bool = False) -> str:
     if res.get("degraded"):
         notice = ('<div class="honest" style="margin-top:18px" role="status"><b>Limited mode.</b> Our AI checker is unavailable or at capacity right now, '
                   'so Sach only reports a verdict when a PIB debunk clearly matches. Most results will say “unverified”; try again later for a fuller check.</div>')
+    if res.get("search_status") in ("down", "partial"):
+        notice += ('<div class="honest" style="margin-top:18px" role="status"><b>Web search was unavailable.</b> Live web search was unavailable for this check, '
+                   'so Sach could only use its built-in list of PIB debunks. An UNVERIFIED result may change later.</div>')
     english = ""
     if res.get("card_en"):
         said = "".join(f'<li><span class="note">{esc(c["claim"]["text"])}</span><br><b>{esc(c["english"])}</b></li>' for c in res["claims"] if c.get("english"))
