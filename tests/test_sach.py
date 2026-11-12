@@ -149,3 +149,37 @@ def test_llm_failure_falls_back_to_heuristic():
         def stance(self, *a): raise RuntimeError("401 invalid api key")
     e = Evidence("PIB", "https://pib.gov.in/x", TIER_PIB, TS, "Fake: PM Mahila Yojana gives Rs 5000 to every woman", "")
     assert judge("PM Mahila Yojana gives Rs 5000 to every woman", e, Broken()) == "contradicts"
+
+# --- Gemini judge (no live calls)
+def test_parse_label_maps_and_defaults_to_none():
+    from sach.llm import parse_label
+    assert parse_label("CONTRADICTS") == "contradicts" and parse_label("confirms.") == "confirms"
+    assert parse_label("**PARTIAL**") == "mixed" and parse_label("NEITHER") == "none"
+    assert parse_label("") == "none" and parse_label("The page seems to say it is false") == "none"
+
+def test_gemini_judge_parses_response_and_retries_429(monkeypatch):
+    import urllib.error, sach.llm as L
+    calls = []
+    def fake_post(self, body):
+        calls.append(1)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError("u", 429, "rate", {}, None)
+        return {"candidates": [{"content": {"parts": [{"text": "CONTRADICTS"}]}}]}
+    monkeypatch.setattr(L.GeminiJudge, "_post", fake_post)
+    monkeypatch.setattr(L.time, "sleep", lambda s: None)
+    assert L.GeminiJudge(key="k").stance("c", "t", "x") == "contradicts" and len(calls) == 2
+
+def test_gemini_failure_still_falls_back_safely(monkeypatch):
+    import sach.llm as L
+    from sach.stance import judge
+    monkeypatch.setattr(L.GeminiJudge, "_post", lambda self, b: (_ for _ in ()).throw(OSError("down")))
+    e = Evidence("PIB", "https://pib.gov.in/x", TIER_PIB, TS, "Fake: PM Mahila Yojana gives Rs 5000 to every woman", "")
+    assert judge("PM Mahila Yojana gives Rs 5000 to every woman", e, L.GeminiJudge(key="k")) == "contradicts"
+
+def test_ledger_merges_seed_and_live(tmp_path, monkeypatch):
+    import json, sach.ledger as L
+    seed = tmp_path / "seed.json"; seed.write_text(json.dumps([{"claim": "seeded"}]))
+    monkeypatch.setattr(L, "_SEED", str(seed))
+    L.append({"claim": "live"})
+    assert [r["claim"] for r in L.load()] == ["seeded", "live"]
+    assert [r["claim"] for r in json.load(open(L.path()))] == ["live"]   # seed never written into live file

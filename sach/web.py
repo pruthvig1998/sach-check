@@ -61,7 +61,9 @@ class Handler(BaseHTTPRequestHandler):
         text = parse_qs(self.rfile.read(n).decode("utf-8", "replace")).get("text", [""])[0].strip()
         if not text:
             return self._send(page(form() + "<p>Please paste some text.</p>"), 400)
-        res = check_forward(text, Handler.retrievers or default_retrievers(), Handler.llm)
+        if Handler.retrievers is None:
+            Handler.retrievers, Handler.llm = default_retrievers(), get_llm()   # lazy: serverless has no main()
+        res = check_forward(text, Handler.retrievers, Handler.llm)
         self._send(page(result_html(res) + form(text)))
 
 def main():

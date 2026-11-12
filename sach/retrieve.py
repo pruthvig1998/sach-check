@@ -10,7 +10,7 @@ from .stance import overlap
 
 class PibRetriever:
     """Looks for a PIB press release matching the claim: hand-seeded debunks + live RSS index."""
-    def __init__(self, seed_path="data/seed_debunks.json", use_rss=True, top_n=3, min_overlap=0.3):
+    def __init__(self, seed_path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "seed_debunks.json"), use_rss=True, top_n=3, min_overlap=0.3):
         self.seed_path, self.use_rss, self.top_n, self.min_overlap = seed_path, use_rss, top_n, min_overlap
 
     def _candidates(self):
