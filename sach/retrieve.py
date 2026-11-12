@@ -3,7 +3,7 @@ Every returned Evidence comes from a page that was actually fetched (has fetched
 from __future__ import annotations
 import json, os, re, urllib.error, urllib.parse
 from bs4 import BeautifulSoup
-from .fetch import fetch, is_official, is_factchecker, UA
+from .fetch import fetch, is_official, is_factchecker, FACTCHECKER_HOSTS, UA
 from .models import Evidence, TIER_PIB, TIER_OFFICIAL, TIER_FACTCHECKER
 from .pib import get_release, parse_release, rss_index, DEBUNK_MARKERS
 from . import index as pib_index
@@ -79,8 +79,10 @@ def _brave_throttle():
 
 class BraveRetriever:
     """Optional live web search (needs BRAVE_API_KEY). Official domains first, then fact-checkers."""
-    OFFICIAL_Q = "(site:gov.in OR site:nic.in OR site:who.int OR site:rbi.org.in OR site:mygov.in OR site:sansad.in)"
-    FC_Q = "(site:altnews.in OR site:boomlive.in OR site:vishvasnews.com)"
+    OFFICIAL_Q = ("(site:gov.in OR site:nic.in OR site:who.int OR site:rbi.org.in OR site:mygov.in OR site:sansad.in "
+                  "OR site:bank.in OR site:licindia.in)")
+    # whole-site fact-checkers plus newsmeter (its fact-check section); path-limited outlets are filtered after the search by is_factchecker
+    FC_Q = "(" + " OR ".join(f"site:{d}" for d in (*FACTCHECKER_HOSTS, "newsmeter.in")) + ")"
 
     def __init__(self, key=None, per_query=3):
         self.key = key or os.environ.get("BRAVE_API_KEY")
@@ -169,4 +171,7 @@ def default_retrievers():
     r = [PibRetriever()]
     if os.environ.get("BRAVE_API_KEY"):
         r.append(BraveRetriever())
+    if os.environ.get("GOOGLE_FACTCHECK_API_KEY"):
+        from .factcheck_api import FactCheckToolsRetriever
+        r.append(FactCheckToolsRetriever())     # secondary tier only; one HTTPS call, 6 s cap
     return r
