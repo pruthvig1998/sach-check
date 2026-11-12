@@ -6,7 +6,8 @@ from .card import render_card
 from .extract import clean_text, extract_claims
 from .i18n import LABEL, NOCLAIM, NOCLAIM_LABEL
 from .lang import detect_language
-from .models import Claim, ClaimVerdict, UNVERIFIED
+from . import cache
+from .models import Claim, ClaimVerdict, UNVERIFIED, build_trace, overall_rule
 from .retrieve import canonical_key
 from .stance import judge
 from .verdict import decide, aggregate
@@ -52,12 +53,24 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float) -> C
     ex.shutdown(wait=False)
     v = decide(claim, evidence)
     v.english = q if q != claim.text else ""
+    v.trace = build_trace(q, evidence, v.reason_code)      # every judged source, cited or not
     return v
 
-def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | None = None) -> dict:
+def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | None = None,
+                  use_cache: bool = True) -> dict:
     """reply_lang: 'en' | 'hi' | 'te' | 'tl' to force the reply language; None/'auto' matches the forward.
     The INPUT language always drives translation and search; only the reply changes."""
     text = clean_text(text)
+    rl = reply_lang if reply_lang in LABEL else None
+    use = cache.enabled(use_cache, log)
+    if use:
+        hit = cache.lookup(text, rl)
+        if hit is not None:
+            out = dict(hit)
+            out["first_checked_at"] = hit.get("first_checked_at") or hit.get("checked_at")
+            out["cached"], out["served_at"] = True, ledger.now()
+            ledger.record_check(out, cached=True)
+            return out
     lang = detect_language(text)                                   # input language
     out_lang = reply_lang if reply_lang in LABEL else lang          # reply language
     claims = extract_claims(text, max_claims=MAX_CLAIMS)
@@ -66,6 +79,9 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
                "checked_at": ledger.now(), "card": f"{NOCLAIM_LABEL[out_lang]}\n{NOCLAIM[out_lang]}"}
         if out_lang != "en":
             out["card_en"] = f"{NOCLAIM_LABEL['en']}\n{NOCLAIM['en']}"
+        out["trace"] = {"claims_extracted": 0, "overall_rule": overall_rule([]), "degraded": False}
+        if log:
+            ledger.record_check(out, cached=False)
         return out
     fails_before = getattr(llm, "failures", 0)
     deadline = time.monotonic() + BUDGET_S
@@ -76,7 +92,7 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
         try:
             results.append(f.result(timeout=max(0.3, deadline - time.monotonic() + 3)))
         except Exception:
-            results.append(ClaimVerdict(c, UNVERIFIED, "timed_out", []))   # ran out of time: say so, never guess
+            results.append(ClaimVerdict(c, UNVERIFIED, "timed_out", [], trace=build_trace(c.text, [], "timed_out")))   # ran out of time: say so, never guess
     ex.shutdown(wait=False)
     overall = aggregate(results)
     # card cites the evidence behind the verdict that drove the overall result
@@ -87,6 +103,7 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
     if out_lang != "en":
         out["card_en"] = render_card(overall, "en", cites)       # same verdict and citations, in English
     out["degraded"] = llm is None or getattr(llm, "failures", 0) > fails_before   # AI judge missing/at capacity: clear PIB debunks only
+    out["trace"] = {"claims_extracted": len(claims), "overall_rule": overall_rule(results), "degraded": out["degraded"]}
     if log:
         for v in results:
             if v.reason_code == "timed_out":
@@ -94,4 +111,7 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
             ledger.append({"claim": v.claim.text, "domain": v.claim.domain, "verdict": v.verdict,
                            "reason_code": v.reason_code, "citations": v.citations,
                            "language": lang, "checked_at": out["checked_at"]})
+        ledger.record_check(out, cached=False)
+        if use:
+            cache.save(text, rl, out)
     return out

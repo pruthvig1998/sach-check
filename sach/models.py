@@ -34,7 +34,38 @@ class ClaimVerdict:
     reason_code: str
     citations: list = field(default_factory=list)
     english: str = ""        # English rendering of a non-English claim (what we actually searched for)
+    trace: dict = field(default_factory=dict)   # audit trail: what was searched, every source judged, which rule fired
 
     def to_dict(self):
         return {"claim": asdict(self.claim), "verdict": self.verdict, "english": self.english,
-                "reason_code": self.reason_code, "citations": self.citations}
+                "reason_code": self.reason_code, "citations": self.citations, "trace": self.trace}
+
+# One plain sentence per reason code that verdict.decide() can return (plus timed_out, set by the pipeline).
+RULE_TEXT = {
+    "official_contradiction": "An official source contradicts this claim, so the rule gives FALSE.",
+    "official_confirmation": "An official source confirms this claim, so the rule gives TRUE.",
+    "core_fact_distorted": "An official source says part of this is right but the details are different, so the rule gives MISLEADING.",
+    "conflicting_official_sources": "Official sources disagree with each other, so we do not guess and the rule gives UNVERIFIED.",
+    "factchecker_only": "Only fact-checkers were found. They are not official, so the rule gives UNVERIFIED.",
+    "no_evidence": "No official source was found that confirms or denies this, so the rule gives UNVERIFIED.",
+    "timed_out": "The check ran out of time before it finished, so the result is UNVERIFIED.",
+}
+
+def build_trace(searched_as: str, evidence: list, reason_code: str) -> dict:
+    return {"searched_as": searched_as,
+            "sources": [{"source": e.source_name, "url": e.url, "tier": e.tier, "fetched_at": e.fetched_at,
+                         "title": e.title, "stance": e.stance} for e in evidence[:8]],
+            "rule": reason_code, "rule_text": RULE_TEXT.get(reason_code, "")}
+
+def overall_rule(verdicts: list) -> str:
+    """Plain sentence for whichever branch of verdict.aggregate() decides the overall verdict."""
+    vs = [v.verdict for v in verdicts]
+    if not vs:
+        return "No claims were checked, so the overall result is UNVERIFIED."
+    if FALSE in vs:
+        return "At least one claim is FALSE, so the overall result is FALSE."
+    if MISLEADING in vs:
+        return "No claim is FALSE and at least one is MISLEADING, so the overall result is MISLEADING."
+    if all(v == TRUE for v in vs):
+        return "Every claim is TRUE, so the overall result is TRUE."
+    return "Not every claim could be confirmed, so the overall result is UNVERIFIED."
