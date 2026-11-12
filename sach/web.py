@@ -8,6 +8,7 @@ from .pipeline import check_forward
 from .retrieve import default_retrievers
 from . import razorpay_pay as rzp
 from . import telegram_bot as tg
+from . import ocr
 from .legal import PAGES as LEGAL_PAGES, legal_page
 from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_png, tip_qr_svg, upi_link
 
@@ -184,10 +185,33 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"verified": False, "error": "We couldn't verify that payment."}, 400)
         return self._json({"verified": True})
 
+    def _ocr(self):
+        """Screenshot -> text for the person to review. The image and the text are never logged, stored or checked here."""
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            n = 0
+        if n > ocr.MAX_BODY:
+            return self._json({"error": "That image is too big. Please try a smaller screenshot."}, 413)
+        try:
+            raw, mime = ocr.parse_request(self.rfile.read(n) if n > 0 else b"")
+            if rate_limited(self._client_ip(), "ocr", ocr.OCR_LIMIT):
+                return self._json({"error": "Too many images too quickly. Please wait a minute."}, 429)
+            if Handler.retrievers is None:
+                Handler.retrievers, Handler.llm = default_retrievers(), get_llm()
+            text = ocr.transcribe(getattr(Handler.llm, "judges", None), raw, mime, MAX_CHARS)
+        except ocr.OcrError as e:
+            return self._json({"error": e.message}, e.status)
+        except Exception:
+            return self._json({"error": ocr.UNAVAILABLE}, 503)
+        return self._json({"text": text, "chars": len(text)})
+
     def do_POST(self):
         api = parse_qs(urlparse(self.path).query).get("api", [""])[0]
         if api == "tg-webhook":
             return self._tg_webhook()
+        if api == "ocr":
+            return self._ocr()
         if api in ("rzp-order", "rzp-verify", "rzp-webhook"):
             return self._gateway_api(api)
         # single POST route: accept any path (Vercel rewrites hide the original one)

@@ -95,6 +95,8 @@ sach/i18n.py      EN/HI/TE card strings              sach/site.py      website
 sach/web.py       HTTP handlers, JSON API            tests/            60+ tests, no live web
 ```
 
+- **Check a screenshot.** `sach/ocr.py` + `POST /?api=ocr`: the browser shrinks an uploaded image, Gemini reads its text, and the text is only placed in the box for the person to edit before pressing Check (4 per minute per IP; the image and text are never stored or logged).
+
 ## Known gaps
 - **Free-tier quota.** The AI judge runs on free tiers, which can run out under heavy use. With several keys or providers configured it fails over automatically; when every one is out, Sach shows a "Limited mode" notice and only reports FALSE for a clear PIB debunk (never TRUE or MISLEADING).
 - **Hindi and Telugu strings are human-written templates but have not been reviewed by a native speaker.** Do that before relying on them publicly.
