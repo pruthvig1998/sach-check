@@ -134,6 +134,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-bet
 .filters button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
 @media(max-width:860px){.hero{grid-template-columns:1fr;padding:34px 0 10px}.stampbox{gap:22px;padding:6px}.stampbox .stamp{font-size:clamp(18px,5vw,26px);padding:4px 12px;border-width:3px}h1{font-size:clamp(40px,11vw,64px)}}
 @media(max-width:560px){.nav .wrap{gap:0 12px;padding-top:4px;padding-bottom:4px;min-height:0}.logo{font-size:22px}.logo small{font-size:12px}.nav nav{gap:4px 8px;font-size:12.5px;width:100%;margin-left:0;justify-content:space-between;white-space:nowrap}#theme{width:28px;height:28px;flex:none}.wrap{padding:0 16px}}
+@media(max-width:420px){.nav nav{flex-wrap:wrap;white-space:normal;row-gap:2px;justify-content:flex-start}}
 #tip .tipgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0}
 @media(max-width:900px){#tip .tipgrid{grid-template-columns:1fr 1fr}}
 .tipcard{display:block;text-decoration:none;background:var(--card);border:2px solid var(--rule);border-radius:4px;padding:14px;transition:transform .12s}

@@ -34,8 +34,15 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float) -> C
     if lang != "en" and llm is not None and hasattr(llm, "translate"):
         q = _run_with_deadline(lambda: llm.translate(claim.text), left(15), "") or claim.text   # PIB pages are mostly English
     evidence = []
-    for r in retrievers:
-        evidence += _run_with_deadline(lambda r=r: r.search(q), left(RETRIEVE_DEADLINE_S), [])
+    rex = ThreadPoolExecutor(max_workers=max(1, len(retrievers)))      # PIB and web search in parallel, not one after the other
+    rfuts = [rex.submit(r.search, q) for r in retrievers]
+    wait(rfuts, timeout=left(RETRIEVE_DEADLINE_S))
+    for f in rfuts:                                     # keep the retrievers' priority order (PIB first)
+        try:
+            evidence += f.result(timeout=0) if f.done() else []
+        except Exception:
+            pass                                        # a failed or hung retriever contributes nothing; never a guess
+    rex.shutdown(wait=False)
     seen, uniq = set(), []
     for e in evidence:                                  # the same PIB release often arrives under several URLs
         k = canonical_key(e.url)

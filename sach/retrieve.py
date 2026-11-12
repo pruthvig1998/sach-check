@@ -149,14 +149,20 @@ class BraveRetriever:
         out, seen = [], set()
 
         def add(urls, tier):
+            todo = []
             for u in urls:
                 k = canonical_key(u)
                 if k in seen:
                     continue
                 seen.add(k)
-                e = self._evidence(u, tier)
-                if e:
-                    out.append(e)
+                todo.append(u)
+            if not todo:
+                return
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=min(4, len(todo))) as ex:   # pages fetched in parallel; results kept in search order
+                for e in ex.map(lambda u: self._evidence(u, tier), todo):
+                    if e:
+                        out.append(e)
 
         pib_urls = self._urls(f"site:pib.gov.in {short}", is_pib, self.per_query + 1)
         if not pib_urls and kw != short:

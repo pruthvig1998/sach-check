@@ -20,6 +20,13 @@ TRANSLATE_PROMPT = ("Translate the user's claim into plain English. The claim ma
 _MAP = {"CONTRADICTS": "contradicts", "CONFIRMS": "confirms", "PARTIAL": "mixed", "NEITHER": "none"}
 
 COOLDOWN_S = 300      # a key that returned 429/401/403 is skipped this long instead of being hammered on every source
+SLOW_MODEL_S = 90          # a model that timed out is skipped for this long (the key itself stays usable)
+
+def _is_timeout(err) -> bool:
+    import socket, urllib.error
+    if isinstance(err, (TimeoutError, socket.timeout)):
+        return True
+    return isinstance(err, urllib.error.URLError) and isinstance(getattr(err, "reason", None), (TimeoutError, socket.timeout))
 
 def parse_label(raw: str) -> str:
     w = (raw or "").strip().upper().replace("*", "").split()
@@ -46,10 +53,18 @@ class _Judge:
     def available(self) -> bool:
         return time.time() >= self.exhausted_until
 
-    def _note_failure(self, err):
+    def _note_failure(self, err, model=None):
         code = getattr(err, "code", None)
         if code in (429, 401, 403):               # quota / auth: skip this judge for a while (timeouts and 503s do not trigger it)
             self.exhausted_until = time.time() + COOLDOWN_S
+        elif model and _is_timeout(err):          # an overloaded model: skip just that model briefly so the next one answers in time
+            slow = self.__dict__.setdefault("_slow", {})
+            slow[model] = time.time() + SLOW_MODEL_S
+
+    def _models_now(self):
+        slow = self.__dict__.get("_slow", {})
+        now = time.time()
+        return [m for m in self.models if slow.get(m, 0) <= now] or list(self.models)
 
     def _label(self, model, claim, title, text):
         st, q = parse_reply(self._raw(model, PROMPT, _user(claim, title, text), 200))
@@ -60,13 +75,13 @@ class _Judge:
         DIFFERENT model. If no second model can answer, the deterministic title/number heuristic is the second opinion
         (so a clear PIB debunk survives a flaky free tier, but a lone LLM guess does not). Disagreement -> 'none'."""
         first, used, last = None, None, None
-        for m in self.models:
+        for m in self._models_now():
             try:
                 first, used = self._label(m, claim, title, text), m
                 break
             except Exception as e:      # 404/429/503/timeout/odd payload: try the next model
                 last = e
-                self._note_failure(e)
+                self._note_failure(e, m)
                 if not self.available():
                     break               # quota gone: the other models of this key share it
         if first is None:
@@ -74,7 +89,7 @@ class _Judge:
             raise last or RuntimeError(f"{self.name}: no model answered")
         if first == "none":
             return "none"
-        for m in [m for m in self.models if m != used] or [used]:
+        for m in [m for m in self._models_now() if m != used] or [used]:
             try:
                 return first if self._label(m, claim, title, text) == first else "none"
             except Exception:
@@ -83,12 +98,12 @@ class _Judge:
 
     def translate(self, text):
         last = None
-        for m in self.models:
+        for m in self._models_now():
             try:
                 return self._raw(m, TRANSLATE_PROMPT, text[:1000], 200).strip()
             except Exception as e:
                 last = e
-                self._note_failure(e)
+                self._note_failure(e, m)
                 if not self.available():
                     break
         raise last or RuntimeError(f"{self.name}: translation failed")
@@ -96,7 +111,7 @@ class _Judge:
 
 class GeminiJudge(_Judge):
     """Google AI Studio free tier. Skips models that are retired (404), overloaded (503) or rate-limited (429)."""
-    def __init__(self, key=None, model=None, timeout=45):
+    def __init__(self, key=None, model=None, timeout=15):
         self.key = key or os.environ["GEMINI_API_KEY"].split(",")[0].strip()
         self.models = [m.strip() for m in (model or os.environ.get("SACH_GEMINI_MODEL", DEFAULT_GEMINI_MODELS)).split(",") if m.strip()]
         self.timeout = timeout
@@ -137,7 +152,7 @@ class GeminiJudge(_Judge):
 
 class OpenAICompatJudge(_Judge):
     """Any OpenAI-compatible chat endpoint: Groq, OpenRouter, Mistral (free tiers / free models)."""
-    def __init__(self, name, base_url, key, models, timeout=45):
+    def __init__(self, name, base_url, key, models, timeout=15):
         self.name, self.base_url, self.key, self.timeout = name, base_url.rstrip("/"), key, timeout
         self.models = [m.strip() for m in models.split(",") if m.strip()]
 
