@@ -22,3 +22,10 @@ WHY = {
 SOURCE_LABEL = {"en": "Source", "hi": "स्रोत", "te": "ఆధారం"}
 FC_NOTE = {"en": "Fact-checker (not official)", "hi": "फैक्ट-चेकर (सरकारी नहीं)", "te": "ఫ్యాక్ట్-చెకర్ (అధికారికం కాదు)"}
 EMOJI = {"TRUE": "✅", "FALSE": "❌", "MISLEADING": "⚠️", "UNVERIFIED": "❔"}
+
+NOCLAIM = {
+ "en": "We couldn't find a checkable factual claim in this message. Try pasting the specific claim you want checked.",
+ "hi": "इस संदेश में जाँचने लायक कोई तथ्य-दावा नहीं मिला। जिस दावे की जाँच करनी है, कृपया वही चिपकाएँ।",
+ "te": "ఈ సందేశంలో తనిఖీ చేయదగిన వాస్తవ ప్రకటన కనిపించలేదు. తనిఖీ చేయాల్సిన నిర్దిష్ట ప్రకటనను అతికించండి.",
+}
+NOCLAIM_LABEL = {"en": "NO CLAIM FOUND", "hi": "कोई दावा नहीं मिला", "te": "ప్రకటన కనిపించలేదు"}

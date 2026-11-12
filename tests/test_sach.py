@@ -197,7 +197,7 @@ def test_web_routes_work_with_query_and_any_post_path():
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
         get = lambda p: urllib.request.urlopen(f"http://127.0.0.1:{port}{p}").read().decode()
-        assert "Evidence ledger" in get("/?view=ledger") and "Public evidence ledger" in get("/?view=ledger")
+        assert "Evidence ledger" in get("/?view=ledger") and "checked claims" in get("/?view=ledger")
         assert get("/?view=health") == "ok"
         body = urllib.parse.urlencode({"text": "Drinking hot water cures cancer in three days."}).encode()
         out = urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}/api/index", body)).read().decode()
@@ -247,3 +247,195 @@ def test_hung_retriever_and_judge_cannot_block_a_check(monkeypatch):
     ev = Evidence("PIB", "https://pib.gov.in/x", TIER_PIB, TS, "Fake: Government will give Rs 5000 to every woman", "")
     res = check_forward("Government will give Rs 5000 to every woman.", [FakeRetriever([ev])], SlowJudge())
     assert time.time() - t < 4 and res["verdict"] in (UNVERIFIED, FALSE)
+
+
+# --- website: content, safety, API, validation
+import json as _json, threading as _th, urllib.request as _ur, urllib.parse as _up, urllib.error as _ue
+
+@pytest.fixture
+def server(monkeypatch):
+    from http.server import ThreadingHTTPServer
+    import sach.web as W
+    W._hits.clear()
+    ev = Evidence("PIB (Press Information Bureau)", "https://pib.gov.in/PressReleasePage.aspx?PRID=1", TIER_PIB, TS,
+                  "Fake claim: government will give Rs 5000 to every woman", "Fake message claims government will give Rs 5000 to every woman")
+    W.Handler.retrievers = [FakeRetriever([ev])]; W.Handler.llm = None
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), W.Handler)
+    _th.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    yield base
+    srv.shutdown()
+
+def _post(base, text, path="/", headers=None, raw=None):
+    data = raw if raw is not None else _up.urlencode({"text": text}).encode()
+    req = _ur.Request(base + path, data, headers or {})
+    try:
+        r = _ur.urlopen(req); return r.status, r.read().decode()
+    except _ue.HTTPError as e:
+        return e.code, e.read().decode()
+
+def test_home_has_all_sections_and_features(server):
+    h = _ur.urlopen(server + "/").read().decode()
+    for needle in ("Got a forward?", 'id="check"', 'id="how"', 'id="rules"', 'id="sources"', 'id="evidence"', 'id="faq"', 'id="api"',
+                   'id="theme"', 'id="paste"', 'id="count"', "26/31", "Hinglish", "MISLEADING", "prefers-color-scheme"):
+        assert needle in h, needle
+    assert h.count('class="chip"') == 4
+
+def test_result_page_has_card_citation_and_actions(server):
+    code, h = _post(server, "Government will give Rs 5000 to every woman.")
+    assert code == 200 and 'id="result"' in h and "https://pib.gov.in/PressReleasePage.aspx?PRID=1" in h
+    for needle in ("Copy card", "Share on WhatsApp", "Download image", "Report a wrong verdict", "https://wa.me/?text="):
+        assert needle in h, needle
+
+def test_user_text_is_html_escaped_no_xss(server):
+    evil = '<script>alert(1)</script> "><img src=x onerror=alert(2)> Government will give Rs 5000 to every woman.'
+    code, h = _post(server, evil)
+    assert "<script>alert(1)" not in h and "<img src=x" not in h and "&lt;script&gt;alert(1)" in h
+
+def test_ledger_page_escapes_and_filters(server):
+    from sach import ledger
+    ledger.append({"claim": "<b>x</b>", "domain": "other", "verdict": "FALSE", "reason_code": "r", "citations": [], "language": "en", "checked_at": TS})
+    h = _ur.urlopen(server + "/?view=ledger").read().decode()
+    assert "&lt;b&gt;x&lt;/b&gt;" in h and "<b>x</b>" not in h and 'data-v="FALSE"' in h and 'id="q"' in h
+
+def test_empty_and_too_long_input_rejected_with_message(server):
+    code, h = _post(server, "   ")
+    assert code == 400 and "Please paste a message" in h
+    code, h = _post(server, "a " * 5000)
+    assert code == 413 and "too long" in h
+
+def test_json_api(server):
+    code, body = _post(server, "Government will give Rs 5000 to every woman.", "/?format=json")
+    d = _json.loads(body)
+    assert code == 200 and d["verdict"] == "FALSE" and d["claims"][0]["citations"][0]["url"].startswith("https://pib.gov.in")
+    code, body = _post(server, "", "/?format=json", raw=_json.dumps({"text": "Government will give Rs 5000 to every woman."}).encode(),
+                       headers={"Content-Type": "application/json"})
+    assert code == 200 and _json.loads(body)["verdict"] == "FALSE"
+    code, body = _post(server, "", "/?format=json", raw=b"not json", headers={"Content-Type": "application/json"})
+    assert code == 400 and "error" in _json.loads(body)
+
+def test_rate_limit_returns_429_not_crash(server):
+    import sach.web as W
+    codes = [_post(server, "Government will give Rs 5000 to every woman.", "/?format=json")[0] for _ in range(W.RATE_LIMIT + 2)]
+    assert codes[: W.RATE_LIMIT] == [200] * W.RATE_LIMIT and codes[-1] == 429
+
+def test_pipeline_exception_gives_friendly_500(server, monkeypatch):
+    import sach.web as W
+    monkeypatch.setattr(W, "check_forward", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    code, h = _post(server, "Government will give Rs 5000 to every woman.")
+    assert code == 500 and "Something went wrong" in h and "boom" not in h and "Traceback" not in h
+
+def test_head_healthz_and_security_headers(server):
+    r = _ur.urlopen(_ur.Request(server + "/", method="HEAD")); assert r.status == 200
+    r = _ur.urlopen(server + "/?view=health"); assert r.read() == b"ok" and r.headers["X-Content-Type-Options"] == "nosniff"
+
+def test_hindi_and_telugu_text_roundtrip_in_page(server):
+    code, h = _post(server, "सरकार हर महिला को 5000 रुपये देगी।")
+    assert code == 200 and "झूठ" in h or "पुष्टि नहीं हुई" in h
+    assert "सरकार हर महिला" in h          # prefill preserved so the user can edit and resubmit
+
+
+def test_call_to_action_fragments_are_not_claims():
+    cs = extract_claims("Government is giving Rs 1000 to everyone under Corona Sahayata Yojana. Click the link to register. Please forward to all groups!")
+    assert [c.text for c in cs] == ["Government is giving Rs 1000 to everyone under Corona Sahayata Yojana."]
+    assert len(extract_claims("The Cabinet approved a Rs 500 crore scheme to register small farmers for crop insurance cover.")) == 1   # long real claim survives
+
+
+def test_cross_lingual_claims_are_translated_for_search_and_judging():
+    seen = {}
+    class Rec:
+        def search(self, q):
+            seen["q"] = q
+            return [Evidence("PIB", "https://pib.gov.in/x", TIER_PIB, TS, "Fake: Government will give Rs 1000 to every woman", "")]
+    class TL:
+        def translate(self, t): return "Government will give Rs 1000 to every woman"
+        def stance(self, claim, title, text): return "contradicts" if "1000" in claim else "none"
+    res = check_forward("సరకారు ప్రతి మహిళకు 1000 రూపాయలు ఇస్తుంది అని ప్రచారం జరుగుతోంది", [Rec()], TL())
+    assert seen["q"] == "Government will give Rs 1000 to every woman"        # searched in English
+    assert res["language"] == "te" and res["claims"][0]["claim"]["text"].startswith("సరకారు")   # ledger keeps the original wording
+    assert "అబద్ధం" in res["card"]                                       # card still in Telugu
+
+def test_translation_failure_falls_back_to_original_text():
+    seen = {}
+    class Rec:
+        def search(self, q): seen["q"] = q; return []
+    class Bad:
+        def translate(self, t): raise RuntimeError("down")
+        def stance(self, *a): return "none"
+    txt = "సరకారు ప్రతి మహిళకు 1000 రూపాయలు ఇస్తుంది అని ప్రచారం జరుగుతోంది"
+    res = check_forward(txt, [Rec()], Bad())
+    assert seen["q"].startswith("సరకారు") and res["verdict"] == UNVERIFIED
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("The Cabinet approved Rs. 37,500 crore for the scheme. Dr. Singh said it is good.", 2),
+    ("కేంద్ర మంత్రివర్గం బొగ్గు గ్యాసిఫికేషన్ ప్రాజెక్టులకు రూ. 37,500 కోట్ల పథకాన్ని ఆమోదించింది.", 1),
+    ("सरकार ने रु. 5000 हर महिला को देने की घोषणा की है।", 1),
+    ("Govt. will give Rs. 1000 to every farmer. This scheme starts tomorrow for everyone.", 2)])
+def test_abbreviation_dots_do_not_split_claims(text, expected):
+    cs = extract_claims(text)
+    assert len(cs) == expected
+    assert any(("Rs." in c.text or "रु." in c.text or "రూ." in c.text) for c in cs)
+
+
+# --- hardening from the awkward-input battery
+def test_invisible_and_bidi_characters_are_stripped():
+    from sach.extract import clean_text
+    assert clean_text("\u202eGovernment will give Rs 5000\u200b to every woman\u0000 today") == "Government will give Rs 5000 to every woman today"
+    assert clean_text("keep\nnewlines\tand tabs") == "keep\nnewlines\tand tabs"
+
+@pytest.mark.parametrize("junk", ["🙏🙏🙏😂😂", "https://example.com/win", "1000 5000 2024", "Hello",
+                                   "Good morning friends. Have a blessed day! Please forward to all groups."])
+def test_non_claims_get_a_clear_no_claim_card_in_every_language(junk):
+    res = check_forward(junk, [FakeRetriever([])])
+    assert res.get("no_claims") and res["verdict"] == UNVERIFIED and res["claims"] == []
+    assert "official source" not in res["card"]          # must not imply a search happened and failed
+
+def test_no_claim_card_follows_language():
+    res = check_forward("शुभ प्रभात! सबको शेयर करें 🙏", [FakeRetriever([])])
+    assert res["language"] == "hi" and "दावा" in res["card"]
+
+def test_partial_needs_strong_overlap_and_numbers_on_both_sides():
+    claim = "Government will give Rs 5000 to every woman today"
+    page = "JHARCRAFT supports handicraft artisans, with Rs 5000 grants for women artisans in Jharkhand textile units."
+    q = "Rs 5000 grants for women artisans in Jharkhand textile units"
+    assert validate_stance("mixed", q, claim, "JHARCRAFT", page) == "none"           # loose topical overlap: rejected
+    page2 = "Government will give Rs 2000 to every woman under the scheme, the Ministry said."
+    assert validate_stance("mixed", "Government will give Rs 2000 to every woman", claim, "t", page2) == "mixed"
+    assert validate_stance("mixed", "Government will give money to every woman", claim, "t", "Government will give money to every woman") == "none"  # no number in quote
+
+def test_multi_claim_forward_runs_in_parallel_within_budget(monkeypatch):
+    import time, sach.pipeline as P
+    class Slow:
+        def search(self, q): time.sleep(1.0); return []
+    monkeypatch.setattr(P, "BUDGET_S", 10)
+    text = ". ".join(f"Government will give Rs {n}000 to every farmer in district number {n}" for n in range(1, 5)) + "."
+    t = time.time(); res = check_forward(text, [Slow()]); dt = time.time() - t
+    assert len(res["claims"]) == 4 and dt < 3.5          # 4 claims x 1 s, 3 workers: ~2 s, not 4 s
+
+def test_overall_budget_turns_unfinished_claims_into_unverified_timed_out(monkeypatch):
+    import time, sach.pipeline as P
+    from sach import ledger
+    class Hang:
+        def search(self, q): time.sleep(20); return []
+    monkeypatch.setattr(P, "BUDGET_S", 1.0)
+    t = time.time(); res = check_forward("Government will give Rs 5000 to every woman in the country.", [Hang()]); dt = time.time() - t
+    assert dt < 6 and res["verdict"] == UNVERIFIED
+    assert not any(r["reason_code"] == "timed_out" for r in ledger.load() if "reason_code" in r)
+
+
+def test_brave_requests_are_throttled_and_429_retried(monkeypatch):
+    import io, json as j, urllib.error, sach.retrieve as R
+    stamps, calls = [], []
+    monkeypatch.setattr(R, "BRAVE_MIN_INTERVAL_S", 0.2); R._brave_last[0] = 0.0
+    class Resp(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+    def fake_open(req, timeout=0):
+        import time; stamps.append(time.monotonic()); calls.append(1)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError("u", 429, "slow down", {}, None)
+        return Resp(j.dumps({"web": {"results": [{"url": "https://pib.gov.in/a"}]}}).encode())
+    monkeypatch.setattr(R.urllib.request, "urlopen", fake_open)
+    monkeypatch.setattr(R._time, "sleep", lambda s: None)
+    assert R.BraveRetriever(key="k")._search("q") == ["https://pib.gov.in/a"] and len(calls) == 2

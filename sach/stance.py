@@ -63,6 +63,8 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -
         return "none"
     if label == "confirms" and not numbers(claim) <= numbers(quote):
         return "none"
+    if label == "mixed" and (overlap(claim, quote) < 0.6 or not numbers(claim) or not numbers(quote)):
+        return "none"      # 'partial' drives MISLEADING: needs a strongly related quote with numbers on both sides
     if label == "contradicts" and not _DENIAL.search(f"{title} {quote}"):
         return "none"
     return label

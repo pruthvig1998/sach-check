@@ -1,7 +1,7 @@
 """Evidence retrieval. Priority: PIB -> official domains -> fact-checkers.
 Every returned Evidence comes from a page that was actually fetched (has fetched_at)."""
 from __future__ import annotations
-import json, os, re, urllib.parse
+import json, os, re, urllib.error, urllib.parse
 from bs4 import BeautifulSoup
 from .fetch import fetch, is_official, is_factchecker, UA
 from .models import Evidence, TIER_PIB, TIER_OFFICIAL, TIER_FACTCHECKER
@@ -50,6 +50,18 @@ def _page_text(html: str):
     title = s.title.get_text(" ", strip=True) if s.title else ""
     return title, re.sub(r"\s+", " ", s.get_text(" ", strip=True))[:20000]
 
+import threading, time as _time
+_brave_lock = threading.Lock()
+_brave_last = [0.0]
+BRAVE_MIN_INTERVAL_S = 1.1     # Brave free plan: ~1 request/second, shared by all concurrent claims
+
+def _brave_throttle():
+    with _brave_lock:
+        wait = BRAVE_MIN_INTERVAL_S - (_time.monotonic() - _brave_last[0])
+        if wait > 0:
+            _time.sleep(wait)
+        _brave_last[0] = _time.monotonic()
+
 class BraveRetriever:
     """Optional live web search (needs BRAVE_API_KEY). Official domains first, then fact-checkers."""
     OFFICIAL_Q = "(site:gov.in OR site:nic.in OR site:who.int)"
@@ -63,8 +75,15 @@ class BraveRetriever:
         import urllib.request
         url = "https://api.search.brave.com/res/v1/web/search?" + urllib.parse.urlencode({"q": q, "count": 8})
         req = urllib.request.Request(url, headers={"X-Subscription-Token": self.key, "Accept": "application/json", "User-Agent": UA})
-        with urllib.request.urlopen(req, timeout=20) as r:
-            return [x["url"] for x in json.load(r).get("web", {}).get("results", [])]
+        for attempt in (0, 1):
+            _brave_throttle()
+            try:
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    return [x["url"] for x in json.load(r).get("web", {}).get("results", [])]
+            except urllib.error.HTTPError as e:
+                if e.code == 429 and attempt == 0:
+                    _time.sleep(1.5); continue        # rate limited: back off once
+                raise
 
     def search(self, claim: str) -> list[Evidence]:
         if not self.key:

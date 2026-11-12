@@ -40,5 +40,8 @@ L += ["", "## Limitations (read before citing these numbers)",
       "- Retrieval varies run to run (Brave results change), so single-run numbers move by a claim or two.",
       "- Official-domain rule is *.gov.in / *.nic.in / who.int, so news sites such as newsonair.gov.in count as official; PIB is treated as the strongest tier.",
       "- A real 100+ evaluation needs a search provider (BRAVE_API_KEY) or a bulk crawl of PIB press releases."]
+wrong = [r for r in res if r["got"] != r["label"] and r["got"] != "UNVERIFIED"]
+json.dump({"n": n, "correct": ok, "overclaimed_false": len(false_pos), "abstained": sum(r["got"] == "UNVERIFIED" and r["label"] != "UNVERIFIED" for r in res),
+           "abstained_wrong": len(wrong)}, open("data/eval_summary.json", "w"))   # read by the website
 open("docs/evaluation.md", "w", encoding="utf-8").write("\n".join(L) + "\n")
 print("\n".join(L[:9]))

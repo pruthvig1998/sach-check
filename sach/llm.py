@@ -27,6 +27,9 @@ def _user(claim, title, text):
 
 DEFAULT_GEMINI_MODELS = "gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-3.8-flash,gemini-flash-latest"
 
+TRANSLATE_PROMPT = ("Translate the user's claim into plain English. Be faithful and literal: keep every number, amount, date, name and "
+                    "scheme name exactly. Do not add, explain or soften anything. Output only the English sentence.")
+
 class GeminiJudge:
     """Tries each model in turn; a model that is retired (404), overloaded (503), rate-limited (429) or slow is skipped."""
     def __init__(self, key=None, model=None, timeout=45):
@@ -52,6 +55,18 @@ class GeminiJudge:
                 st, q = parse_reply(d["candidates"][0]["content"]["parts"][0]["text"])
                 return validate_stance(st, q, claim, title, text)
             except Exception as e:      # 404/429/503/timeout/odd payload: try the next model
+                last = e
+        raise last
+
+    def translate(self, text):
+        body = {"systemInstruction": {"parts": [{"text": TRANSLATE_PROMPT}]},
+                "contents": [{"role": "user", "parts": [{"text": text[:1000]}]}],
+                "generationConfig": {"temperature": 0, "maxOutputTokens": 200}}
+        last = None
+        for model in self.models:
+            try:
+                return self._post(model, body)["candidates"][0]["content"]["parts"][0]["text"].strip()
+            except Exception as e:
                 last = e
         raise last
 

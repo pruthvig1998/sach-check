@@ -1,71 +1,100 @@
 """Single-container web surface (stdlib only). Run: python -m sach.web"""
 from __future__ import annotations
-import html, os
+import json, os, time, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
-from . import ledger
 from .llm import get_llm
 from .pipeline import check_forward
 from .retrieve import default_retrievers
+from .site import MAX_CHARS, home, ledger_page, result_block
 
-CSS = ("body{font-family:system-ui,sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem;line-height:1.5}"
-       "textarea{width:100%;min-height:10rem;font-size:1rem}pre.card{background:#f4f4f4;padding:1rem;border-radius:8px;"
-       "white-space:pre-wrap;font-size:1.05rem}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ddd;"
-       "padding:.4rem;text-align:left;vertical-align:top}.TRUE{color:#0a7d2c}.FALSE{color:#b00020}.MISLEADING{color:#a15c00}"
-       ".UNVERIFIED{color:#555}button{font-size:1rem;padding:.5rem 1rem}")
+RATE_LIMIT, RATE_WINDOW = 8, 60          # best-effort per-IP checks per minute (serverless instances don't share state)
+_hits: dict = {}
+_hits_lock = threading.Lock()
 
-def page(body: str) -> bytes:
-    return (f"<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-            f"<title>Sach</title><style>{CSS}</style><h1>Sach <small>सच · నిజం</small></h1>"
-            f"<nav><a href='/'>Check a forward</a> · <a href='/?view=ledger'>Evidence ledger</a></nav>{body}").encode()
-
-def form(prefill="") -> str:
-    return ("<form method=post action=/><p>Paste a forward (English, हिन्दी, తెలుగు or Hinglish):</p>"
-            f"<textarea name=text>{html.escape(prefill)}</textarea><p><button>Check</button></p></form>")
-
-def result_html(res: dict) -> str:
-    rows = "".join(f"<tr><td>{html.escape(c['claim']['text'])}</td><td class={c['verdict']}>{c['verdict']}</td>"
-                   f"<td>{len(c['citations'])} citation(s)</td></tr>" for c in res["claims"])
-    return (f"<h2 class={res['verdict']}>{res['verdict']}</h2><p>Copy and forward this card:</p>"
-            f"<pre class=card>{html.escape(res['card'])}</pre><h3>Claims checked</h3><table>{rows}</table>")
-
-def ledger_html() -> str:
-    rows = ""
-    for r in reversed(ledger.load()):
-        cites = "<br>".join(f"<a href='{html.escape(c['url'])}' rel=noopener>{html.escape(c['source'])}</a> "
-                            f"({c['tier']}, accessed {c['date_accessed']})" for c in r["citations"]) or "none found"
-        rows += (f"<tr><td>{html.escape(r['claim'])}</td><td class={r['verdict']}>{r['verdict']}</td>"
-                 f"<td>{cites}</td><td>{r['checked_at'][:10]}</td></tr>")
-    return f"<h2>Public evidence ledger</h2><table><tr><th>Claim<th>Verdict<th>Citations<th>Checked</tr>{rows}</table>"
+def rate_limited(ip: str) -> bool:
+    now = time.time()
+    with _hits_lock:
+        q = [t for t in _hits.get(ip, []) if now - t < RATE_WINDOW]
+        limited = len(q) >= RATE_LIMIT
+        if not limited:
+            q.append(now)
+        _hits[ip] = q
+        if len(_hits) > 2000:            # bound memory
+            _hits.clear()
+    return limited
 
 class Handler(BaseHTTPRequestHandler):
     retrievers = None
     llm = None
 
+    def log_message(self, *a):           # keep serverless logs quiet
+        pass
+
     def _send(self, body: bytes, code=200, ctype="text/html; charset=utf-8"):
-        self.send_response(code); self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cache-Control", "no-store" if code != 200 or self.command == "POST" else "public, max-age=60")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _json(self, obj, code=200):
+        self._send(json.dumps(obj, ensure_ascii=False).encode(), code, "application/json; charset=utf-8")
+
+    def do_HEAD(self):
+        self.do_GET()
 
     def do_GET(self):
         u = urlparse(self.path)
         view = parse_qs(u.query).get("view", [""])[0]
         if view == "ledger" or u.path == "/ledger":      # query form survives Vercel's rewrite; path form works locally
-            self._send(page(ledger_html()))
+            self._send(ledger_page())
         elif view == "health" or u.path == "/healthz":
             self._send(b"ok", ctype="text/plain")
         else:
-            self._send(page(form()))
+            self._send(home())
+
+    def _client_ip(self):
+        return (self.headers.get("x-forwarded-for") or self.client_address[0]).split(",")[0].strip()
 
     def do_POST(self):
         # single POST route: accept any path (Vercel rewrites hide the original one)
-        n = min(int(self.headers.get("Content-Length", 0)), 20000)
-        text = parse_qs(self.rfile.read(n).decode("utf-8", "replace")).get("text", [""])[0].strip()
+        text = ""
+        want_json = "json" in (parse_qs(urlparse(self.path).query).get("format", [""])[0]) or \
+                    "application/json" in (self.headers.get("Accept") or "")
+        fail = (lambda code, msg: self._json({"error": msg}, code)) if want_json else \
+               (lambda code, msg: self._send(home(prefill=text, error=msg), code))
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            n = 0
+        raw = self.rfile.read(min(n, MAX_CHARS * 8)).decode("utf-8", "replace")
+        if "application/json" in (self.headers.get("Content-Type") or ""):
+            try:
+                text = str(json.loads(raw).get("text", ""))
+            except Exception:
+                text = ""
+        else:
+            text = parse_qs(raw).get("text", [""])[0]
+        text = text.strip()
         if not text:
-            return self._send(page(form() + "<p>Please paste some text.</p>"), 400)
+            return fail(400, "Please paste a message to check.")
+        if len(text) > MAX_CHARS:
+            return fail(413, f"That message is too long. Please keep it under {MAX_CHARS} characters, or paste the key claim.")
+        if rate_limited(self._client_ip()):
+            return fail(429, "You're checking quickly. Please wait a minute and try again.")
         if Handler.retrievers is None:
             Handler.retrievers, Handler.llm = default_retrievers(), get_llm()   # lazy: serverless has no main()
-        res = check_forward(text, Handler.retrievers, Handler.llm)
-        self._send(page(result_html(res) + form(text)))
+        try:
+            res = check_forward(text, Handler.retrievers, Handler.llm)
+        except Exception:
+            return fail(500, "Something went wrong while checking. Nothing was recorded. Please try again.")
+        if want_json:
+            return self._json(res)
+        self._send(home(result=result_block(res), prefill=text))
 
 def main():
     Handler.retrievers, Handler.llm = default_retrievers(), get_llm()
