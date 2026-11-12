@@ -103,13 +103,14 @@ def _words(s: str) -> frozenset:
 # Very common function words. A word shared by two languages is left out of the shorter list, so a hit means something.
 # NOT NATIVE-REVIEWED: assembled by an AI model from common usage; the unit tests pin the behaviour, a native speaker should extend them.
 _HI = _words("है हैं नहीं और के की में से को का पर यह वह था थी थे रहा रही रहे गया गई गए किया हुआ लिए भी कि सभी कर करें हम आप दे देगी सकता सकते")
-_MR = _words("आहे आहेत नाही नाहीत आणि मध्ये साठी करण्यात असे पण झाले झाला झाली म्हणून मिळणार पाठवा नका फक्त तुम्ही काय सर्वांना")
-_KOK = _words("आसा आसात आनी हांव तुमी जाल्यार खातीर कितें म्हजें म्हजो म्हजी म्हज्या तुजें आमी जालें जालो जाली सरकारान")
+_MR = _words("आहे आहेत नाही नाहीत आणि मध्ये साठी करण्यात असे पण झाले झाला झाली म्हणून मिळणार पाठवा नका फक्त तुम्ही काय सर्वांना केला केली केले मिळतील मिळेल")
+_KOK = _words("आसा आसात आनी हांव तुमी जाल्यार खातीर कितें म्हजें म्हजो म्हजी म्हज्या तुजें आमी जालें जालो जाली सरकारान आशिल्लो आशिल्ली आशिल्ले मेरेन")
 _NE = _words("छ छन् छु छैन छैनन् होइन हुन् गर्न गर्ने गरेको भएको रहेको भनेको भने लागि पनि सबै हामी तपाईं तपाईंले सरकारले र लाई हुन्छ भयो")
 # Suffixes that only that language uses on ordinary words (a Marathi noun ends -च्या; a Nepali plural ends -हरू).
-_MR_END = tuple(_dn(x) for x in ("च्या", "णार"))
+_MR_END = tuple(_dn(x) for x in ("च्या", "णार", "पासून"))
 _MR_IN = (_dn("ण्यात"),)
 _NE_IN = (_dn("हरू"), _dn("हरु"))
+_KOK_END = (_dn("पाक"),)          # Konkani infinitive of purpose: दवरपाक, करपाक
 MIN_MARKERS = 2                  # a regional language needs at least this many marker hits ...
 # ... and must beat Hindi by a clear margin: hits >= 2 * hindi_hits + 1 (and beat the other regional languages).
 
@@ -122,7 +123,7 @@ def _marker_scores(text: str) -> dict:
             s["hi"] += 1
         if t in _MR or t.endswith(_MR_END) and len(t) > 4 or any(x in t for x in _MR_IN):
             s["mr"] += 1
-        if t in _KOK:
+        if t in _KOK or t.endswith(_KOK_END) and len(t) > 4:
             s["kok"] += 1
         if t in _NE or any(x in t for x in _NE_IN):
             s["ne"] += 1
