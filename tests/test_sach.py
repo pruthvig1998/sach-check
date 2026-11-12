@@ -1132,18 +1132,54 @@ def test_upi_link_builder_supports_apps_and_falls_back():
 
 
 # --- logos, BHIM tile, custom amounts
-def test_every_app_tile_has_its_own_inline_logo_and_no_external_image_requests(server, monkeypatch):
+def _jpeg_size(b: bytes):
+    """(width, height) of a baseline JPEG, read from its SOF marker; None if it is not a JPEG."""
+    import struct
+    if b[:2] != b"\xff\xd8":
+        return None
+    i = 2
+    while i < len(b) - 9:
+        if b[i] != 0xFF:
+            i += 1; continue
+        marker = b[i + 1]
+        if marker in (0xC0, 0xC1, 0xC2):
+            h, w = struct.unpack(">HH", b[i + 5:i + 9]); return (w, h)
+        i += 2 + struct.unpack(">H", b[i + 2:i + 4])[0]
+    return None
+
+def test_every_app_tile_shows_the_apps_real_icon_as_an_embedded_image(server, monkeypatch):
+    import base64, re
     _tip_env(monkeypatch, "supporter@okbank")
     h = _raw_get(server, "/?view=pay&amt=50")[2].decode()
     tiles = h.split('class="appbtn"')[1:]
-    assert len(tiles) == 5 and all('class="ico"><svg' in t.split("</a>")[0] for t in tiles)
-    icons = [t.split('class="ico">')[1].split("</span>")[0] for t in tiles]
-    assert len(set(icons)) == 5                                           # five different icons
-    assert 'fill="#4285F4"' in icons[0] and 'fill="#5F259F"' in icons[1] and 'fill="#20336B"' in icons[2] and "BHIM" in icons[3]
-    import re
-    assert "<img" not in h.replace('<img id="upiqr"', "") and "cdn" not in h                             # logos are inline SVG
-    assert not re.search(r'src="https?://', h) and not re.search(r"url\(https?://", h)                  # no third-party images or scripts (only the page's font stylesheet link)
-    assert "trademarks of their owners" in h and "Simple Icons" in h
+    assert len(tiles) == 5
+    srcs = [re.search(r'class="appimg" src="data:image/jpeg;base64,([^"]+)"', t.split("</a>")[0]) for t in tiles[:4]]
+    assert all(srcs), "the four named apps must each have an embedded icon"
+    blobs = [base64.b64decode(m.group(1)) for m in srcs]
+    assert len(set(blobs)) == 4                                                  # four different logos
+    assert all(_jpeg_size(b) == (96, 96) and 1500 < len(b) < 12000 for b in blobs)
+    assert "<svg" in tiles[4].split("</a>")[0] and "appimg" not in tiles[4].split("</a>")[0]   # "other app": generic glyph, not a brand logo
+    assert not re.search(r'src="https?://', h) and not re.search(r"url\(https?://", h) and "cdn" not in h   # no third-party requests
+    assert "belong to their owners" in h and "not affiliated" in h
+
+def test_icon_files_are_in_the_repo_with_an_ownership_notice():
+    import os
+    d = os.path.join(SITE.ROOT, "sach", "assets", "app_icons")
+    for k in ("gpay", "phonepe", "paytm", "bhim"):
+        assert _jpeg_size(open(os.path.join(d, k + ".jpg"), "rb").read()) == (96, 96)
+    notice = open(os.path.join(d, "NOTICE.md"), encoding="utf-8").read()
+    assert all(w in notice for w in ("Google LLC", "PayTM Mobile Solutions", "National Payments Corporation of India", "PhonePe Private Limited", "not** under the MIT"))
+
+def test_missing_icon_file_falls_back_to_a_generic_glyph_not_a_crash(monkeypatch):
+    monkeypatch.setattr(SITE, "_APP_IMGS", {})
+    assert all("<svg" in SITE.app_icon(a) and "<img" not in SITE.app_icon(a) for a in SITE.UPI_APPS)
+    monkeypatch.setenv("SACH_UPI_ID", "supporter@okbank")
+    assert b"Google Pay" in SITE.pay_page(50)                                    # page still renders
+
+def test_no_simple_icons_drawing_or_brand_colour_hacks_remain():
+    import inspect
+    src = inspect.getsource(SITE)
+    assert "_ICON_PATHS" not in src and "Simple Icons" not in src and "#F26B21" not in src
 
 def test_chooser_has_a_change_amount_form_prefilled(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank")
