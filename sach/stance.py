@@ -12,8 +12,18 @@ from .langwords import DEBUNK_RE, NEGATION_RE
 _STOP = set("the a an and or of to in on for is are was were be been this that it with as by at from will has have "
             "not no all your you we they their our new get free than there".split())
 
+_SUFFIXES = ("ations", "ation", "ments", "ment", "ings", "ing", "ures", "ure", "ions", "ion", "edly", "ies", "ied", "ed", "es", "s", "e")
+
 def _stem(w: str) -> str:
-    return w[:5] if w.isascii() and w.isalpha() and len(w) > 5 else w   # crude stem: reduce~reduction
+    """Light English stemmer, applied identically to claim and page: closure/close/closed -> clos, ordered/order -> order.
+    Strips one common suffix, then keeps at most 5 letters (reduce~reduction)."""
+    if not (w.isascii() and w.isalpha()) or len(w) <= 3:
+        return w
+    for suf in _SUFFIXES:
+        if w.endswith(suf) and len(w) - len(suf) >= 3:
+            w = w[:-len(suf)]
+            break
+    return w[:5]
 
 # Same-meaning words that official pages and forwards phrase differently. Only used to decide whether two texts are about the same
 # thing (relevance thresholds); it never decides a stance, and the number, quote, denial, direction and injection checks are untouched.
@@ -150,9 +160,14 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -
     Anything failing a check becomes 'none' -> UNVERIFIED."""
     if label == "none":
         return "none"
-    q, page = _norm(quote), _norm(f"{title} {text}")
-    if len(q) < 12 or q not in page:
+    page = _norm(f"{title} {text}")
+    # Models often shorten a long sentence with "..." / "…". Every piece must still appear word for word on the page
+    # (each at least 12 characters), so nothing that is not on the page can be quoted.
+    parts = [_norm(x) for x in re.split(r"\.{3,}|\u2026", quote or "")]
+    parts = [x for x in parts if x]
+    if not parts or any(len(x) < 12 or x not in page for x in parts):
         return "none"
+    q = " ".join(parts)
     if has_injection(claim, title, text, quote):
         return "none"          # the forward or the page tries to instruct the judge: abstain rather than trust it
     if direction_conflict(claim, f"{title} {quote}"):

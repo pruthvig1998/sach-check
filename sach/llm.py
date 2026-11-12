@@ -48,7 +48,8 @@ def parse_reply(raw: str):
 def _user(claim, title, text):
     return f"CLAIM: {claim}\n\nPAGE TITLE: {title}\nPAGE TEXT: {text[:6000]}"
 
-DEFAULT_GEMINI_MODELS = "gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-3.8-flash,gemini-flash-latest"
+DEFAULT_JUDGE_ORDER = "groq,gemini,openrouter,mistral,claude"   # override with SACH_JUDGE_ORDER
+DEFAULT_GEMINI_MODELS = "gemini-3.1-flash-lite,gemini-3.8-flash,gemini-flash-latest"   # 3.5-flash-lite dropped: it failed the stance probes repeatedly
 
 
 class _Judge:
@@ -219,7 +220,7 @@ class ClaudeJudge:
 
 
 import threading as _threading
-LLM_MAX_CONCURRENT = int(os.environ.get("SACH_LLM_MAX_CONCURRENT", "4"))
+LLM_MAX_CONCURRENT = int(os.environ.get("SACH_LLM_MAX_CONCURRENT", "8"))   # one per source of a claim
 _LLM_SLOTS = _threading.BoundedSemaphore(max(1, LLM_MAX_CONCURRENT))
 
 
@@ -243,7 +244,9 @@ class FailoverJudge:
         pool = [j for j in self.judges if j.available()] or []
         for j in pool:
             try:
-                return getattr(j, method)(*args, **kw)
+                out = getattr(j, method)(*args, **kw)
+                self._last_used = j
+                return out
             except TypeError:
                 if method == "stance" and "tier" in kw:
                     try:
@@ -258,7 +261,24 @@ class FailoverJudge:
         raise last or RuntimeError("no LLM judge available (all rate-limited or down)")
 
     def stance(self, claim, title, text, tier=""):
-        return self._run("stance", claim, title, text, tier=tier)
+        first = self._run("stance", claim, title, text, tier=tier)
+        if first != "none" or heuristic_stance(claim, title, text, tier) == "none":
+            return first
+        # One judge said "none" but the page clearly matches the claim (the offline matcher sees a contradiction or a
+        # confirmation). Ask ONE other provider. Its answer has already passed the same verbatim-quote validation and
+        # second-opinion consensus, so this can only recover a missed verdict; it never relaxes a rule.
+        with _LLM_SLOTS:
+            used = getattr(self, "_last_used", None)
+            for j in [j for j in self.judges if j.available() and j is not used][:1]:
+                try:
+                    try:
+                        second = j.stance(claim, title, text, tier=tier)
+                    except TypeError:
+                        second = j.stance(claim, title, text)
+                    return second if second in ("contradicts", "confirms", "mixed") else first
+                except Exception:
+                    return first
+        return first
 
     def translate(self, text):
         return self._run("translate", text)
@@ -291,7 +311,10 @@ def build_judges():
             judges.append(ClaudeJudge())
         except Exception:
             pass
-    return judges
+    # Fastest reliable provider first: a slow first judge eats the 30 s judging window and sources time out as "none".
+    order = [x.strip().lower() for x in os.environ.get("SACH_JUDGE_ORDER", DEFAULT_JUDGE_ORDER).split(",") if x.strip()]
+    rank = lambda j: next((i for i, p in enumerate(order) if getattr(j, "name", "").lower().startswith(p)), len(order))
+    return sorted(judges, key=rank)          # stable: keys of the same provider keep their order
 
 def get_llm():
     judges = build_judges()

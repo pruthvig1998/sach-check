@@ -79,3 +79,35 @@ def test_groq_reasoning_models_get_room_to_answer():
     assert sent[-1]["reasoning_effort"] == "low" and sent[-1]["max_tokens"] >= 700
     j._raw("qwen/qwen3.8-27b", "s", "u", 200)
     assert "reasoning_effort" not in sent[-1] and sent[-1]["max_tokens"] == 200
+
+class _FixedJudge(LL._Judge):
+    def __init__(self, name, answer):
+        self.name, self.models, self.answer, self.calls = name, ["m1", "m2"], answer, 0
+    def stance(self, claim, title, text, tier=""):
+        self.calls += 1
+        return self.answer
+
+_DEBUNK_T = "Claim that Government is giving Rs 1000 to everyone under Corona Sahayata Yojana is fake"
+_CLAIM = "Government is giving Rs 1000 to everyone under Corona Sahayata Yojana"
+
+def test_a_lone_none_on_a_clearly_matching_page_gets_one_more_opinion():
+    weak, strong = _FixedJudge("weak", "none"), _FixedJudge("strong", "contradicts")
+    f = LL.FailoverJudge([weak, strong])
+    assert f.stance(_CLAIM, _DEBUNK_T, _DEBUNK_T, tier="pib_debunk") == "contradicts"
+    assert weak.calls == 1 and strong.calls == 1
+
+def test_no_extra_opinion_when_the_page_does_not_match():
+    weak, strong = _FixedJudge("weak", "none"), _FixedJudge("strong", "confirms")
+    f = LL.FailoverJudge([weak, strong])
+    assert f.stance("Free solar fridge for every household", "Cabinet approves MSP for rabi crops", "wheat 2610", tier="official") == "none"
+    assert strong.calls == 0                                   # unrelated page: the first 'none' stands
+
+def test_the_extra_opinion_never_turns_none_into_a_guess():
+    weak, other = _FixedJudge("weak", "none"), _FixedJudge("other", "none")
+    f = LL.FailoverJudge([weak, other])
+    assert f.stance(_CLAIM, _DEBUNK_T, _DEBUNK_T, tier="pib_debunk") == "none"
+
+def test_a_decisive_first_answer_is_not_second_guessed():
+    a, b = _FixedJudge("a", "contradicts"), _FixedJudge("b", "none")
+    f = LL.FailoverJudge([a, b])
+    assert f.stance(_CLAIM, _DEBUNK_T, _DEBUNK_T, tier="pib_debunk") == "contradicts" and b.calls == 0

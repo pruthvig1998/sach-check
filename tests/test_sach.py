@@ -894,7 +894,10 @@ def test_build_judges_wiring_from_environment(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "gq"); monkeypatch.setenv("OPENROUTER_API_KEY", "or"); monkeypatch.setenv("MISTRAL_API_KEY", "ms")
     monkeypatch.setenv("SACH_GROQ_MODELS", "custom-model")
     f = LL.get_llm()
-    assert [j.name.split("-")[0] for j in f.judges] == ["gemini", "gemini", "gemini", "groq", "openrouter", "mistral"]     # order of preference
+    assert [j.name.split("-")[0] for j in f.judges] == ["groq", "gemini", "gemini", "gemini", "openrouter", "mistral"]     # fastest reliable first (DEFAULT_JUDGE_ORDER)
+    monkeypatch.setenv("SACH_JUDGE_ORDER", "gemini,mistral")
+    assert [j.name.split("-")[0] for j in LL.get_llm().judges] == ["gemini", "gemini", "gemini", "mistral", "groq", "openrouter"]   # override; unlisted keep their order after
+    monkeypatch.delenv("SACH_JUDGE_ORDER")
     assert len({j.key for j in f.judges if j.name.startswith("gemini")}) == 3                                           # duplicates removed
     assert [j for j in f.judges if j.name == "groq"][0].models == ["custom-model"]
     assert [n for n, _ in f.describe()][-1] == "mistral" and all(s == "ready" for _, s in f.describe())

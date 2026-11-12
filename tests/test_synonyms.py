@@ -39,3 +39,16 @@ def test_more_than_matches_over_so_translated_forwards_find_the_debunk():
     claim = "From now on, there will be GST on UPI payments of more than 2000 rupees."   # machine translation of a Bengali forward
     assert S.validate_stance("contradicts", TITLE, claim, TITLE, TITLE) == "contradicts"
     assert S.tokens("more than 2000") == S.tokens("over 2000") == S.tokens("above 2000")
+
+PAGE = ("No Government order to close Ministries, PIB Fact Check calls out fake news. News spread on social media is claiming "
+        "Government of India has directed all Ministries to shut down. This claim is fake. No such order has been issued.")
+
+def test_a_quote_shortened_with_an_ellipsis_is_accepted_when_every_piece_is_on_the_page():
+    q = '"News spread on social media ... claiming Government of India has directed all Ministries"'
+    assert S.validate_stance("contradicts", q, "Government has ordered the closure of Ministries.", PAGE.split(".")[0], PAGE) == "contradicts"
+
+def test_an_ellipsis_cannot_smuggle_in_words_that_are_not_on_the_page():
+    q = "News spread on social media … claiming the Government will close every school"          # second piece is invented
+    assert S.validate_stance("contradicts", q, "Government has ordered the closure of Ministries.", PAGE.split(".")[0], PAGE) == "none"
+    q2 = "News spread on social media ... shut"                                                   # a piece shorter than 12 characters
+    assert S.validate_stance("contradicts", q2, "Government has ordered the closure of Ministries.", PAGE.split(".")[0], PAGE) == "none"
