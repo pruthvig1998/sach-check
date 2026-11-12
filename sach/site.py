@@ -2,7 +2,7 @@
 from __future__ import annotations
 import html, json, os
 from urllib.parse import quote
-from . import ledger
+from . import ledger, pwa
 from .i18n import LABEL
 from .report import report_html, card_data_script
 from .ocr import OCR_BLOCK
@@ -331,6 +331,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <title>{esc(title)}</title><meta name="description" content="Paste a WhatsApp forward. Sach checks it against PIB and official sources and returns a cited verdict in English, Hindi or Telugu.">
 <meta property="og:title" content="Sach — cited verdicts for viral forwards"><meta property="og:description" content="Got a forward? Get the receipts. PIB-first fact-checking in English, Hindi and Telugu.">
 <meta name="theme-color" content="#f2ebdb"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23c2321f'/%3E%3Ctext x='32' y='45' font-size='40' text-anchor='middle' fill='white' font-family='serif' font-weight='900'%3ES%3C/text%3E%3C/svg%3E">
+{pwa.HEAD}
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="{FONTS}" rel="stylesheet"><style>{CSS}{VOICE_CSS}</style></head><body>
 <a class="skip" href="#main">Skip to content</a>
@@ -340,7 +341,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards") -> byt
 <main id="main">{body}</main>
 <footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Bharat Agentic-AI Hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
 <div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/?view=impact">Impact</a> · <a href="/#api">API</a>{tip_link}<br><a href="/?view=terms">Terms</a> · <a href="/?view=privacy">Privacy</a> · <a href="/?view=refund">Refunds</a> · <a href="/?view=contact">Contact</a></div></div></footer>
-<script>{JS}</script><script>{VOICE_JS}</script></body></html>""".encode()
+<script>{JS}</script><script>{VOICE_JS}</script>{pwa.SCRIPT}</body></html>""".encode()
 
 
 def stamp(v: str, cls="") -> str:
