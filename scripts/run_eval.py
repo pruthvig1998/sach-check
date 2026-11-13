@@ -486,13 +486,13 @@ def evidence_id(url):
     return "url-sha256:" + hashlib.sha256(url.split("#", 1)[0].encode("utf-8")).hexdigest()
 
 
-def _error_row(category, error=None, error_msg=None):
+def _error_row(category, error=None):
     """A check that produced no verdict. It is a failure: never correct, abstained or a wrong verdict.
-    'error' is the exception class name only (safe for committed reports); 'error_msg' is redacted and kept only in the local checkpoint."""
+    'error' is the exception class name only. No exception message text is stored or printed anywhere."""
     return {"got": None, "status": "error", "error_category": category, "error_categories": [category],
             "abstention_category": None, "reasons": [], "evidence_ids": [],
             "source_availability": {"search": "unknown", "observed_source_records": 0, "cited": 0, "page_availability": "unknown"},
-            "layer": "error", "degraded": False, "search_status": None, "error": error, "error_msg": error_msg}
+            "layer": "error", "degraded": False, "search_status": None, "error": error}
 
 
 def capture_result(res, llm, offline=False):
@@ -543,84 +543,11 @@ def capture_result(res, llm, offline=False):
         "degraded": "judge_degraded" in errors,          # judge problem only (the run's degraded_claims counter)
         "search_status": search,
         "error": None,
-        "error_msg": None,
     }
 
 
 # ---------- running ----------
-# Redaction for error text (no redaction is perfect; the failed table is reviewed before a report is committed):
-#  1. the value after a key/token/password name, any length, in plain, quoted, JSON and repr forms:
-#     key=, api_key=, token:, password=, "password": "...", {'api_key': '...'}, token "...", Authorization: Bearer ...
-_KEY_NAMES = r"(?:(?:x-goog-|x-)?api[_-]?key|apikey|access[_-]?token|token|secret|password|passwd|pwd|auth|authorization)"
-_SECRET_KV = re.compile(r"(?i)(\b" + _KEY_NAMES + r"[\"']?\s*(?:[=:]\s*|(?=[\"']))|\bkey[\"']?\s*=\s*)"   # key name, optional quote, '=' or ':' (or a quote)
-                        r"(?:(bearer\s+|basic\s+))?"                                                       # a scheme in an unquoted header value
-                        r"(?:\"([^\"\r\n]*)\"?|'([^'\r\n]*)'?|([^\s&\"',;]+))")                             # quoted value, or bare value up to a separator
-#  2. a Bearer token written without a key name
-_SECRET_BEARER = re.compile(r"(?i)(\bbearer\s+)[^\s&\"',;]+")
-#  3. a 20-27 character token with a symbol and one case (upper-only or lower-only) written straight after a key name
-_KEY_THEN_TOKEN = re.compile(r"(?i)(\b" + _KEY_NAMES + r"[\"']?\s+)([A-Za-z0-9_\-+/=.%]{20,27})(?![A-Za-z0-9_\-+/=.%])")
-
-
-def _kv_redact(m):
-    head = m.group(1) + (m.group(2) or "")
-    if m.group(3) is not None:
-        return head + '"[redacted]"'
-    if m.group(4) is not None:
-        return head + "'[redacted]'"
-    return head + "[redacted]"
-
-
-def _key_then_token_redact(m):
-    s = m.group(2)
-    if (s.isupper() or s.islower()) and any(c in "_-+/=.%" for c in s):
-        return m.group(1) + "[redacted]"
-    return m.group(0)
-#  4. a run of key-like characters (JWTs, API keys, AWS-style secrets), and URLs (their query strings and long path pieces)
-_RUN = re.compile(r"[A-Za-z0-9_\-+/=.%]{20,}")
-_URL = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s\"'<>]+")
-_PIECE = re.compile(r"[A-Za-z0-9_\-+=%]{20,}")      # one piece of a URL path, between / . ? and similar
-
-
-def _looks_secret(s):
-    """A run of 20+ key-like characters is a secret if it has a digit, or is 28+ long, or has upper and lower case
-    plus a symbol. Ordinary long words (ConnectionResetError) and plain URL paths do not match."""
-    if len(s) >= 28 or any(c.isdigit() for c in s):
-        return True
-    return any(c.isupper() for c in s) and any(c.islower() for c in s) and any(c in "_-+/=.%" for c in s)
-
-
-def _redact_url(url):
-    cut = min([url.find(c) for c in "?#" if c in url] or [len(url)])
-    base, rest = url[:cut], url[cut:]
-    base = _PIECE.sub(lambda p: "[redacted]" if _looks_secret(p.group(0)) else p.group(0), base)
-    rest = _RUN.sub(lambda p: "[redacted]" if _looks_secret(p.group(0)) else p.group(0), rest)
-    return base + rest
-
-
-def _redact_token(m):
-    s = m.group(0)
-    if "://" in s:
-        return _redact_url(s)
-    return "[redacted]" if _looks_secret(s) else s
-
-
-def redact_secrets(text):
-    text = _SECRET_KV.sub(_kv_redact, text)
-    text = _KEY_THEN_TOKEN.sub(_key_then_token_redact, text)
-    text = _SECRET_BEARER.sub(lambda m: m.group(1) + "[redacted]", text)
-    return re.sub(_URL.pattern + "|" + _RUN.pattern, _redact_token, text)
-
-
-def safe_error_message(e, limit=160):
-    """Short exception text for the checkpoint and the failed table: secrets are redacted first (redact_secrets), the text is
-    made UTF-8 safe (a lone surrogate would break json.dump and the report), and only then cut to at most `limit` characters."""
-    try:
-        text = str(e)
-    except Exception:
-        text = ""
-    text = redact_secrets(" ".join(text.split()))
-    text = text.encode("utf-8", errors="backslashreplace").decode("utf-8")
-    return text if len(text) <= limit else text[:limit - 3] + "..."
+# Exception text is never stored or printed: a failed check keeps only the exception class name (see _error_row).
 
 
 def run(rows, ret, llm, ckpt, log=False, out=print, workers=1, check=None, offline=False):
@@ -642,7 +569,7 @@ def run(rows, ret, llm, ckpt, log=False, out=print, workers=1, check=None, offli
             result = capture_result(check(r["claim"], ret, llm, log=log), llm, offline=offline)
         except Exception as exc:                    # one broken claim must not abort the run: it is recorded as an error row (a failure)
             category = "check_timeout" if isinstance(exc, TimeoutError) else "check_exception"
-            result = _error_row(category, error=type(exc).__name__, error_msg=safe_error_message(exc))
+            result = _error_row(category, error=type(exc).__name__)
         latency = round((time.monotonic() - start) * 1000, 3)    # wall time of this claim's check, measured in this thread
         result.update(started_at=started_at, latency_ms=latency, ms=latency)
         with lock:                                  # one writer at a time: the checkpoint file and the counters

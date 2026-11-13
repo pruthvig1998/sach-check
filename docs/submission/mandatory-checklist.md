@@ -27,7 +27,7 @@ The form says the "Scale & severity" box carries 50% of the score and the option
 - Size and severity: sourced figures only (docs/problem-evidence.md, owner approves each). Do not use unsourced "50 crore users".
 - Quality: a clean, non-degraded 79-claim evaluation with abstentions, overclaims, failures and latency shown separately; the red team; the
   link checker; honest UNVERIFIED. Do not quote a number from a degraded run.
-- Proven impact: only real field data. A pilot with consenting participants (docs/pilot-protocol.md, once merged and approved) reported
+- Proven impact: only real field data. A pilot with consenting participants (docs/pilot-protocol.md; planned, not in the repository until the pilot build is merged and approved) reported
   with denominators and selection-bias language. If there is no pilot data, say "none yet": inventing or inflating it is the one thing
   that can sink the whole entry.
 - AgentFoundry: the organizer lists a "Best Use of AgentFoundry Agents" sponsor award. Only a real, documented use can qualify.

@@ -106,9 +106,10 @@ def test_a_failing_worker_records_the_error_and_other_rows_finish(monkeypatch):
     result = ev.run(_rows(3), [], _Llm(), ck, out=lines.append, workers=2)
     assert [row["status"] for row in result] == ["completed", "error", "completed"]
     assert result[1]["got"] is None and result[1]["error_category"] == "check_exception"
-    # committed outputs (the progress lines) never carry exception text; the checkpoint keeps only the redacted error_msg
+    # the progress lines and the checkpoint never carry exception text: only the class name is kept
     assert len(ck["results"]) == 3 and "sensitive exception detail" not in str(lines)
-    assert "sensitive exception detail" not in str([{k: v for k, v in row.items() if k != "error_msg"} for row in ck["results"].values()])
+    assert "sensitive exception detail" not in str(list(ck["results"].values()))
+    assert all("error_msg" not in row for row in ck["results"].values())
 
 
 def test_workers_flag_exists_and_defaults_to_sequential():

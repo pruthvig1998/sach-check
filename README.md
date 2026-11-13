@@ -78,7 +78,7 @@ Judges are free-tier models with automatic failover (default order Groq, Gemini,
 
 ## Architecture
 
-The pipeline above, as code: the modules of the `sach/` package and how they connect - 23 components in five groups, 32 connections. Generated from the source tree with [GitDiagram](https://gitdiagram.com/pruthvig1998/sach-check); each box names the module that implements it.
+The pipeline above, as code: the modules of the `sach/` package and how they connect - 23 components in five groups. Generated from the source tree with [GitDiagram](https://gitdiagram.com/pruthvig1998/sach-check); each box names the module that implements it.
 
 ```mermaid
 flowchart TD

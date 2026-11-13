@@ -1,6 +1,6 @@
 # Evidence and release notes — 13 November 2026
 
-This review starts from commit `bc5e30c39138b5b4918f54ad16a36166f8074e7d`. The attached hackathon brief supplied project context; actual repository code and executed checks determine the claims below. Astra reviewed and planned the work; smaller-model agents implemented bounded safety, evaluation and presentation changes.
+This review starts from commit `bc5e30c39138b5b4918f54ad16a36166f8074e7d`. The attached hackathon brief supplied project context; actual repository code and executed checks determine the claims below. The changes were bounded safety, evaluation and presentation work, each checked by running the commands recorded below.
 
 ## Evidence register
 
@@ -11,7 +11,7 @@ This review starts from commit `bc5e30c39138b5b4918f54ad16a36166f8074e7d`. The a
 | Verified repository visibility | Repository is public. | [GitHub repository](https://github.com/pruthvig1998/sach-check), metadata read 13 November 2026. |
 | Verified demo reachability | Both published hosts returned HTTP 200. | Read-only requests to [sachcheck.in](https://sachcheck.in) and [the Vercel host](https://sach-check-lilac.vercel.app). Reachability does not establish end-to-end checking quality. |
 | Historical benchmark | Checked-in legacy summary records 26/31; it does not establish current accuracy. | `data/eval_summary.json` and `docs/evaluation.md`; missing current provenance, measured before later safety changes. Do not present it as a new result. |
-| Current live benchmark | Incomplete: no configured AI-judge or web-search credentials were available in this checkout/session. | Checked presence of provider variable names only; no secrets inspected or printed. Codex/OpenAI account credits do not configure this application's provider environment. |
+| Current live benchmark | Incomplete: no configured AI-judge or web-search credentials were available in this checkout/session. | Checked presence of provider variable names only; no secrets inspected or printed. The application's provider keys (AI judge and web search) are configured separately from any developer-tool accounts. External facts in this file (repository visibility, HTTP status of hosts, the organizer issue search) were checked by hand on 13 Nov 2026 and must be re-checked before filing. |
 | Pilot self-reports | None collected or verified in this work. | No recruited participants, responses, testimonials or outcomes are invented. |
 | Usage impact | Existing counters count checks, including repeats, and do not distinguish all test traffic. | `sach/ledger.py`, `sach/impact.py`. Checks and ledger rows are not unique people, consented respondents or demonstrated benefits. |
 | Eligibility evidence missing | No AgentFoundry usage proof located in inspected files or repository history. | Absence from this checkout is not proof it was never used; owner must supply authentic artifacts. |

@@ -40,7 +40,7 @@ Context: `sach/llm.py` judges one source page against one claim and returns a st
    with the page title; never for stance 'none', never when the check was degraded; include it in the JSON `citations`
    entries; do NOT put it into the public ledger, ClaimReview feed or share record.
 3. Do not change `sach/verdict.py` or any verdict rule. Add tests: verdict invariance on the existing scenarios, quote is a
-   substring of the page, escaped HTML, absent for 'none' and degraded, and the full suite must pass (4,545 tests today).
+   substring of the page, escaped HTML, absent for 'none' and degraded, and the full suite must keep passing (run `pytest -q` before you start and record the number).
 4. Keep the commit small, with the test output pasted in the commit message or PR description.
 Why this task: it makes the evidence visible to a judge, it is separable from the verdict logic, and an earlier heuristic
 version (choosing a sentence ourselves) was rejected after independent review found it could show misleading sentences.
