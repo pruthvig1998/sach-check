@@ -108,7 +108,9 @@ class _Judge:
             raise last or RuntimeError(f"{self.name}: no model answered")
         if first == "none":
             return "none"
-        for m in [m for m in self._models_now() if m != used] or [used]:
+        for m in self._usable_models():
+            if m == used:
+                continue
             try:
                 return first if self._label(m, claim, title, text, tier) == first else "none"
             except Exception:
@@ -130,11 +132,12 @@ class _Judge:
 
 class GeminiJudge(_Judge):
     """Google AI Studio free tier. Skips models that are retired (404), overloaded (503) or rate-limited (429)."""
+    name = "gemini"
+
     def __init__(self, key=None, model=None, timeout=15):
         self.key = key or os.environ["GEMINI_API_KEY"].split(",")[0].strip()
         self.models = [m.strip() for m in (model or os.environ.get("SACH_GEMINI_MODEL", DEFAULT_GEMINI_MODELS)).split(",") if m.strip()]
         self.timeout = timeout
-        self.name = "gemini" + (f"-{self.key[-4:]}" if self.key else "")
 
     def _post(self, model, body):
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"

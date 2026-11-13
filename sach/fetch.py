@@ -1,6 +1,6 @@
 """Polite cached fetcher. Every page is stored on disk with its fetch timestamp."""
 from __future__ import annotations
-import hashlib, json, os, posixpath, time, urllib.request, urllib.error
+import hashlib, json, os, posixpath, tempfile, time, urllib.request, urllib.error
 from datetime import datetime, timezone
 from urllib.parse import urlparse, unquote
 
@@ -45,6 +45,12 @@ def _parts(url: str):
 def host_of(url: str) -> str:
     return _parts(url)[0]
 
+def http_host_of(url: str) -> str:
+    """Host of an HTTP(S) source page, or empty for an unusable URL."""
+    if not isinstance(url, str) or not url.lower().startswith(("http://", "https://")):
+        return ""
+    return host_of(url)
+
 def _under(h: str, d: str) -> bool:
     return h == d or h.endswith("." + d)
 
@@ -71,22 +77,34 @@ def _cache_path(url: str) -> str:
     return os.path.join(d, hashlib.sha256(url.encode()).hexdigest()[:24] + ".json")
 
 def fetch(url: str, max_age_s: int = 6 * 3600, timeout: int = 25, delay_s: float = 0.5):
-    """Return {url,status,fetched_at,body}. Uses disk cache; raises on network error with no cache."""
+    """Return the requested URL, final response URL, status, fetch time and body."""
     p = _cache_path(url)
-    if os.path.exists(p):
-        rec = json.load(open(p, encoding="utf-8"))
-        age = time.time() - datetime.fromisoformat(rec["fetched_at"]).timestamp()
-        if age < max_age_s:
-            return rec
+    try:
+        with open(p, encoding="utf-8") as f:
+            rec = json.load(f)
+        # Legacy records never stored the destination that actually served the body.
+        if rec["url"] == url and http_host_of(rec["final_url"]):
+            age = time.time() - datetime.fromisoformat(rec["fetched_at"]).timestamp()
+            if age < max_age_s:
+                return rec
+    except (OSError, KeyError, ValueError, TypeError):
+        pass
     time.sleep(delay_s)
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             body = r.read().decode(r.headers.get_content_charset() or "utf-8", "replace")
-            status = r.status
+            final_url, status = r.geturl(), r.status
     except urllib.error.HTTPError as e:
-        body, status = "", e.code
-    rec = {"url": url, "status": status, "body": body,
+        final_url, body, status = e.geturl(), "", e.code
+    rec = {"url": url, "final_url": final_url, "status": status, "body": body,
            "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-    json.dump(rec, open(p, "w", encoding="utf-8"), ensure_ascii=False)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(p), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(rec, f, ensure_ascii=False)
+        os.replace(tmp, p)
+    except Exception:
+        os.unlink(tmp)
+        raise
     return rec

@@ -3,9 +3,9 @@ Every returned Evidence comes from a page that was actually fetched (has fetched
 from __future__ import annotations
 import json, os, re, urllib.error, urllib.parse
 from bs4 import BeautifulSoup
-from .fetch import fetch, is_official, is_factchecker, FACTCHECKER_HOSTS, UA
+from .fetch import fetch, http_host_of, is_official, is_factchecker, FACTCHECKER_HOSTS, UA
 from .models import Evidence, TIER_PIB, TIER_OFFICIAL, TIER_FACTCHECKER
-from .pib import get_release, parse_release, rss_index, DEBUNK_MARKERS
+from .pib import get_release, is_pib, parse_release, rss_index, DEBUNK_MARKERS
 from . import index as pib_index
 from .stance import overlap, distinctive, tokens, _GENERIC
 
@@ -17,7 +17,7 @@ def _pib_evidence(rel: dict) -> Evidence:
 def canonical_key(url: str) -> str:
     """Same PIB release can appear under many URLs (www., &reg=3&lang=1, Iframe pages): key them by PRID."""
     m = re.search(r"PRID=(\d+)", url, re.I)
-    if m and urllib.parse.urlparse(url).hostname and urllib.parse.urlparse(url).hostname.endswith("pib.gov.in"):
+    if m and is_pib(url):
         return "pib:" + m.group(1)
     return url.split("#")[0].rstrip("/").lower()
 
@@ -113,8 +113,15 @@ class BraveRetriever:
             return None                       # unreachable / blocked page: skip, never crash a check
         if rec["status"] != 200:
             return None
-        host = urllib.parse.urlparse(url).hostname or ""
-        if host.endswith("pib.gov.in") and re.search(r"PRID=\d+", url, re.I):
+        url = rec.get("final_url", "")
+        host = http_host_of(url)
+        if not host:
+            return None
+        if is_factchecker(url):
+            tier = TIER_FACTCHECKER
+        elif tier != TIER_OFFICIAL or not is_official(url):
+            return None
+        if is_pib(url) and re.search(r"PRID=\d+", url, re.I):
             rel = parse_release(rec["body"])  # proper PIB parsing: real title/body, and debunk tiering
             if rel["title"] or rel["body"]:
                 return _pib_evidence({**rel, "url": url, "fetched_at": rec["fetched_at"]})
@@ -144,7 +151,6 @@ class BraveRetriever:
 
     def _search_claim(self, claim: str) -> list[Evidence]:
         short, kw = self._short(claim), self._keywords(claim)
-        is_pib = lambda u: (urllib.parse.urlparse(u).hostname or "").endswith("pib.gov.in")
         out, seen = [], set()
 
         def add(urls, tier):
