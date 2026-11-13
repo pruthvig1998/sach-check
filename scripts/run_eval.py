@@ -9,7 +9,7 @@ Usage:
 
 Only a full, non-degraded run may replace docs/evaluation.md and data/eval_summary.json.
 See docs/evaluation-method.md."""
-import argparse, datetime, hashlib, json, os, pathlib, re, subprocess, sys
+import argparse, datetime, hashlib, json, math, os, pathlib, re, subprocess, sys, time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -123,6 +123,133 @@ def summarize(res):
             "abstained_wrong": sum(x in ("overclaim_false", "overclaim_true", "wrong_other") for x in o)}   # name kept for the website: wrong TRUE/FALSE verdicts
 
 
+LAYER_ORDER = ("match", "mixed", "live", "error")
+FAIL_SEARCH = ("down", "partial")
+
+
+def percentile(sorted_vals, p):
+    """Nearest-rank percentile of an ascending list: the value at rank ceil(p/100 * N). None for an empty list."""
+    if not sorted_vals:
+        return None
+    k = math.ceil(p * len(sorted_vals) / 100)
+    return sorted_vals[max(1, k) - 1]
+
+
+def _lat_stats(ms):
+    """Seconds: n, p50, p90, p95, max, mean (all None when there is no timing)."""
+    s = sorted(ms)
+    if not s:
+        return {"n": 0, "p50_s": None, "p90_s": None, "p95_s": None, "max_s": None, "mean_s": None}
+    return {"n": len(s), "p50_s": round(percentile(s, 50) / 1000, 3), "p90_s": round(percentile(s, 90) / 1000, 3),
+            "p95_s": round(percentile(s, 95) / 1000, 3), "max_s": round(s[-1] / 1000, 3), "mean_s": round(sum(s) / len(s) / 1000, 3)}
+
+
+def _layers_in(res):
+    found = {r.get("layer", "live") for r in res}
+    return [x for x in LAYER_ORDER if x in found] + sorted(x for x in found if x not in LAYER_ORDER)
+
+
+def latency(res):
+    """{all, untimed, by_layer} with the timing stats in seconds. Claims without an 'ms' (old checkpoints) are counted as untimed."""
+    timed = [r for r in res if isinstance(r.get("ms"), (int, float))]
+    return {"all": _lat_stats([r["ms"] for r in timed]), "untimed": len(res) - len(timed),
+            "by_layer": {ly: _lat_stats([r["ms"] for r in timed if r.get("layer", "live") == ly]) for ly in _layers_in(timed)}}
+
+
+def measures(res, failed=0):
+    """The separate measures, with their denominators. Used by the report and by data/eval_summary.json ('measures')."""
+    n = len(res)
+    o = [outcome(r) for r in res]
+    decisive = [r for r in res if r["label"] in ("TRUE", "FALSE")]
+    deg = [r for r in res if r.get("degraded")]
+    srch = [r for r in res if r.get("search_status") in FAIL_SEARCH]
+    errs = [r for r in res if r.get("got") == "ERROR"]
+    anyf = [r for r in res if r.get("degraded") or r.get("search_status") in FAIL_SEARCH or r.get("got") == "ERROR"]
+    return {"n": n,
+            "accuracy": {"correct": o.count("correct"), "n": n},
+            "abstention": {"abstained_on_decisive": sum(r["got"] == "UNVERIFIED" for r in decisive), "decisive_n": len(decisive)},
+            "overclaim": {"false": o.count("overclaim_false"), "true": o.count("overclaim_true"), "n": n},
+            "wrong_not_overclaim": {"count": sum(x == "wrong_other" and r["got"] != "ERROR" for x, r in zip(o, res)), "n": n},
+            "failures": {"claims_with_any_failure": len(anyf), "judge_problems_degraded": len(deg), "search_failures": len(srch),
+                         "errors": len(errs), "llm_source_failures": failed},
+            "latency": latency(res)}
+
+
+def _pct(a, b):
+    return f"{a * 100 / b:.1f}%" if b else "n/a"
+
+
+def _claim_list(rs):
+    return "\n".join(f"  - {_esc(r['claim'])} (label {r['label']}, got {r.get('got', '-')})" for r in rs) or "  - none"
+
+
+def measures_section(res, failed=0):
+    m = measures(res, failed)
+    n, a, ab, of, ot = m["n"], m["accuracy"], m["abstention"], m["overclaim"], m["overclaim"]
+    wr, f = m["wrong_not_overclaim"], m["failures"]
+    deg = [r for r in res if r.get("degraded")]
+    srch = [r for r in res if r.get("search_status") in FAIL_SEARCH]
+    errs = [r for r in res if r.get("got") == "ERROR"]
+    anyf = [r for r in res if r.get("degraded") or r.get("search_status") in FAIL_SEARCH or r.get("got") == "ERROR"]
+    L = ["", "## Measures, separately", "",
+         "Each measure has its own denominator. Read them separately; none is a score for the others.", "",
+         "| Measure | Count | Denominator | Share |", "|---|---|---|---|",
+         f"| Accuracy (exact match) | {a['correct']} | {n} claims | {_pct(a['correct'], n)} |",
+         f"| Abstention rate (UNVERIFIED where the label is TRUE or FALSE) | {ab['abstained_on_decisive']} | {ab['decisive_n']} decisive-label claims | {_pct(ab['abstained_on_decisive'], ab['decisive_n'])} |",
+         f"| Overclaim: FALSE (said FALSE, label was not) | {of['false']} | {n} claims | {_pct(of['false'], n)} |",
+         f"| Overclaim: TRUE (said TRUE, label was not) | {ot['true']} | {n} claims | {_pct(ot['true'], n)} |",
+         f"| Wrong but not an overclaim (e.g. MISLEADING; ERRORs excluded) | {wr['count']} | {n} claims | {_pct(wr['count'], n)} |",
+         f"| Claims with any failure (see below) | {f['claims_with_any_failure']} | {n} claims | {_pct(f['claims_with_any_failure'], n)} |", "",
+         "Accuracy counts abstentions (UNVERIFIED) and ERRORs as misses: an UNVERIFIED answer to a TRUE or FALSE claim is not an exact match, even though it is safe.", "",
+         "### Failures", "",
+         f"- Judge problem (a judge timed out or failed; the claim is degraded): **{len(deg)}**", _claim_list(deg), "",
+         f"- Search failure (web search down or partial): **{len(srch)}**", _claim_list(srch), "",
+         f"- ERROR (checking the claim raised an exception; counted as a failure, never as correct or abstained): **{len(errs)}**", _claim_list(errs), "",
+         f"- Source judgements where the LLM failed (quota or outage), from the checkpoint: **{failed}**", "",
+         f"Claims with at least one of the first three kinds of failure: **{len(anyf)}** of {n}. A claim can have more than one kind, so the three counts can add up to more than this."]
+    return L
+
+
+def latency_section(res):
+    lat = latency(res)
+    def row(name, s):
+        cells = [s["n"]] + [("-" if s[k] is None else f"{s[k]:.2f}") for k in ("p50_s", "p90_s", "p95_s", "max_s", "mean_s")]
+        return f"| {name} | " + " | ".join(str(c) for c in cells) + " |"
+    L = ["", "## Latency (wall time per claim, seconds)", "",
+         "Nearest-rank percentiles. Each claim's time covers its whole check, including search and judge calls. With `--workers` above 1, claims share the provider, so times include that load.", "",
+         "| Group | Timed claims | p50 | p90 | p95 | max | mean |", "|---|---|---|---|---|---|---|",
+         row("All claims", lat["all"])]
+    L += [row(f"Layer: {ly}", s) for ly, s in lat["by_layer"].items()]
+    L += ["", f"Claims without timing: **{lat['untimed']}** (checkpoints written before timing was recorded)."]
+    return L
+
+
+def failed_table(res):
+    bad = [r for r in res if r.get("got") != r["label"]]
+    L = ["", "## Failed, abstained and wrong cases", "",
+         f"Every claim whose result is not an exact match: {len(bad)} of {len(res)}. Nothing is left out of this table.", "",
+         "| Claim | Lang | Label | Sach | Layer | Reason codes | Result | ms |", "|---|---|---|---|---|---|---|---|"]
+    for r in bad:
+        tag = {"abstained": "miss (abstained)", "overclaim_false": "OVERCLAIM (FALSE)", "overclaim_true": "OVERCLAIM (TRUE)",
+               "wrong_other": "ERROR" if r.get("got") == "ERROR" else "WRONG"}[outcome(r)]
+        ms = r.get("ms")
+        L.append(f"| {_esc(r['claim'])} | {r['lang']} | {r['label']} | {r['got']} | {r.get('layer', 'live')} | "
+                 f"{_esc(', '.join(r.get('reasons') or []) or '-')} | {tag} | {'-' if ms is None else ms} |")
+    if not bad:
+        L.append("| none | | | | | | | |")
+    return L
+
+
+NOT_MEASURED = [
+    "Real-user outcomes: this measures Sach's verdicts against labelled claims. It does not measure whether people who receive a forward are helped, or what they do after a check.",
+    "The eval set was written by the builders, not collected from real forwards. Claims are cleaner than real forwards (no typos, mixed scripts, emoji or long chains).",
+    "Seeded vs unseeded: seeded rows can be found in Sach's own index, so their retrieval is partly circular. The split is shown, but it is not a clean test of retrieval.",
+    "Non-English claims were written by the builders (by an AI model for most), and no native speaker has reviewed them.",
+    "Single run: one run, no repeats. Live search results and model output vary, so a difference of a claim or two is noise.",
+    "Provider variability: which LLM and search provider answered, and any fallback, changes results and latency. Latency also depends on provider load and on `--workers`.",
+]
+
+
 # ---------- checkpoint ----------
 def load_checkpoint(key):
     """Finished results for this (commit, eval-set hash, dirty) key, or a fresh state."""
@@ -157,23 +284,36 @@ def run(rows, ret, llm, ckpt, log=False, out=print, workers=1):
     n = len(rows)
 
     def one(i, r):
-        res = check_forward(r["claim"], ret, llm, log=log)
+        t0 = time.monotonic()
+        try:
+            res, err = check_forward(r["claim"], ret, llm, log=log), None
+        except Exception as e:                      # one broken claim must not abort the run: it is recorded as ERROR (a failure)
+            res, err = None, type(e).__name__
+        ms = round((time.monotonic() - t0) * 1000, 1)   # wall time of this claim's check, measured in this thread
         with lock:                                  # one writer at a time: the checkpoint file and the counters
-            ckpt["results"][r["claim"]] = {"got": res["verdict"], "reasons": [v["reason_code"] for v in res["claims"]],
-                                           "cites": [c["url"] for v in res["claims"] for c in v["citations"]],
-                                           "layer": res.get("layer", "live")}      # which layer answered: match | live | mixed
+            if res is None:
+                ckpt["results"][r["claim"]] = {"got": "ERROR", "reasons": [], "cites": [], "layer": "error", "ms": ms,
+                                               "degraded": False, "search_status": None, "error": err}
+            else:
+                ckpt["results"][r["claim"]] = {"got": res["verdict"], "reasons": [v["reason_code"] for v in res["claims"]],
+                                               "cites": [c["url"] for v in res["claims"] for c in v["citations"]],
+                                               "layer": res.get("layer", "live"),      # which layer answered: match | live | mixed
+                                               "ms": ms, "degraded": bool(res.get("degraded")),
+                                               "search_status": res.get("search_status"), "error": None}
+                if res.get("search_status") in ("down", "partial"):
+                    ckpt["search_failures"] = ckpt.get("search_failures", 0) + 1       # web search lost for this claim: not a full run
+                if res.get("degraded"):
+                    ckpt["degraded_claims"] = ckpt.get("degraded_claims", 0) + 1       # a judge timed out / failed on this claim (its UNVERIFIED is not a real abstention)
             ckpt["llm_failures"] = base + max(0, getattr(llm, "failures", 0) - start_fail)
-            if res.get("search_status") in ("down", "partial"):
-                ckpt["search_failures"] = ckpt.get("search_failures", 0) + 1       # web search lost for this claim: not a full run
-            if res.get("degraded"):
-                ckpt["degraded_claims"] = ckpt.get("degraded_claims", 0) + 1       # a judge timed out / failed on this claim (its UNVERIFIED is not a real abstention)
             save_checkpoint(ckpt)
-            out(f"[{i}/{n}] {r['label']:10} -> {ckpt['results'][r['claim']]['got']}")
+            shown = ckpt["results"][r["claim"]]["got"] + (f" ({err})" if err else "")
+            out(f"[{i}/{n}] {r['label']:10} -> {shown}")
 
     todo = []
     for i, r in enumerate(rows, 1):
-        if r["claim"] in ckpt["results"]:
-            out(f"[{i}/{n}] {r['label']:10} -> (resumed) {ckpt['results'][r['claim']]['got']}")
+        prev = ckpt["results"].get(r["claim"])
+        if prev is not None and prev.get("got") != "ERROR":      # an ERROR is retried on resume; a finished claim is not
+            out(f"[{i}/{n}] {r['label']:10} -> (resumed) {prev['got']}")
         else:
             todo.append((i, r))
     if max(1, int(workers or 1)) == 1:
@@ -219,6 +359,8 @@ def build_report(res, meta, degraded, partial, failed, docs=None):
         g = [r for r in res if r["seeded"] == flag and r["label"] != "UNVERIFIED"]
         if g:
             L.append(f"- {tag}: {sum(r['got'] == r['label'] for r in g)}/{len(g)} correct")
+    L += measures_section(res, failed)
+    L += latency_section(res)
     bl_ = by_layer(res)
     L += ["", "## Which layer answered", "",
           "| Layer | Claims | Exact match | Abstained | Overclaims |", "|---|---|---|---|---|"]
@@ -239,6 +381,7 @@ def build_report(res, meta, degraded, partial, failed, docs=None):
         tag = {"correct": "ok", "abstained": "miss (abstained)", "overclaim_false": "OVERCLAIM (FALSE)",
                "overclaim_true": "OVERCLAIM (TRUE)", "wrong_other": "WRONG"}[o]
         L.append(f"| {_esc(r['claim'])} | {r['lang']} | {r['label']} | {r['got']} | {tag} |")
+    L += failed_table(res)
     L += ["", "## Limitations (read before citing these numbers)",
           f"- The set is small ({n} claims here). Every non-control row was checked by fetching the cited official page and reading it; rows are not bulk-scraped. PIB has no listing page for debunks and its RSS feed returns only the latest 20 items, so a real 100+ set needs more manual work or a crawl. Rows added in the v2 revision carry the fetch date in `verified_on`; the original 31 rows were verified in the original build and were not re-fetched.",
           "- The Hindi, Telugu, Hinglish and Tinglish rows were written by an AI model and have not been reviewed by a native speaker. Real forwards are messier. Treat per-language numbers as a smoke test, not a measurement of how Sach does on real forwards in that language.",
@@ -251,6 +394,7 @@ def build_report(res, meta, degraded, partial, failed, docs=None):
           "- There are no true MISLEADING rows: PIB items tagged \"misleading\" are labelled FALSE, so a MISLEADING verdict on them counts as a wrong verdict here."]
     if failed:
         L.append(f"- The LLM failed on {failed} source judgements during this run (quota/outage); those fell back to the safe PIB-debunk-only check.")
+    L += ["", "## What this run did not measure", ""] + [f"- {x}" for x in NOT_MEASURED]
     hist = history_files(docs)
     L += ["", "## Previous runs", ""]
     L += [f"- [{h}](evaluation-history/{h})" for h in hist] or ["- None archived yet."]
@@ -321,7 +465,8 @@ def main(argv=None):
     failed = ckpt["llm_failures"]
     sfailed = ckpt.get("search_failures", 0)
     dclaims = ckpt.get("degraded_claims", 0)
-    degraded = ckpt["no_llm"] or failed > 0 or sfailed > 0 or dclaims > 0
+    errs = sum(r.get("got") == "ERROR" for r in res)                 # claims whose check raised: failures, never a clean run
+    degraded = ckpt["no_llm"] or failed > 0 or sfailed > 0 or dclaims > 0 or errs > 0
     if ckpt["no_llm"]:
         mode = "FALLBACK (no LLM key): clear PIB debunks only, never TRUE or MISLEADING"
     elif failed:
@@ -332,6 +477,8 @@ def main(argv=None):
         mode = (mode if (ckpt["no_llm"] or failed) else "FALLBACK") + f"; web search failed for {sfailed} claims (out of credits or outage), so those claims only had the built-in PIB list"
     if dclaims:
         mode = (mode if (ckpt["no_llm"] or failed or sfailed) else "FALLBACK") + f"; an AI judge timed out or failed on {dclaims} claims (judge_problems), so their UNVERIFIED is not a real abstention"
+    if errs:
+        mode = (mode if (ckpt["no_llm"] or failed or sfailed or dclaims) else "FALLBACK") + f"; checking raised an error on {errs} claims (recorded as ERROR, counted as failures)"
     meta = {"commit": commit, "dirty": dirty, "date": datetime.datetime.now(datetime.timezone.utc).date().isoformat(), "mode": mode,
             "retrievers": [type(x).__name__ for x in ret], "judges": judges, "no_match": bool(a.no_match)}
     report = build_report(res, meta, degraded, partial, failed)
@@ -346,7 +493,8 @@ def main(argv=None):
         report = build_report(res, meta, degraded, partial, failed)    # rebuilt so "Previous runs" lists the file just archived
         target = DOCS / "evaluation.md"
         json.dump({**summarize(res), "commit": commit, "dirty": dirty, "date": meta["date"], "by_lang": by_lang(res),
-                   "eval_set_hash": key["eval_hash"], "retrievers": meta["retrievers"], "judges": judges},
+                   "eval_set_hash": key["eval_hash"], "retrievers": meta["retrievers"], "judges": judges,
+                   "measures": measures(res, failed)},
                   open(SUMMARY, "w", encoding="utf-8"))   # read by the website
     target.write_text(report, encoding="utf-8")
     print("\n".join(report.split("\n")[:14]))

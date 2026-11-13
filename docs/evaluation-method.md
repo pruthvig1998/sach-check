@@ -40,6 +40,17 @@ A run is **degraded** if no LLM was available or the LLM failed on any source ju
 
 Only a full, non-degraded run replaces `docs/evaluation.md`. The old report is first moved to `docs/evaluation-history/` with a "superseded" banner, and the new report links to it under "Previous runs".
 
+## What each measure means
+The report ("Measures, separately") and `data/eval_summary.json` (`measures`) give each number its own denominator. None is a score for another.
+
+- **Accuracy (exact match)**: claims where Sach's verdict equals the label, over all claims (n). Abstentions and ERRORs count as misses.
+- **Abstention rate**: UNVERIFIED answers on claims whose label is TRUE or FALSE, over those decisive-label claims only. The UNVERIFIED control rows are excluded, since abstaining is correct there.
+- **Overclaim FALSE** and **Overclaim TRUE**: FALSE or TRUE verdicts where the label says something else, each counted over all claims (n).
+- **Wrong, not an overclaim**: any other wrong verdict (e.g. MISLEADING where the label is TRUE, FALSE or UNVERIFIED), over n. ERRORs are excluded here.
+- **Failures**: claims with a judge problem (`degraded`: a judge timed out or failed), a search failure (web search down or partial), or an ERROR (the check raised an exception; the run continues and the claim is recorded as ERROR). Each kind is counted and listed by claim, and a run with any of them is written as a fallback run. The count of source judgements the LLM failed on is reported beside them.
+- **Latency**: wall time per claim in seconds (p50, p90, p95, max, mean), using nearest-rank percentiles, over all claims with timing and per layer (`match`, `live`). Claims from checkpoints written before timing was recorded are counted as untimed, not dropped.
+- **Failed, abstained and wrong cases**: every claim whose result is not an exact match, with its label, Sach's answer, layer, reason codes, language and time.
+
 ## Known weaknesses
 - About 50 rows. Per-language groups have 2 to 6 rows each, so one claim swings a percentage a lot.
 - The non-English rows are AI-written, so they are cleaner than real forwards. Real forwards have typos, mixed scripts, emoji and long chains.
