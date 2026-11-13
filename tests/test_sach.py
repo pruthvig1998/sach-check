@@ -1003,7 +1003,7 @@ def test_upi_links_are_well_formed_and_encoded(monkeypatch):
 def test_soft_tip_prompt_only_after_decisive_verdicts(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank")
     code, h = _post(server, "Government will give Rs 5000 to every woman.")            # fixture evidence -> FALSE
-    assert "Chip in for the corrections desk" in h and "never affects a verdict" in h
+    assert "Chip in for the corrections desk" not in h.split('id="tip"')[0]              # the joke quip is gone from result pages (honesty pass)
     code, h = _post(server, "Good morning 🙏")                                         # no claim
     assert "Chip in" not in h.split('id="tip"')[0]                                       # no prompt in the result block
 
@@ -1079,7 +1079,7 @@ def test_headline_is_stable_within_a_day_and_comes_from_the_list():
 def test_soft_prompt_quips_differ_by_verdict_and_unverified_gets_none(server, monkeypatch):
     _tip_env(monkeypatch, "supporter@okbank")
     code, h = _post(server, "Government will give Rs 5000 to every woman.")                    # fixture evidence -> FALSE
-    assert SITE.TIP_QUIPS["FALSE"] in h
+    assert SITE.TIP_QUIPS["FALSE"] not in h                                              # quips are no longer shown on result pages
     assert set(SITE.TIP_QUIPS) == {"FALSE", "TRUE", "MISLEADING"}
 
 

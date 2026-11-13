@@ -10,7 +10,7 @@ from .report import display_card, report_html, card_data_script
 from .ocr import OCR_BLOCK
 from .scamsigns import CSS as SIGNS_CSS, signs_html
 from .siteurl import site_url        # noqa: F401  (re-exported: the one place that knows the site's public address)
-from . import linkcheck
+from . import linkcheck, honesty
 from .voice import VOICE_JS, VOICE_CSS, voice_controls, progress_panel, listen_buttons
 
 REPO = "https://github.com/pruthvig1998/sach-check"
@@ -88,6 +88,7 @@ border-radius:10px;padding:8px 22px;transform:rotate(-8deg);position:relative;di
 .stamp::after{content:"";position:absolute;inset:-6px;border:2px solid currentColor;border-radius:14px;opacity:.5}
 .stamp.big{font-size:clamp(34px,6vw,54px)}.stamp.sm{font-size:20px;border-width:3px;padding:3px 12px;transform:rotate(-4deg)}
 .stamp.FALSE{color:var(--false)}.stamp.TRUE{color:var(--true)}.stamp.MISLEADING{color:var(--mis)}.stamp.UNVERIFIED{color:var(--unv)}
+.stamp.scamwarn{color:var(--ink);border:3px solid var(--ink);opacity:1}.stamp.scamwarn::before{content:"⚠ "}
 .stampbox .stamp{font-size:clamp(22px,4vw,30px);padding:6px 16px;border-width:4px;animation:drop .7s both}
 .stampbox .stamp:nth-child(1){transform:rotate(-8deg);animation-delay:.2s}.stampbox .stamp:nth-child(2){transform:rotate(6deg);animation-delay:.45s}
 .stampbox .stamp:nth-child(3){transform:rotate(4deg);animation-delay:.7s}.stampbox .stamp:nth-child(4){transform:rotate(-5deg);animation-delay:.95s}
@@ -191,7 +192,9 @@ const ta=$('#text'),cnt=$('#count');
 const upd=()=>{if(ta&&cnt)cnt.textContent=ta.value.length+' / '+ta.maxLength};if(ta){ta.addEventListener('input',upd);upd();
 ta.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();$('#form').requestSubmit()}})}
 $$('.chip').forEach(c=>c.addEventListener('click',()=>{ta.value=c.dataset.text;upd();ta.focus();$('#checker').scrollIntoView({behavior:'smooth',block:'center'})}));
-const pb=$('#paste');if(pb)pb.addEventListener('click',async()=>{try{ta.value=(await navigator.clipboard.readText()).slice(0,ta.maxLength);upd();ta.focus()}catch(e){pb.textContent='Paste with Ctrl/Cmd+V'}});
+const tn=on=>{if(!ta)return;let n=$('#trunc');if(!n&&on){n=document.createElement('p');n.id='trunc';n.className='note';n.setAttribute('role','status');ta.insertAdjacentElement('afterend',n)}if(n){n.textContent=on?'Only the first 4,000 characters will be checked.':'';n.hidden=!on}};
+if(ta){ta.addEventListener('paste',e=>{const cd=e.clipboardData||window.clipboardData;const p=cd?(cd.getData('text')||''):'';const sel=ta.selectionEnd-ta.selectionStart;if(ta.value.length-sel+p.length>ta.maxLength)tn(true)});ta.addEventListener('input',e=>{if(ta.value.length<ta.maxLength)tn(false);else if(!e.inputType)tn(true)})}
+const pb=$('#paste');if(pb)pb.addEventListener('click',async()=>{try{const s=await navigator.clipboard.readText();tn(s.length>ta.maxLength);ta.value=s.slice(0,ta.maxLength);upd();ta.focus()}catch(e){pb.textContent='Paste with Ctrl/Cmd+V'}});
 const lg=$('#lang');if(lg){try{const v=localStorage.getItem('sach-lang');if(v&&!document.querySelector('#result')&&lg.value==='auto')lg.value=v}catch(e){}lg.addEventListener('change',()=>{try{localStorage.setItem('sach-lang',lg.value)}catch(e){}})}
 const clr=$('#clear');if(clr)clr.addEventListener('click',()=>{ta.value='';upd();ta.focus()});
 const f=$('#form');if(f)f.addEventListener('submit',e=>{if(!ta.value.trim()){e.preventDefault();ta.focus();return}$('#busy').classList.add('on');$('#go').disabled=true;$('#go').textContent='Checking…'});
@@ -578,15 +581,18 @@ def card_attrs(code: str) -> str:
 def result_block(res: dict, chosen: bool = False, link: str | None = None, text: str = "", lang_choice: str = "auto") -> str:
     v = res["verdict"]
     if res.get("no_claims"):
-        return (f'<div class="result" id="result"><div><div class="stamp big UNVERIFIED">No claim</div></div>'
-                f'<div><p class="kicker">Nothing to check</p><div class="bubble"{card_attrs(res.get("language", "en"))}><span id="cardtext">{esc(res["card"])}</span></div>'
+        sg = signs_html(res.get("warning_signs"), res.get("language", "en"))
+        scam = bool(sg)                                # scam-shaped text with no checkable claim: lead with the warning
+        stamp = honesty.SCAM_STAMP if scam else '<div class="stamp big UNVERIFIED">No claim</div>'
+        return (f'<div class="result" id="result"><div>{stamp}</div>'
+                f'<div>{honesty.SCAM_LEAD if scam else ""}<p class="kicker">Nothing to check</p><div class="bubble"{card_attrs(res.get("language", "en"))}><span id="cardtext">{esc(res["card"])}</span></div>'
                 f'<p class="note" style="margin-top:14px">Greetings, links, emoji and bare numbers are not factual claims. Paste the sentence that makes the claim.</p>'
-                f'{signs_html(res.get("warning_signs"), res.get("language", "en"))}{linkcheck.panel_html(text)}</div></div>')
+                f'{sg}{linkcheck.panel_html(text, res.get("language", "en"))}</div></div>')
     rows = ""
     ms = match.matched_claims(res)
     for c in res["claims"]:
         fmt = lambda x: (f'<div class="cite"><a href="{esc(x["url"])}" rel="noopener">{esc(x["source"])}</a> '
-                         f'<span>· {esc(x["tier"].replace("_"," "))} · accessed {esc(x["date_accessed"])}</span></div>')
+                         f'<span>· {esc(x["tier"].replace("_"," "))} · {honesty.cite_word(c)} {esc(x["date_accessed"])}</span></div>')
         cs = c["citations"]
         cites = "".join(fmt(x) for x in cs[:3]) or '<span class="note">No source found</span>'
         if len(cs) > 3:
@@ -604,9 +610,7 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
     if incomplete(res):             # shown first, above the card and its buttons: the check did not finish, which is not "nothing found"
         inc_html = (f'<div class="honest incomplete" role="status" style="margin:0 0 14px"><p style="margin:0">'
                     f'<b>{esc(i18n_tr(INCOMPLETE_NOTICE, text_lang(res.get("language", "en"))))}</b></p></div>')
-    softtip = ""
-    if tip_config() and v in TIP_QUIPS and not ms:
-        softtip = f'<p class="softtip note">{esc(TIP_QUIPS[v])} <a href="/#tip">Chip in for the corrections desk ☕</a> (optional; never affects a verdict).</p>'
+    unv, oldnote, extract = honesty.unverified_panel(res), honesty.old_debunk_notice(res), honesty.extraction_html(res)
     notice = ""
     if res.get("degraded"):
         notice = ('<div class="honest" style="margin-top:18px" role="status"><b>Limited mode.</b> Our AI checker is unavailable or at capacity right now, '
@@ -625,7 +629,7 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
     cachednote = ""
     if res.get("cached"):
         first = timefmt.fmt_ist(res.get("first_checked_at") or res.get("checked_at") or "")
-        cachednote = f'<p class="note" role="status" style="margin:0 0 10px">First checked on {esc(first)}. This is a stored result for a repeated message.</p>'
+        cachednote = f'<p class="note" role="status" style="margin:0 0 10px">This result was checked before and is shown again; it was checked on {esc(first)}.</p>'
     tr = trace_block(res)
     share_btns, share_data = share.result_share_html(res, site_url(), link)
     issue = (f"{REPO}/issues/new?title=" + quote(f"Wrong verdict? {v}") + "&body=" +
@@ -648,9 +652,9 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
 {cachednote}<div class="bubble"{card_attrs(res.get('language', 'en'))}><span id="cardtext">{card}</span><small dir="ltr">Sach ✓✓</small></div>
 <div class="row actions" role="group" aria-label="Share this verdict">{share_btns}<button class="btn ghost" id="copy" type="button">Copy card</button>
 <button class="btn ghost" id="dl" type="button">Download image</button><button class="btn ghost" id="img-share" type="button" hidden>Share image</button>{listen_buttons(res.get('language', 'en'), bool(res.get('card_en')))}</div>
-{share_data}{panel}<p class="invitebox note">{share.invite_link(site_url())}</p>{signs_html(res.get("warning_signs"), res.get("language", "en"))}{linkcheck.panel_html(text)}{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
+{unv}{share_data}{panel}{oldnote}<p class="invitebox note">{share.invite_link(site_url())}</p>{signs_html(res.get("warning_signs"), res.get("language", "en"))}{linkcheck.panel_html(text, res.get("language", "en"))}{report_html(res)}{card_data_script(res)}{notice}{english}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
 <div style="overflow-x:auto"><table class="stack" role="table"><thead role="rowgroup"><tr role="row"><th role="columnheader">Claim</th><th role="columnheader">Verdict</th><th role="columnheader">Citations</th></tr></thead><tbody role="rowgroup">{rows}</tbody></table></div>
-{tr}<p class="note" style="margin-top:14px">Checked {esc(timefmt.fmt_ist(res['checked_at']))}. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
+{extract}{tr}<p class="note" style="margin-top:14px">Checked {esc(timefmt.fmt_ist(res['checked_at']))}. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
 
 
 def lang_options(reply: str = "auto") -> str:
@@ -766,7 +770,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <li>When the AI checker is unavailable the site says so (“Limited mode”) and reports only clear PIB debunks.</li>
 <li>Many FALSE items are paraphrases of PIB debunk titles, so recall there is optimistic.</li>
 <li>Results move by a claim or two between runs, because live search returns different pages.</li>
-<li>Hindi and Telugu verdict wording is human-written but still awaiting native-speaker review.</li></ul>
+<li>Hindi and Telugu verdict wording is AI-written and not yet reviewed by native speakers.</li></ul>
 <p class="note" style="margin:10px 0 0"><a href="{EVAL_DOC}" rel="noopener">Full table with every claim and failure →</a></p></div></div></section>
 
 {tip_section}<section id="languages"><div class="wrap"><h2>Languages</h2><p class="sub">English and {N_INDIAN} Indian languages, plus Tinglish. Paste a forward in any of them; pick “Reply in” to get the card in another. The wording is AI-written and awaiting native-speaker review.</p>

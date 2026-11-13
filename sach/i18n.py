@@ -1,4 +1,4 @@
-"""Verdict-card strings. Fixed, short, human-written templates - never machine-translated at runtime.
+"""Verdict-card strings. Fixed, short, AI-written templates that are not yet reviewed by native speakers - never machine-translated at runtime.
 NOTE: Telugu/Hindi strings need native-speaker sign-off before the demo (see README)."""
 LABEL = {
  "en": {"TRUE": "TRUE", "FALSE": "FALSE", "MISLEADING": "MISLEADING", "UNVERIFIED": "UNVERIFIED"},
@@ -136,6 +136,34 @@ NOCLAIM_LABEL.update({  # NOT NATIVE-REVIEWED
  "bn": "কোনও দাবি পাওয়া যায়নি", "as": "কোনো দাবী পোৱা নগ'ল", "mr": "कोणताही दावा सापडला नाही", "kok": "दावो मेळ्ळो ना",
  "ne": "कुनै दाबी भेटिएन", "ta": "கூற்று எதுவும் இல்லை", "gu": "કોઈ દાવો મળ્યો નથી", "ur": "کوئی دعویٰ نہیں ملا",
  "kn": "ಯಾವುದೇ ಹೇಳಿಕೆ ಇಲ್ಲ", "or": "କୌଣସି ଦାବି ମିଳିଲା ନାହିଁ", "ml": "അവകാശവാദം ഇല്ല", "pa": "ਕੋਈ ਦਾਅਵਾ ਨਹੀਂ ਮਿਲਿਆ"})
+
+
+# "What Sach checked" panel under an UNVERIFIED live result (sach/honesty.py). Counts are filled in by the caller from the trace.
+UNVERIFIED_PANEL = {
+ "en": {"title": "What Sach checked", "claims": "Claims checked: {n}",
+        "official": "Official pages judged that neither confirmed nor denied the claim: {n}", "pib": "PIB pages judged: {n}",
+        "meaning_title": "What UNVERIFIED means",
+        "meaning": "Not confirmed or denied by the official sources Sach could read. It does not mean probably true, and it does not mean probably false.",
+        "next_title": "What to do next",
+        "next": "Do not forward it until it is checked. Ask PIB Fact Check or a fact-checker with the buttons below. If the message has a link or UPI ID, check it in the link checker (#linkcheck).",
+        "scope": "PIB covers the Union Government; for a state-level matter ask that state's department."},
+ # NOT NATIVE-REVIEWED
+ "hi": {"title": "Sach ने क्या जाँचा", "claims": "जाँचे गए दावे: {n}",
+        "official": "सरकारी पेज जिन्हें जाँचा गया और जिनमें न पुष्टि हुई न खंडन: {n}", "pib": "जाँचे गए PIB पेज: {n}",
+        "meaning_title": "UNVERIFIED का मतलब",
+        "meaning": "Sach जिन सरकारी स्रोतों को पढ़ पाया, उनमें इसकी न पुष्टि हुई न खंडन। इसका मतलब यह नहीं कि यह शायद सच है, और यह भी नहीं कि यह शायद झूठ है।",
+        "next_title": "आगे क्या करें",
+        "next": "जाँच होने तक इसे आगे न भेजें। नीचे के बटनों से PIB Fact Check या किसी फैक्ट-चेकर से पूछें। संदेश में कोई लिंक या UPI ID हो तो लिंक चेकर (#linkcheck) में जाँचें।",
+        "scope": "PIB केंद्र सरकार को कवर करता है; राज्य से जुड़े मामले में उस राज्य के विभाग से पूछें।"},
+ # NOT NATIVE-REVIEWED
+ "te": {"title": "Sach ఏం తనిఖీ చేసింది", "claims": "తనిఖీ చేసిన ప్రకటనలు: {n}",
+        "official": "ఈ ప్రకటనను ధృవీకరించని, ఖండించని అధికారిక పేజీలు: {n}", "pib": "తనిఖీ చేసిన PIB పేజీలు: {n}",
+        "meaning_title": "UNVERIFIED అంటే ఏమిటి",
+        "meaning": "Sach చదవగలిగిన అధికారిక మూలాలు దీనిని ధృవీకరించలేదు, ఖండించలేదు. ఇది బహుశా నిజం అని కాదు, బహుశా అబద్ధం అని కూడా కాదు.",
+        "next_title": "తదుపరి ఏం చేయాలి",
+        "next": "తనిఖీ అయ్యే వరకు దీనిని ఫార్వర్డ్ చేయవద్దు. కింద ఉన్న బటన్లతో PIB Fact Check లేదా ఫ్యాక్ట్-చెకర్‌ను అడగండి. సందేశంలో లింక్ లేదా UPI ID ఉంటే లింక్ చెకర్ (#linkcheck)లో తనిఖీ చేయండి.",
+        "scope": "PIB కేంద్ర ప్రభుత్వాన్ని కవర్ చేస్తుంది; రాష్ట్ర స్థాయి విషయమైతే ఆ రాష్ట్ర శాఖను అడగండి."},
+}
 
 
 # ---- lookups that can never raise: a language missing from a table falls back to English ------------------------------------------

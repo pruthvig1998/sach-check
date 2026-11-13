@@ -443,3 +443,62 @@ def test_privacy_page_mentions_share_links_and_image_shares(srv):
     assert "A share link shows the checked message and Sach&#x27;s result" in p or "A share link shows the checked message and Sach's result" in p
     assert "7 days for TRUE/FALSE/MISLEADING, 6 hours for UNVERIFIED" in p and "not indexed by search engines" in p
     assert "share an image into Sach" in p and "not stored" in p
+
+
+# ---------------------------------------------------------------- the skipped sentences never reach the public share record
+def test_share_record_never_stores_the_skipped_sentences_and_the_permalink_does_not_show_them(srv):
+    from test_cache_trace import run as run_check
+    from test_pagehonesty import LONG
+    out, _ = run_check(LONG, log=False)
+    assert out["extraction"]["skipped"]                                  # the private result does hold them (it may stay in the cache)
+    rid = share.ensure_share(LONG, None, out)
+    assert rid
+    assert share.load_share(rid)["result"]["extraction"] == {"sentences": 8, "checked": 5}     # counts only (DEF-2)
+    assert "extraction" in store.get_store().get("share:" + rid)["result"]
+    assert "skipped" not in store.get_store().get("share:" + rid)["result"]["extraction"]
+    base, _ = srv
+    p = req(base, "GET", f"/?r={rid}")[2]
+    assert "Not checked" not in p and "Checked 5 of 8 sentences" in p                       # the counts line, not the list (DEF-2)
+
+
+# ---------------------------------------------------------------- DEF-2: the share record keeps counts only, and the permalink says what was not checked
+def test_share_record_stores_only_the_two_extraction_counts(srv):
+    from test_cache_trace import run as run_check
+    from test_pagehonesty import LONG
+    out, _ = run_check(LONG, log=False)
+    rid = share.ensure_share(LONG, None, out)
+    assert rid
+    assert share.load_share(rid)["result"]["extraction"] == {"sentences": 8, "checked": 5}
+    stored = store.get_store().get("share:" + rid)["result"]["extraction"]
+    assert set(stored) == {"sentences", "checked"} and all(type(v) is int for v in stored.values())
+
+def test_permalink_says_checked_m_of_n_and_lists_no_skipped_sentence(srv):
+    import html as _html
+    from test_cache_trace import run as run_check
+    from test_pagehonesty import LONG
+    base, _ = srv
+    out, _ = run_check(LONG, log=False)
+    skipped = ["Good morning everyone friends.", "Click the link now to register.",
+               "Bank loans for small shops get an interest subsidy this year."]
+    rid = share.ensure_share(LONG, None, out)
+    p = req(base, "GET", f"/?r={rid}")[2]
+    assert "Checked 5 of 8 sentences" in p
+    assert "are not checked" in p                                        # the explanation of short and call-to-action sentences
+    outside_forward = re.sub(r'<blockquote class="fwd">.*?</blockquote>', "", p, flags=re.S)
+    for s in skipped:
+        assert s not in outside_forward and _html.escape(s) not in outside_forward
+    assert "Not checked" not in p
+
+def test_permalink_has_no_counts_line_when_all_sentences_were_checked_or_key_absent(srv):
+    from test_cache_trace import run as run_check
+    base, _ = srv
+    one = "Government will give Rs 5000 to every woman."
+    out, _ = run_check(one, log=False)
+    rid = share.ensure_share(one, None, out)
+    assert rid and share.load_share(rid)["result"]["extraction"] == {"sentences": 1, "checked": 1}
+    assert "sentences</summary>" not in req(base, "GET", f"/?r={rid}")[2]
+    from test_pagehonesty import LONG
+    out2, _ = run_check(LONG, log=False)
+    out2.pop("extraction")
+    rid2 = share.ensure_share(LONG, None, out2)
+    assert rid2 and "sentences</summary>" not in req(base, "GET", f"/?r={rid2}")[2]

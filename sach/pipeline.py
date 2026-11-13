@@ -135,7 +135,8 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
             return out
     lang = detect_language(text)                                   # input language
     out_lang = reply_lang if reply_lang in SUPPORTED else lang          # reply language
-    claims = extract_claims(text, max_claims=MAX_CLAIMS)
+    ext = {}
+    claims = extract_claims(text, max_claims=MAX_CLAIMS, report=ext)     # ext: what was not checked (display only)
     if not claims:        # greeting, emoji, bare URL, numbers: nothing checkable. Say so instead of implying a search failed.
         out = {"language": out_lang, "input_language": lang, "verdict": "UNVERIFIED", "no_claims": True, "claims": [],
                "checked_at": ledger.now(), "card": f"{tr(NOCLAIM_LABEL, out_lang)}\n{tr(NOCLAIM, out_lang)}"}
@@ -206,6 +207,9 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
     out["degraded"] = bool(live) and (llm is None or getattr(llm, "failures", 0) > fails_before or judge_problems > 0)   # AI judge missing, at capacity, timed out or failed: never "neutral"
     if judge_problems:
         out["judge_problems"] = judge_problems
+    if ext.get("sentences") is not None:      # additive, display only: 'Checked M of N sentences' and what was left out
+        out["extraction"] = {"sentences": ext["sentences"], "checked": len(claims),
+                             "skipped": [x if len(x) <= 120 else x[:117] + "..." for x in ext["skipped"][:3]]}
     tlayer = {"live": "LIVE", "match": "MATCH", "mixed": "MATCH+LIVE"}[layer]
     if layer == "live" and overall == UNVERIFIED and not any(v.reason_code == "timed_out" for v in results):
         tlayer = "ESCALATED"                                       # UNVERIFIED live result: the card offers human fact-checkers

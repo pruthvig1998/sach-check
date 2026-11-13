@@ -378,7 +378,7 @@ def test_cached_result_shows_first_checked_line():
     hit, _ = run()
     h = result_block(hit)
     from sach import timefmt
-    assert f"First checked on {timefmt.fmt_ist(first['checked_at'])}. This is a stored result for a repeated message." in h
+    assert f"This result was checked before and is shown again; it was checked on {timefmt.fmt_ist(first['checked_at'])}." in h
     assert "First checked" not in result_block(first)
 
 # ---------------------------------------------------------------- JSON API and HTML via the real server
@@ -393,7 +393,7 @@ def test_json_api_includes_trace_and_cached_flags(server):
     d2 = json.loads(body)
     assert d2["cached"] is True and d2["first_checked_at"] == d["checked_at"] and d2["served_at"]
     code, html = _post(server, FALSE_TEXT)
-    assert "How this verdict was reached" in html and "First checked on" in html
+    assert "How this verdict was reached" in html and "checked before and is shown again" in html
 
 
 # --- 13 Nov incident: a silent judge failure became a cached UNVERIFIED. Old UNVERIFIED live results are re-checked; evidence-backed ones stay.

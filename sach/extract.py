@@ -39,17 +39,27 @@ def classify_domain(text: str) -> str:
 _ABBR = re.compile(r"(\b(?:Rs|Re|Dr|Mr|Mrs|Ms|Shri|Smt|No|Nos|approx|vs|etc|St|Govt|Min)|రూ|రు|रु|रू|ரூ|રૂ|ರೂ|രൂ)\.", re.I)
 _DOT = "\u2024"   # one-dot leader: stands in for the full stop of an abbreviation while we split sentences
 
-def extract_claims(forward: str, max_claims: int = 8) -> list[Claim]:
-    out, seen = [], set()
+def extract_claims(forward: str, max_claims: int = 8, report: dict | None = None) -> list[Claim]:
+    """report: optional dict. When given it receives {'sentences': N, 'skipped': [...]} (N = distinct sentences seen, skipped = those
+    not returned, in document order). The returned claims are the same with or without it."""
+    out, order, seen = [], [], set()
     protected = _ABBR.sub(lambda m: m.group(1) + _DOT, clean_text(forward))
     for part in _SPLIT.split(protected):
         part = part.replace(_DOT, ".")
         s = re.sub(r"\s+", " ", part).strip(" -–—*_~\"'")
         if len(s.split()) < 4 or _BOILER.search(s) and len(s.split()) < 9:
+            if report is not None and s and s.lower() not in seen:
+                seen.add(s.lower()); order.append((s, None))
             continue
         key = s.lower()
         if key in seen:
             continue
         seen.add(key)
-        out.append(Claim(text=s, domain=classify_domain(s)))
-    return out[:max_claims]
+        c = Claim(text=s, domain=classify_domain(s))
+        out.append(c); order.append((s, c))
+    kept = out[:max_claims]
+    if report is not None:
+        kept_ids = {id(c) for c in kept}
+        report["sentences"] = len(order)
+        report["skipped"] = [s for s, c in order if c is None or id(c) not in kept_ids]
+    return kept
