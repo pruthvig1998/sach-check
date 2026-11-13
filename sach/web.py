@@ -10,7 +10,7 @@ from .retrieve import default_retrievers
 from . import razorpay_pay as rzp
 from . import telegram_bot as tg
 from . import ocr
-from . import pwa, share
+from . import match, pwa, share
 from . import siteurl
 from .legal import PAGES as LEGAL_PAGES, legal_page
 from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_png, tip_qr_svg, upi_link
@@ -164,7 +164,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(home(error=share.EXPIRED, noindex=True), 404)
         res = dict(rec["result"]); res["cached"] = False
         res["warning_signs"] = scam_signs(rec["text"])
-        block = share.shared_header(rec) + result_block(res, link=share.permalink(rid, siteurl.site_url(self)))
+        block = share.shared_header(rec) + result_block(res, link=share.permalink(rid, siteurl.site_url(self)), text=rec["text"])
         self._send(home(result=block, noindex=True), cache="no-store")
 
     def _share_post(self):
@@ -299,7 +299,7 @@ class Handler(BaseHTTPRequestHandler):
         if api in ("rzp-order", "rzp-verify", "rzp-webhook"):
             return self._gateway_api(api)
         # single POST route: accept any path (Vercel rewrites hide the original one)
-        text, lang_choice = "", "auto"
+        text, lang_choice, force_live = "", "auto", False
         want_json = "json" in (parse_qs(urlparse(self.path).query).get("format", [""])[0]) or \
                     "application/json" in (self.headers.get("Accept") or "")
         fail = (lambda code, msg: self._json({"error": msg}, code)) if want_json else \
@@ -313,11 +313,13 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 body = json.loads(raw)
                 text, lang_choice = str(body.get("text", "")), str(body.get("lang") or "")
+                force_live = str(body.get("force_live", "")).lower() in ("1", "true", "yes")
             except Exception:
                 text = ""
         else:
             form = parse_qs(raw)
             text, lang_choice = form.get("text", [""])[0], form.get("lang", [""])[0]
+            force_live = form.get("force_live", [""])[0] == "1"      # "Run Sach's own check anyway": skips cache and the match layer
         lang_choice = (lang_choice or parse_qs(urlparse(self.path).query).get("lang", [""])[0] or "auto").strip().lower()
         if lang_choice not in REPLY_LANGS:
             lang_choice = "auto"                      # unknown value: match the forward, never error
@@ -331,15 +333,17 @@ class Handler(BaseHTTPRequestHandler):
         if Handler.retrievers is None:
             Handler.retrievers, Handler.llm = default_retrievers(), get_llm()   # lazy: serverless has no main()
         try:
-            res = check_forward(text, Handler.retrievers, Handler.llm, reply_lang=None if lang_choice == "auto" else lang_choice)
+            res = check_forward(text, Handler.retrievers, Handler.llm, reply_lang=None if lang_choice == "auto" else lang_choice, force_live=force_live)
         except Exception:
             return fail(500, "Something went wrong while checking. Nothing was recorded. Please try again.")
         res = dict(res); res["warning_signs"] = scam_signs(text)   # advice only: from THIS request's text, never cached or stored
         if want_json:
+            if match.escalated(res):
+                res["escalation_options"] = match.escalation_options(match.escalation_claim(res), siteurl.site_url(self))
             return self._json(res)
         rid = share.ensure_share(text, None if lang_choice == "auto" else lang_choice, res, MAX_CHARS)
         link = share.permalink(rid, siteurl.site_url(self)) if rid else None
-        self._send(home(result=result_block(res, chosen=lang_choice != "auto", link=link), prefill=text, reply=lang_choice))
+        self._send(home(result=result_block(res, chosen=lang_choice != "auto", link=link, text=text, lang_choice=lang_choice), prefill=text, reply=lang_choice))
 
 def main():
     Handler.retrievers, Handler.llm = default_retrievers(), get_llm()

@@ -58,7 +58,8 @@ def test_second_identical_check_is_a_fast_hit_with_same_verdict_and_citations():
     assert second["claims"] == first["claims"] and second["card"] == first["card"]
     assert second["checked_at"] == first["checked_at"] == second["first_checked_at"]
     assert second["served_at"]
-    assert second["trace"] == first["trace"]
+    # deliberate change (MATCH work package): a cache hit reports layer CACHE and remembers the layer that first answered
+    assert second["trace"] == {**first["trace"], "layer": "CACHE", "original_layer": first["trace"]["layer"]}
 
 def test_hit_never_calls_llm():
     llm = FakeLLM()

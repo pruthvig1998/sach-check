@@ -35,10 +35,15 @@ class ClaimVerdict:
     citations: list = field(default_factory=list)
     english: str = ""        # English rendering of a non-English claim (what we actually searched for)
     trace: dict = field(default_factory=dict)   # audit trail: what was searched, every source judged, which rule fired
+    layer: str = "live"      # "match" = a fact-checker's or PIB's existing published verdict (sach/match.py), not Sach's own check
+    match: dict = field(default_factory=dict)   # attribution of a matched verdict: checker, review_url, review_date, rating_text, ...
 
     def to_dict(self):
-        return {"claim": asdict(self.claim), "verdict": self.verdict, "english": self.english,
-                "reason_code": self.reason_code, "citations": self.citations, "trace": self.trace}
+        d = {"claim": asdict(self.claim), "verdict": self.verdict, "english": self.english,
+             "reason_code": self.reason_code, "citations": self.citations, "trace": self.trace, "layer": self.layer}
+        if self.match:
+            d["match"] = self.match
+        return d
 
 # One plain sentence per reason code that verdict.decide() can return (plus timed_out, set by the pipeline).
 RULE_TEXT = {
@@ -48,6 +53,7 @@ RULE_TEXT = {
     "conflicting_official_sources": "Official sources disagree with each other, so we do not guess and the rule gives UNVERIFIED.",
     "factchecker_only": "Only fact-checkers were found. They are not official, so the rule gives UNVERIFIED.",
     "no_evidence": "No official source was found that confirms or denies this, so the rule gives UNVERIFIED.",
+    "matched_fact_check": "A fact-checker's own published review matches this claim, so Sach shows their verdict with their name and did not run its own check.",
     "timed_out": "The check ran out of time before it finished, so the result is UNVERIFIED.",
 }
 

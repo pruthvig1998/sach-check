@@ -30,17 +30,18 @@ def _language(text: str) -> str:
 
 class FactCheckToolsRetriever:
     def __init__(self, key: str | None = None, opener=None, page_size: int = 8, max_results: int = 3,
-                 min_overlap: float = 0.35, min_subject: float = 0.5):
+                 min_overlap: float = 0.35, min_subject: float = 0.5, timeout: float | None = None):
         self.key = key if key is not None else os.environ.get("GOOGLE_FACTCHECK_API_KEY", "")
         self._open = opener or urllib.request.urlopen
         self.page_size, self.max_results = page_size, max_results
         self.min_overlap, self.min_subject = min_overlap, min_subject
+        self.timeout = timeout or TIMEOUT_S
 
     def _call(self, query: str, language: str):
         params = {"query": query, "languageCode": language, "pageSize": self.page_size, "key": self.key}
         req = urllib.request.Request(ENDPOINT + "?" + urllib.parse.urlencode(params),
                                      headers={"Accept": "application/json", "User-Agent": UA})
-        with self._open(req, timeout=TIMEOUT_S) as r:
+        with self._open(req, timeout=self.timeout) as r:
             if getattr(r, "status", 200) != 200:
                 return None
             data = json.loads(r.read(MAX_BYTES).decode("utf-8", "replace"))
@@ -86,3 +87,26 @@ class FactCheckToolsRetriever:
             return [e for _, e in found[: self.max_results]]
         except Exception:
             return []          # deliberately no message: urllib errors can embed the request URL, which carries the key
+
+    def claim_reviews(self, query: str, language: str | None = None) -> list[dict]:
+        """Raw, unfiltered reviews for the instant-match layer (sach/match.py), which does its own publisher and similarity checks.
+        Each item: reviewed_claim, claimant, publisher, site, url, title, review_date, rating. Never raises; no key = []."""
+        try:
+            if not self.key or not isinstance(query, str) or not query.strip():
+                return []
+            data = self._call(query.strip()[:300], language or _language(query))
+            out = []
+            for claim in (data or {}).get("claims") or []:
+                if not isinstance(claim, dict):
+                    continue
+                for rv in claim.get("claimReview") or []:
+                    if not isinstance(rv, dict):
+                        continue
+                    pub = rv.get("publisher") if isinstance(rv.get("publisher"), dict) else {}
+                    out.append({"reviewed_claim": str(claim.get("text") or ""), "claimant": str(claim.get("claimant") or ""),
+                                "publisher": str(pub.get("name") or ""), "site": str(pub.get("site") or ""),
+                                "url": str(rv.get("url") or ""), "title": str(rv.get("title") or ""),
+                                "review_date": str(rv.get("reviewDate") or "")[:10], "rating": str(rv.get("textualRating") or "")})
+            return out
+        except Exception:
+            return []          # no message: urllib errors can embed the request URL, which carries the key

@@ -2,7 +2,7 @@
 from __future__ import annotations
 import html, json, os
 from urllib.parse import quote
-from . import ledger, pwa, share
+from . import ledger, match, pwa, share
 from .i18n import LABEL, text_lang
 from .lang import SUPPORTED, NAMES, NATIVE, RTL, INDIAN_LANGS, html_lang
 from .report import report_html, card_data_script
@@ -433,8 +433,22 @@ def trace_block(res: dict) -> str:
     """Expandable 'how this verdict was reached' section. Plain <details>, so it works without JavaScript."""
     t = res.get("trace") or {}
     parts = [f'<p>Claims found in the message: <b>{esc(str(t.get("claims_extracted", len(res.get("claims", [])))))}</b></p>']
+    if t.get("layer"):
+        orig = f' (originally answered by the {esc(str(t["original_layer"]))} layer)' if t.get("original_layer") else ""
+        parts.append(f'<p class="note">Which layer answered: <b>{esc(str(t["layer"]))}</b>{orig}</p>')
     for c in res.get("claims", []):
         ct = c.get("trace") or {}
+        if c.get("layer") == "match" and c.get("match"):
+            m = c["match"]
+            ok = ", ".join(k.replace("_", " ") for k, v in (ct.get("match_checks") or {}).items() if v)
+            sim = ct.get("match_similarity") or {}
+            parts.append(f'<div class="tc"><p><b>{esc(c["claim"]["text"])}</b></p>'
+                         f'<p class="note">Matched to {esc(m["checker"])}\'s published fact-check (reviewed {esc(m["review_date"])}, rated "{esc(m["rating_text"])}"): '
+                         f'<a href="{esc(m["review_url"])}" rel="noopener">{esc(m["review_url"])}</a></p>'
+                         f'<p class="note">What they checked: {esc(m["reviewed_claim"])}</p>'
+                         f'<p class="note">Checks passed: {esc(ok)}. Similarity: {esc(", ".join(f"{k.replace(chr(95), chr(32))} {v}" for k, v in sim.items()))}.</p>'
+                         f'<p class="rule">{esc(ct.get("rule_text", ""))}</p></div>')
+            continue
         h = f'<div class="tc"><p><b>{esc(c["claim"]["text"])}</b></p>'
         if ct.get("searched_as") and ct["searched_as"] != c["claim"]["text"]:
             h += f'<p class="note">Searched as: {esc(ct["searched_as"])}</p>'
@@ -546,6 +560,9 @@ document.addEventListener('sach:result',()=>{window.sachBindReport();window.sach
 """
 
 
+CSS += match.CSS
+
+
 def card_attrs(code: str) -> str:
     """lang (and dir="rtl" for Urdu) for the verdict-card bubble. The lang is the language the card text is really written in: a Manipuri
     reply is the English card until a native speaker supplies Meitei wording (see i18n.ENGLISH_ONLY), so it is marked lang="en"."""
@@ -553,7 +570,7 @@ def card_attrs(code: str) -> str:
     return f' lang="{html_lang(real)}"' + (' dir="rtl"' if real in RTL else "")
 
 
-def result_block(res: dict, chosen: bool = False, link: str | None = None) -> str:
+def result_block(res: dict, chosen: bool = False, link: str | None = None, text: str = "", lang_choice: str = "auto") -> str:
     v = res["verdict"]
     if res.get("no_claims"):
         return (f'<div class="result" id="result"><div><div class="stamp big UNVERIFIED">No claim</div></div>'
@@ -561,6 +578,7 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None) -> st
                 f'<p class="note" style="margin-top:14px">Greetings, links, emoji and bare numbers are not factual claims. Paste the sentence that makes the claim.</p>'
                 f'{signs_html(res.get("warning_signs"), res.get("language", "en"))}</div></div>')
     rows = ""
+    ms = match.matched_claims(res)
     for c in res["claims"]:
         fmt = lambda x: (f'<div class="cite"><a href="{esc(x["url"])}" rel="noopener">{esc(x["source"])}</a> '
                          f'<span>· {esc(x["tier"].replace("_"," "))} · accessed {esc(x["date_accessed"])}</span></div>')
@@ -568,11 +586,17 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None) -> st
         cites = "".join(fmt(x) for x in cs[:3]) or '<span class="note">No source found</span>'
         if len(cs) > 3:
             cites += f'<details><summary class="note">+{len(cs) - 3} more sources</summary>{"".join(fmt(x) for x in cs[3:])}</details>'
-        rows += (f'<tr role="row"><td role="cell" data-label="Claim">{esc(c["claim"]["text"])}<br><span class="note">{esc(c["claim"]["domain"])} · {esc(c["reason_code"].replace("_"," "))}</span></td>'
-                 f'<td role="cell" data-label="Verdict"><span class="tag {c["verdict"]}">{c["verdict"]}</span></td><td role="cell" data-label="Citations">{cites}</td></tr>')
+        if c.get("layer") == "match" and c.get("match"):       # their rating, in their words, with their name: never Sach's label
+            m = c["match"]
+            vcell = (f'<span class="tag {c["verdict"]}">{esc(m["rating_text"])}</span> <span class="note">by {esc(m["checker"])}</span>')
+            note = "matched fact-check"
+        else:
+            vcell, note = f'<span class="tag {c["verdict"]}">{c["verdict"]}</span>', esc(c["reason_code"].replace("_", " "))
+        rows += (f'<tr role="row"><td role="cell" data-label="Claim">{esc(c["claim"]["text"])}<br><span class="note">{esc(c["claim"]["domain"])} · {note}</span></td>'
+                 f'<td role="cell" data-label="Verdict">{vcell}</td><td role="cell" data-label="Citations">{cites}</td></tr>')
     card = esc(res["card"])
     softtip = ""
-    if tip_config() and v in TIP_QUIPS:
+    if tip_config() and v in TIP_QUIPS and not ms:
         softtip = f'<p class="softtip note">{esc(TIP_QUIPS[v])} <a href="/#tip">Chip in for the corrections desk ☕</a> (optional; never affects a verdict).</p>'
     notice = ""
     if res.get("degraded"):
@@ -597,12 +621,25 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None) -> st
     share_btns, share_data = share.result_share_html(res, site_url(), link)
     issue = (f"{REPO}/issues/new?title=" + quote(f"Wrong verdict? {v}") + "&body=" +
              quote("Claim(s):\n" + "\n".join("- " + c["claim"]["text"] for c in res["claims"]) + f"\n\nSach said: {v}\nWhat is wrong:\n"))
-    return f"""<div class="result" id="result"><div><div class="stamp big {v}">{LABEL['en'][v]}</div></div>
+    if ms and len(ms) == len(res["claims"]):       # every claim matched: the stamp is THEIR rating and their name, not Sach's label
+        m0 = (next((c for c in ms if c["verdict"] == v), ms[0]))["match"]
+        stamp_html = f'<div class="stamp big {v}">{esc(m0["rating_text"])}</div><p class="stampby">Rated by {esc(m0["checker"])}</p>'
+        issue_what = f'Matched fact-check by {ms[0]["match"]["checker"]}: {ms[0]["match"]["review_url"]}'
+    elif ms:
+        stamp_html = f'<div class="stamp big {v}">Mixed sources</div><p class="stampby">Part matched, part checked by Sach</p>'
+        issue_what = "Matched fact-check(s): " + ", ".join(c["match"]["review_url"] for c in ms)
+    else:
+        stamp_html, issue_what = f'<div class="stamp big {v}">{LABEL["en"][v]}</div>', f"Sach said: {v}"
+    if ms:
+        issue = (f"{REPO}/issues/new?title=" + quote("Wrong match?") + "&body=" +
+                 quote("Claim(s):\n" + "\n".join("- " + c["claim"]["text"] for c in res["claims"]) + f"\n\n{issue_what}\nWhat is wrong:\n"))
+    panel = match.match_panel(res, text, lang_choice) + match.escalation_html(res, site_url())
+    return f"""<div class="result" id="result"><div>{stamp_html}</div>
 <div><p class="kicker">Forward this card back to the group · reply language: {esc(LANG_NAME.get(res['language'], res['language'].upper()))}{' (your choice)' if chosen else ' (matched to the forward)'}</p>
 {cachednote}<div class="bubble"{card_attrs(res.get('language', 'en'))}><span id="cardtext">{card}</span><small dir="ltr">Sach ✓✓</small></div>
 <div class="row actions" role="group" aria-label="Share this verdict">{share_btns}<button class="btn ghost" id="copy" type="button">Copy card</button>
 <button class="btn ghost" id="dl" type="button">Download image</button><button class="btn ghost" id="img-share" type="button" hidden>Share image</button>{listen_buttons(res.get('language', 'en'), bool(res.get('card_en')))}</div>
-{share_data}<p class="invitebox note">{share.invite_link(site_url())}</p>{signs_html(res.get("warning_signs"), res.get("language", "en"))}{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
+{share_data}{panel}<p class="invitebox note">{share.invite_link(site_url())}</p>{signs_html(res.get("warning_signs"), res.get("language", "en"))}{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
 <div style="overflow-x:auto"><table class="stack" role="table"><thead role="rowgroup"><tr role="row"><th role="columnheader">Claim</th><th role="columnheader">Verdict</th><th role="columnheader">Citations</th></tr></thead><tbody role="rowgroup">{rows}</tbody></table></div>
 {tr}<p class="note" style="margin-top:14px">Checked {esc(res['checked_at'][:16].replace('T',' '))} UTC. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
 

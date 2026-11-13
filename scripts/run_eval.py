@@ -103,6 +103,19 @@ def by_lang(res):
     return out
 
 
+def by_layer(res):
+    """{layer: {n, correct, abstained, overclaimed}} for the layers that answered. Rows without a layer (old checkpoints) count as live."""
+    out = {}
+    for r in res:
+        d = out.setdefault(r.get("layer", "live"), {"n": 0, "correct": 0, "abstained": 0, "overclaimed": 0})
+        o = outcome(r)
+        d["n"] += 1
+        d["correct"] += o == "correct"
+        d["abstained"] += o == "abstained"
+        d["overclaimed"] += o in ("overclaim_false", "overclaim_true")
+    return out
+
+
 def summarize(res):
     o = [outcome(r) for r in res]
     return {"n": len(res), "correct": o.count("correct"), "overclaimed_false": o.count("overclaim_false"),
@@ -142,7 +155,8 @@ def run(rows, ret, llm, ckpt, log=False, out=print):
             continue
         res = check_forward(r["claim"], ret, llm, log=log)
         ckpt["results"][r["claim"]] = {"got": res["verdict"], "reasons": [v["reason_code"] for v in res["claims"]],
-                                       "cites": [c["url"] for v in res["claims"] for c in v["citations"]]}
+                                       "cites": [c["url"] for v in res["claims"] for c in v["citations"]],
+                                       "layer": res.get("layer", "live")}      # which layer answered: match | live | mixed
         ckpt["llm_failures"] = base + max(0, getattr(llm, "failures", 0) - start_fail)
         if res.get("search_status") in ("down", "partial"):
             ckpt["search_failures"] = ckpt.get("search_failures", 0) + 1       # web search lost for this claim: not a full run
@@ -184,6 +198,15 @@ def build_report(res, meta, degraded, partial, failed, docs=None):
         g = [r for r in res if r["seeded"] == flag and r["label"] != "UNVERIFIED"]
         if g:
             L.append(f"- {tag}: {sum(r['got'] == r['label'] for r in g)}/{len(g)} correct")
+    bl_ = by_layer(res)
+    L += ["", "## Which layer answered", "",
+          "| Layer | Claims | Exact match | Abstained | Overclaims |", "|---|---|---|---|---|"]
+    for ly in [x for x in ("match", "mixed", "live") if x in bl_] + [x for x in bl_ if x not in ("match", "mixed", "live")]:
+        d = bl_[ly]
+        L.append(f"| {ly} | {d['n']} | {d['correct']} | {d['abstained']} | {d['overclaimed']} |")
+    L += ["", ("The match layer was OFF for this run (`--no-match`): every row above went through the live layer alone." if meta.get("no_match") else
+               "`match` rows were answered by an existing PIB or fact-checker verdict, not by Sach's own check. Eval claims are often paraphrases of "
+               "published PIB debunks, so match accuracy on this set is circular; run with `--no-match` to measure the live layer alone."), ""]
     L += ["", "## By language", "", "| Language | n | Exact match | Abstained | Overclaimed FALSE | Overclaimed TRUE |", "|---|---|---|---|---|---|"]
     for lg in [x for x in LANGS if x in bl] + [x for x in bl if x not in LANGS]:
         d = bl[lg]
@@ -239,6 +262,7 @@ def main(argv=None):
     ap.add_argument("--resume", action="store_true", help="skip claims already checkpointed for the same commit and eval-set hash")
     ap.add_argument("--only-lang", default="", help="comma list, e.g. hi,te (partial run)")
     ap.add_argument("--limit", type=int, default=0, help="only the first N rows (partial run)")
+    ap.add_argument("--no-match", action="store_true", help="switch the MATCH layer off (SACH_NO_MATCH=1) to measure the live layer alone; never replaces the headline files")
     ap.add_argument("--dry-run", action="store_true", help="validate and print the plan; no network calls")
     a = ap.parse_args(argv)
     rows = load_rows()
@@ -252,7 +276,10 @@ def main(argv=None):
     sel = [r for r in rows if not langs or r["lang"] in langs]
     if a.limit:
         sel = sel[:a.limit]
+    if a.no_match:
+        os.environ["SACH_NO_MATCH"] = "1"
     partial = ", ".join(([f"languages {','.join(langs)}"] if langs else []) + ([f"first {a.limit} rows"] if a.limit else []))
+    no_match_run = bool(a.no_match) and not partial     # a partial no-match run still goes to the partial file
     commit, dirty = git_info()
     if a.dry_run:
         lab = {}
@@ -265,7 +292,7 @@ def main(argv=None):
         print(f"resume checkpoint: {CHECKPOINT} ({'will be used' if a.resume else 'ignored; a fresh run overwrites it'})")
         return 0
     ret, llm = default_retrievers(), get_llm()
-    key = {"commit": commit, "eval_hash": eval_hash(rows), "dirty": dirty}
+    key = {"commit": commit, "eval_hash": eval_hash(rows), "dirty": dirty, **({"no_match": True} if a.no_match else {})}
     ckpt = load_checkpoint(key) if a.resume else {"key": key, "results": {}, "llm_failures": 0, "search_failures": 0, "no_llm": False}
     judges = [f"{n} ({s})" for n, s in llm.describe()] if llm is not None and hasattr(llm, "describe") else ([] if llm is None else [type(llm).__name__])
     res = run(sel, ret, llm, ckpt, log=bool(os.environ.get("SACH_SEED_LEDGER")))
@@ -281,10 +308,12 @@ def main(argv=None):
     if sfailed:
         mode = (mode if (ckpt["no_llm"] or failed) else "FALLBACK") + f"; web search failed for {sfailed} claims (out of credits or outage), so those claims only had the built-in PIB list"
     meta = {"commit": commit, "dirty": dirty, "date": datetime.datetime.now(datetime.timezone.utc).date().isoformat(), "mode": mode,
-            "retrievers": [type(x).__name__ for x in ret], "judges": judges}
+            "retrievers": [type(x).__name__ for x in ret], "judges": judges, "no_match": bool(a.no_match)}
     report = build_report(res, meta, degraded, partial, failed)
     if partial:
         target = DOCS / "evaluation-partial-run.md"
+    elif no_match_run:
+        target = DOCS / "evaluation-no-match-run.md"     # live layer alone: a different measurement, never the headline
     elif degraded:
         target = DOCS / "evaluation-fallback-run.md"
     else:
@@ -297,7 +326,7 @@ def main(argv=None):
     target.write_text(report, encoding="utf-8")
     print("\n".join(report.split("\n")[:14]))
     print(f"\nwrote {target.relative_to(ROOT) if target.is_relative_to(ROOT) else target}"
-          + ("  (headline files NOT touched)" if partial or degraded else ""))
+          + ("  (headline files NOT touched)" if partial or degraded or no_match_run else ""))
     return 0
 
 
