@@ -2,41 +2,51 @@
 
 > **This run was degraded; it does not measure the full system.** It is saved separately and does not replace `docs/evaluation.md`.
 
-Measured on commit `20dd7890ecee5fe4e36ed88f7122aafdb6c318f3` (clean tree), 2026-11-12 (UTC).
+Measured on commit `acb67af642a0de5bb453d901540c5a5f4bf17dec` (clean tree), 2026-11-13 (UTC).
 
-Mode: FALLBACK: the LLM failed on 20 source judgements (quota/outage), so those sources fell back to the safe PIB-debunk-only check; web search failed for 12 claims (out of credits or outage), so those claims only had the built-in PIB list; retrieval: PibRetriever, BraveRetriever; judges: gemini-Tgvw (ready), gemini-DE3Q (ready), groq (ready), openrouter (ready).
+Mode: FALLBACK: the LLM failed on 21 source judgements (quota/outage), so those sources fell back to the safe PIB-debunk-only check; web search failed for 9 claims (out of credits or outage), so those claims only had the built-in PIB list; retrieval: PibRetriever, BraveRetriever, FactCheckToolsRetriever; judges: groq (ready), gemini-Tgvw (ready), gemini-DE3Q (ready), openrouter (ready).
 
 - Claims: **79** (see limitations)
-- Exact-match accuracy: **25/79**
+- Exact-match accuracy: **33/79**
 - **Overclaimed FALSE (the unforgivable failure): 0**
 - **Overclaimed TRUE (also an overclaim): 0**
-- Wrong verdicts other than overclaims (e.g. MISLEADING where a TRUE/FALSE label stands): 1
-- Label FALSE: 10/34 correct; 24 abstained as UNVERIFIED
-- Label TRUE: 4/34 correct; 29 abstained as UNVERIFIED
+- Wrong verdicts other than overclaims (e.g. MISLEADING where a TRUE/FALSE label stands): 2
+- Label FALSE: 12/34 correct; 22 abstained as UNVERIFIED
+- Label TRUE: 10/34 correct; 22 abstained as UNVERIFIED
 - Label UNVERIFIED: 11/11 correct; 11 abstained as UNVERIFIED
-- Seeded (the source's PRID is in data/seed_debunks.json or data/pib_index.jsonl; retrieval is partly circular): 9/29 correct
-- Unseeded (retrieval had to find the page itself): 5/39 correct
+- Seeded (the source's PRID is in data/seed_debunks.json or data/pib_index.jsonl; retrieval is partly circular): 12/29 correct
+- Unseeded (retrieval had to find the page itself): 10/39 correct
+
+## Which layer answered
+
+| Layer | Claims | Exact match | Abstained | Overclaims |
+|---|---|---|---|---|
+| match | 1 | 1 | 0 | 0 |
+| live | 78 | 32 | 44 | 0 |
+
+`match` rows were answered by an existing PIB or fact-checker verdict, not by Sach's own check. Eval claims are often paraphrases of published PIB debunks, so match accuracy on this set is circular; run with `--no-match` to measure the live layer alone.
+
 
 ## By language
 
 | Language | n | Exact match | Abstained | Overclaimed FALSE | Overclaimed TRUE |
 |---|---|---|---|---|---|
-| en | 33 | 14 | 19 | 0 | 0 |
+| en | 33 | 21 | 12 | 0 | 0 |
 | hi | 6 | 2 | 3 | 0 | 0 |
 | te | 6 | 1 | 5 | 0 | 0 |
 | hinglish | 3 | 1 | 2 | 0 | 0 |
 | tinglish | 2 | 0 | 2 | 0 | 0 |
-| bn | 2 | 1 | 1 | 0 | 0 |
+| bn | 2 | 1 | 0 | 0 | 0 |
 | mr | 3 | 1 | 2 | 0 | 0 |
 | ta | 3 | 1 | 2 | 0 | 0 |
-| gu | 2 | 1 | 1 | 0 | 0 |
+| gu | 2 | 0 | 2 | 0 | 0 |
 | ur | 3 | 1 | 2 | 0 | 0 |
-| kn | 2 | 0 | 2 | 0 | 0 |
+| kn | 2 | 1 | 1 | 0 | 0 |
 | or | 2 | 0 | 2 | 0 | 0 |
 | ml | 2 | 0 | 2 | 0 | 0 |
 | pa | 2 | 1 | 1 | 0 | 0 |
 | as | 2 | 1 | 1 | 0 | 0 |
-| kok | 2 | 0 | 2 | 0 | 0 |
+| kok | 2 | 1 | 1 | 0 | 0 |
 | ne | 2 | 0 | 2 | 0 | 0 |
 | mni | 2 | 0 | 2 | 0 | 0 |
 
@@ -47,27 +57,27 @@ Abstained = Sach said UNVERIFIED where the label was not UNVERIFIED (safe but a 
 | Claim | Lang | Label | Sach | Result |
 |---|---|---|---|---|
 | Central Government will reduce the retirement age of employees to 50 years. | en | FALSE | FALSE | ok |
-| Government has ordered the closure of Ministries. | en | FALSE | UNVERIFIED | miss (abstained) |
+| Government has ordered the closure of Ministries. | en | FALSE | FALSE | ok |
 | Air India passengers from Chicago were made to pay three times the fare. | en | FALSE | FALSE | ok |
 | WHO doctors are advising against wearing masks and social distancing. | en | FALSE | UNVERIFIED | miss (abstained) |
-| PIB Fact-Check Unit has issued over 2,900 fact checks. | en | TRUE | UNVERIFIED | miss (abstained) |
+| PIB Fact-Check Unit has issued over 2,900 fact checks. | en | TRUE | TRUE | ok |
 | The Cabinet has approved declaring the 14th of every month as National Mango Day. | en | UNVERIFIED | UNVERIFIED | ok |
 | Government is giving Rs 1000 to everyone under Corona Sahayata Yojana, click the link to register. | en | FALSE | UNVERIFIED | miss (abstained) |
-| Union Minister Sarbananda Sonowal's office has issued a letter on this matter. | en | FALSE | FALSE | ok |
+| Union Minister Sarbananda Sonowal's office has issued a letter on this matter. | en | FALSE | UNVERIFIED | miss (abstained) |
 | A Health Ministry office memorandum on state holidays has been issued. | en | FALSE | UNVERIFIED | miss (abstained) |
 | Railways has issued a recruitment notification for 19,800 Constable posts in RPF. | en | FALSE | FALSE | ok |
 | RPF has announced recruitment of 4,208 Constables and 452 Sub-Inspectors. | en | TRUE | UNVERIFIED | miss (abstained) |
 | The Cabinet Secretariat has advertised recruitment for 1,736 Field Assistant posts. | en | FALSE | FALSE | ok |
-| The Centre has removed 55 lakh ration card holders from Punjab. | en | FALSE | UNVERIFIED | miss (abstained) |
+| The Centre has removed 55 lakh ration card holders from Punjab. | en | FALSE | FALSE | ok |
 | Ration cards of people who do not provide Aadhaar numbers will be cancelled. | en | FALSE | UNVERIFIED | miss (abstained) |
 | The Railway Recruitment Board introduced a new method of result preparation for Level 1 results. | en | FALSE | FALSE | ok |
 | India Post is offering subsidies and prizes to people who complete an online survey or quiz. | en | FALSE | UNVERIFIED | miss (abstained) |
 | The Union Cabinet has approved a scheme for coal and lignite gasification projects with an outlay of Rs 37,500 crore. | en | TRUE | TRUE | ok |
-| The Union Cabinet has approved a scheme to replace old trucks and buses in the Delhi-NCR area. | en | TRUE | UNVERIFIED | miss (abstained) |
-| The Union Cabinet has approved Nutrient Based Subsidy rates for Rabi 2026-27 on phosphatic and potassic fertilizers. | en | TRUE | UNVERIFIED | miss (abstained) |
+| The Union Cabinet has approved a scheme to replace old trucks and buses in the Delhi-NCR area. | en | TRUE | TRUE | ok |
+| The Union Cabinet has approved Nutrient Based Subsidy rates for Rabi 2026-27 on phosphatic and potassic fertilizers. | en | TRUE | TRUE | ok |
 | The Union Cabinet has approved modernization of Command Area Development and Water Management under Pradhan Mantri Krishi Sinchayee Yojana. | en | TRUE | TRUE | ok |
-| The Union Cabinet has approved continuation of the Samagra Shiksha scheme from April 2021 to March 2026. | en | TRUE | UNVERIFIED | miss (abstained) |
-| The Union Cabinet has approved integration and continuation of two schemes under SARTHAK-PDS. | en | TRUE | UNVERIFIED | miss (abstained) |
+| The Union Cabinet has approved continuation of the Samagra Shiksha scheme from April 2021 to March 2026. | en | TRUE | TRUE | ok |
+| The Union Cabinet has approved integration and continuation of two schemes under SARTHAK-PDS. | en | TRUE | TRUE | ok |
 | Railways has a recruitment process on for 1,20,579 vacancies notified in 2024 and 2025. | en | TRUE | UNVERIFIED | miss (abstained) |
 | Around 99.8% of ration cards have been seeded with Aadhaar. | en | TRUE | TRUE | ok |
 | Railways plans to provide 50,000 jobs in financial year 2025-26. | en | TRUE | UNVERIFIED | miss (abstained) |
@@ -95,29 +105,29 @@ Abstained = Sach said UNVERIFIED where the label was not UNVERIFIED (safe but a 
 | Petroleum ministry nunchi pettrol bunk dealership direct ga istunnaru ani newspaper lo ad vachindi, andaru apply cheyandi. | tinglish | FALSE | UNVERIFIED | miss (abstained) |
 | UGC prakaram 2026 February list lo 32 fake universities unnayi ani prabhutvam cheppindi, andaru jagratta ga undandi. | tinglish | TRUE | UNVERIFIED | miss (abstained) |
 | The Union Cabinet approved an incentive scheme for low-value BHIM-UPI person-to-merchant transactions with an outlay of Rs 1,500 crore for 2024-25. | en | TRUE | UNVERIFIED | miss (abstained) |
-| The Cabinet has fixed the MSP for milling copra at Rs 12,027 per quintal for the 2026 season. | en | TRUE | UNVERIFIED | miss (abstained) |
+| The Cabinet has fixed the MSP for milling copra at Rs 12,027 per quintal for the 2026 season. | en | TRUE | TRUE | ok |
 | সাবধান! এবার ২০০০ টাকার বেশি UPI পেমেন্টে সরকার GST বসাতে চলেছে। সবাইকে ফরওয়ার্ড করুন। | bn | FALSE | FALSE | ok |
-| সুখবর! কেন্দ্রীয় সরকার কর্মচারী ও পেনশনভোগীদের মহার্ঘ ভাতা ৩% বাড়িয়ে দিয়েছে, ১ জুলাই ২০২৬ থেকে কার্যকর। শেয়ার করুন। | bn | TRUE | UNVERIFIED | miss (abstained) |
+| সুখবর! কেন্দ্রীয় সরকার কর্মচারী ও পেনশনভোগীদের মহার্ঘ ভাতা ৩% বাড়িয়ে দিয়েছে, ১ জুলাই ২০২৬ থেকে কার্যকর। শেয়ার করুন। | bn | TRUE | MISLEADING | WRONG |
 | ⚠️ জৰুৰী বিজ্ঞপ্তি: NTA-এ NEET UG জুলাই ২০২০ৰ পৰীক্ষা পিছুৱাই দিছে, নোটিছখন ভাইৰেল হৈছে। সকলোলৈ পঠিয়াওক! | as | FALSE | FALSE | ok |
 | ভাৰত চৰকাৰে খৰিফ ২০২৬-২৭ৰ বাবে সাধাৰণ ধানৰ MSP প্ৰতি কুইণ্টল ২৪৪১ টকা ঠিক কৰিছে। | as | TRUE | UNVERIFIED | miss (abstained) |
 | ꯕꯦꯇꯤ ꯕꯆꯥꯎ ꯕꯦꯇꯤ ꯄꯥꯗꯥꯎ ꯌꯣꯖꯅꯥꯒꯤ ꯃꯈꯥꯗꯥ ꯁꯔꯀꯥꯔꯅꯥ ꯅꯨꯄꯤꯃꯆꯥ ꯈꯨꯗꯤꯡꯃꯛꯄꯨ ꯔꯨꯄꯤꯌꯥ ꯲ ꯂꯥꯈ ꯄꯤꯒꯅꯤ, ꯐꯣꯔꯝ ꯑꯁꯤ ꯃꯄꯨꯡ ꯐꯥꯍꯅꯗꯨꯅꯥ ꯊꯥꯕꯤꯌꯨ꯫ | mni | FALSE | UNVERIFIED | miss (abstained) |
 | ꯌꯨꯅꯤꯌꯟ ꯀꯦꯕꯤꯅꯦꯠꯅꯥ PM-KISAN ꯌꯣꯖꯅꯥ ꯑꯁꯤ ꯲꯰꯲꯶-꯲꯷ ꯗꯒꯤ ꯲꯰꯳꯰-꯳꯱ ꯐꯥꯑꯣꯕꯥ ꯃꯈꯥ ꯆꯠꯍꯅꯅꯕꯥ ₹꯳.꯱꯵ ꯂꯥꯈ ꯀ꯭ꯔꯣꯔ ꯌꯥꯕꯤꯔꯦ꯫ | mni | TRUE | UNVERIFIED | miss (abstained) |
 | लक्ष द्या! १ जानेवारीपासून ज्या नोटांवर काहीही लिहिलेले किंवा खरडलेले असेल त्या नोटा RBI घेणार नाही, बँका नाकारतील. सर्वांना फॉरवर्ड करा. | mr | FALSE | UNVERIFIED | miss (abstained) |
 | रब्बी विपणन हंगाम २०२७-२८ साठी गव्हाची MSP वाढवून २६१० रुपये प्रति क्विंटल करण्यात आली आहे, सरकारचा मोठा निर्णय. | mr | TRUE | UNVERIFIED | miss (abstained) |
-| सैन्याच्या आधुनिकीकरणाखातीर सरकारान नवें बँक खातें उगडलां, कॅबिनेटाचो निर्णय आसा आनी अक्षय कुमारान तें सुरू केलां. सगळ्यांनी दान करात. | kok | FALSE | UNVERIFIED | miss (abstained) |
+| सैन्याच्या आधुनिकीकरणाखातीर सरकारान नवें बँक खातें उगडलां, कॅबिनेटाचो निर्णय आसा आनी अक्षय कुमारान तें सुरू केलां. सगळ्यांनी दान करात. | kok | FALSE | FALSE | ok |
 | वृद्धापकाळ आनी विधवा पेन्शन आशिल्लो राष्ट्रीय सामाजिक सहाय्य कार्यक्रम (NSAP) २०२६-२७ ते २०३०-३१ मेरेन ₹५३,४२८ कोटींनी चालू दवरपाक केंद्रीय केबिनेटान मंजुरी दिल्ली. | kok | TRUE | UNVERIFIED | miss (abstained) |
 | कोभिडका कारण केन्द्र सरकारका कर्मचारीहरूको LTC, बिदा नगदीकरण र मेडिकल भत्ता कटौती गरिने रे। सबैलाई सेयर गर्नुहोस्। | ne | FALSE | UNVERIFIED | miss (abstained) |
 | UGC को २०२६ फेब्रुअरीको सूची अनुसार ३२ वटा नक्कली विश्वविद्यालय छन् भनी सरकारले भनेको छ, सबै सतर्क रहनुहोस्। | ne | TRUE | UNVERIFIED | miss (abstained) |
 | RBI கவர்னரின் வீடியோ வைரலாகிறது: RBI புதிய முதலீட்டுத் திட்டத்தைத் தொடங்கியுள்ளது, அதில் பணம் போட்டால் பெரிய லாபம் கிடைக்கும். அனைவருக்கும் ஷேர் செய்யுங்கள். | ta | FALSE | UNVERIFIED | miss (abstained) |
 | 2026 பருவத்திற்கான அரவைக் கொப்பரைக்கு குறைந்தபட்ச ஆதரவு விலையை (MSP) மத்திய அமைச்சரவை குவிண்டாலுக்கு ரூ 12,027 என நிர்ணயித்துள்ளது. | ta | TRUE | UNVERIFIED | miss (abstained) |
 | અખબારમાં જાહેરાત આવી છે કે પેટ્રોલિયમ મંત્રાલય સીધું પેટ્રોલ પંપ ડીલરશિપ આપી રહ્યું છે, બધા અરજી કરો. | gu | FALSE | UNVERIFIED | miss (abstained) |
-| કેન્દ્રીય મંત્રીમંડળે ૨૦૨૪-૨૫ માટે ઓછી કિંમતના BHIM-UPI પર્સન-ટુ-મર્ચન્ટ વ્યવહારો માટે રૂ. ૧,૫૦૦ કરોડના ખર્ચ સાથે પ્રોત્સાહન યોજનાને મંજૂરી આપી છે. | gu | TRUE | TRUE | ok |
+| કેન્દ્રીય મંત્રીમંડળે ૨૦૨૪-૨૫ માટે ઓછી કિંમતના BHIM-UPI પર્સન-ટુ-મર્ચન્ટ વ્યવહારો માટે રૂ. ૧,૫૦૦ કરોડના ખર્ચ સાથે પ્રોત્સાહન યોજનાને મંજૂરી આપી છે. | gu | TRUE | UNVERIFIED | miss (abstained) |
 | ਸਾਵਧਾਨ! ਹੁਣ 2000 ਰੁਪਏ ਤੋਂ ਉੱਪਰ ਦੇ UPI ਪੇਮੈਂਟ 'ਤੇ ਸਰਕਾਰ GST ਲਗਾਉਣ ਜਾ ਰਹੀ ਹੈ। ਸਭ ਨੂੰ ਅੱਗੇ ਭੇਜੋ। | pa | FALSE | FALSE | ok |
 | ਸਰਕਾਰ ਨੇ ਖਰੀਫ਼ 2026-27 ਲਈ ਆਮ ਝੋਨੇ ਦਾ MSP 2441 ਰੁਪਏ ਪ੍ਰਤੀ ਕੁਇੰਟਲ ਤੈਅ ਕੀਤਾ ਹੈ। | pa | TRUE | UNVERIFIED | miss (abstained) |
 | ବେଟି ବଚାଓ ବେଟି ପଢ଼ାଓ ଯୋଜନାରେ ସରକାର ପ୍ରତ୍ୟେକ ଝିଅକୁ ୨ ଲକ୍ଷ ଟଙ୍କା ଦେବେ, ଏହି ଫର୍ମ ପୂରଣ କରି ପଠାନ୍ତୁ। | or | FALSE | UNVERIFIED | miss (abstained) |
 | କେନ୍ଦ୍ର କ୍ୟାବିନେଟ୍ PM-KISAN ଯୋଜନାକୁ ୨୦୨୬-୨୭ ରୁ ୨୦୩୦-୩୧ ପର୍ଯ୍ୟନ୍ତ ଜାରି ରଖିବା ପାଇଁ ₹୩.୧୫ ଲକ୍ଷ କୋଟି ଟଙ୍କା ମଞ୍ଜୁର କରିଛି। | or | TRUE | UNVERIFIED | miss (abstained) |
 | ⚠️ ಮುಖ್ಯ ಸೂಚನೆ: NTA NEET UG ಜುಲೈ 2020 ಪರೀಕ್ಷೆಯನ್ನು ಮುಂದೂಡಿದೆ, ನೋಟಿಸ್ ವೈರಲ್ ಆಗುತ್ತಿದೆ. ಎಲ್ಲರಿಗೂ ಕಳುಹಿಸಿ! | kn | FALSE | UNVERIFIED | miss (abstained) |
-| 2024-25ಕ್ಕೆ ಕಡಿಮೆ ಮೌಲ್ಯದ BHIM-UPI ವ್ಯಾಪಾರಿ ಪಾವತಿ (ಪರ್ಸನ್-ಟು-ಮರ್ಚೆಂಟ್) ವಹಿವಾಟುಗಳಿಗೆ ರೂ 1,500 ಕೋಟಿ ವೆಚ್ಚದ ಪ್ರೋತ್ಸಾಹ ಯೋಜನೆಗೆ ಕೇಂದ್ರ ಸಚಿವ ಸಂಪುಟ ಅನುಮೋದನೆ ನೀಡಿದೆ. | kn | TRUE | UNVERIFIED | miss (abstained) |
+| 2024-25ಕ್ಕೆ ಕಡಿಮೆ ಮೌಲ್ಯದ BHIM-UPI ವ್ಯಾಪಾರಿ ಪಾವತಿ (ಪರ್ಸನ್-ಟು-ಮರ್ಚೆಂಟ್) ವಹಿವಾಟುಗಳಿಗೆ ರೂ 1,500 ಕೋಟಿ ವೆಚ್ಚದ ಪ್ರೋತ್ಸಾಹ ಯೋಜನೆಗೆ ಕೇಂದ್ರ ಸಚಿವ ಸಂಪುಟ ಅನುಮೋದನೆ ನೀಡಿದೆ. | kn | TRUE | TRUE | ok |
 | സൈന്യത്തിന്റെ ആധുനികീകരണത്തിനായി സർക്കാർ പുതിയ ബാങ്ക് അക്കൗണ്ട് തുടങ്ങി, കാബിനറ്റ് തീരുമാനമാണ്, അക്ഷയ് കുമാർ ആണ് തുടക്കം കുറിച്ചത്. എല്ലാവരും സംഭാവന ചെയ്യുക. | ml | FALSE | UNVERIFIED | miss (abstained) |
 | 2026 സീസണിലെ മില്ലിങ് കൊപ്രയ്ക്ക് ക്വിന്റലിന് 12,027 രൂപ താങ്ങുവിലയായി (MSP) കേന്ദ്ര മന്ത്രിസഭ നിശ്ചയിച്ചു. | ml | TRUE | UNVERIFIED | miss (abstained) |
 | آر بی آئی گورنر کی ویڈیو وائرل ہو رہی ہے: RBI نے نئی سرمایہ کاری اسکیم شروع کی ہے، اس میں پیسے لگائیں تو بھاری منافع ملے گا۔ سب کو شیئر کریں۔ | ur | FALSE | UNVERIFIED | miss (abstained) |
@@ -136,7 +146,7 @@ Abstained = Sach said UNVERIFIED where the label was not UNVERIFIED (safe but a 
 - Retrieval varies run to run (live search results change), so single-run numbers move by a claim or two. The evaluation runs with the verdict cache switched off (`SACH_NO_CACHE=1`).
 - Official-domain rule is *.gov.in / *.nic.in / who.int (plus a few listed hosts), so news sites such as newsonair.gov.in count as official; PIB is treated as the strongest tier.
 - There are no true MISLEADING rows: PIB items tagged "misleading" are labelled FALSE, so a MISLEADING verdict on them counts as a wrong verdict here.
-- The LLM failed on 20 source judgements during this run (quota/outage); those fell back to the safe PIB-debunk-only check.
+- The LLM failed on 21 source judgements during this run (quota/outage); those fell back to the safe PIB-debunk-only check.
 
 ## Previous runs
 
