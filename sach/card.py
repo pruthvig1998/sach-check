@@ -9,7 +9,10 @@ def render_card(verdict: str, lang: str, citations: list) -> str:
     auth = [c for c in citations if c["tier"] in AUTHORITATIVE]
     lead = (auth or citations or [None])[0]
     src = lead["source"] if lead else ""
-    why = tr(WHY, lang)[verdict].format(src=src)
+    if lead:
+        why = tr(WHY, lang)[verdict].format(src=src)
+    else:                                            # no citation to name: the source phrase is dropped, never printed empty
+        why = tr(WHY_NO_SOURCE, lang).get(verdict) or tr(WHY, lang)[verdict].replace("{src}", "")
     lines = [f"{EMOJI[verdict]} {tr(LABEL, lang)[verdict]}", why]
     if lead:
         note = tr(FC_NOTE, lang) + " - " if lead["tier"] not in AUTHORITATIVE else ""

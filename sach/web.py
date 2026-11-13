@@ -411,6 +411,10 @@ class Handler(BaseHTTPRequestHandler):
         limits.refund(adm, res)
         res = dict(res); res["warning_signs"] = scam_signs(text)   # advice only: from THIS request's text, never cached or stored
         if want_json:
+            from .report import display_card as _dc
+            for k in ("card", "card_en"):                  # the same verdict-aware card text as the page; complete checks are unchanged
+                if k in res:
+                    res[k] = _dc(res, k)
             if match.escalated(res):
                 res["escalation_options"] = match.escalation_options(match.escalation_claim(res), siteurl.site_url(self), incomplete(res))
             return self._json(res)

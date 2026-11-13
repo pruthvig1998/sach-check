@@ -1,7 +1,10 @@
 """SHAREFIX: the shared text, the image data and the result page describe the claim that DRIVES the overall verdict (never claims[0]),
 and an incomplete check (degraded, or web search down or partial) never reads as 'no official source found'. Offline: no network, no LLM."""
+import json
+from types import SimpleNamespace
 from urllib.parse import unquote
 import pytest
+from test_sach import server, _post   # noqa: F401  (fixture and helper from the existing suite)
 from sach import match, share, site
 from sach.card import render_card
 from sach.i18n import EMOJI, INCOMPLETE_ESC_NOTE, INCOMPLETE_NOTICE, LABEL, WHY, incomplete, tr
@@ -378,3 +381,162 @@ def test_incomplete_notice_falls_back_to_english_for_unlisted_language():
     r["card"] = render_card("UNVERIFIED", "mr", [])
     page = site.result_block(r, chosen=False, link=None, text="f", lang_choice="mr")
     assert tr(INCOMPLETE_NOTICE, "en") in page
+
+
+# ---------------------------------------------------------------- verdict-aware incompleteness (defect 1)
+
+DECISIVE_INCOMPLETE = [
+    {"degraded": True, "search_status": "ok"},
+    {"degraded": False, "search_status": "down"},
+    {"degraded": False, "search_status": "partial"},
+    {"degraded": True, "search_status": "partial"},
+]
+
+
+@pytest.mark.parametrize("flags", DECISIVE_INCOMPLETE)
+@pytest.mark.parametrize("verdict, text", [("FALSE", "Government will give Rs 5000 to every woman."), ("TRUE", "Vaccine is safe.")])
+def test_decisive_verdict_with_incomplete_search_is_not_incomplete(flags, verdict, text):
+    base = [live(text, verdict, url=PIB)]
+    r = res(base, verdict, **flags)
+    done = res(base, verdict)
+    assert not incomplete(r)
+    assert share.build_share_text(r, SITE) == share.build_share_text(done, SITE)
+    assert share.result_share_html(r, SITE) == share.result_share_html(done, SITE)
+    assert "could not finish" not in share.build_share_text(r, SITE).lower()
+    page = site.result_block(r, chosen=False, link=None, text="forward", lang_choice="auto")
+    assert INC_EN not in page and tr(INCOMPLETE_NOTICE, "en") not in page
+    assert 'class="btn wa" id="shareWa"' in page
+    assert '"quiet"' not in share.result_share_html(r, SITE)[1]
+
+
+def test_decisive_false_with_partial_search_keeps_its_card_wording():
+    r = res([live("Govt gives 5000", "FALSE", url=PIB)], "FALSE", search_status="partial")
+    assert r["card"].split("\n")[1] == "PIB (Press Information Bureau) says this claim is false."
+    assert "could not finish" not in card_data(r)["why"]
+
+
+def test_unverified_with_incomplete_search_still_incomplete_wording():
+    r = unverified_escalated(search_status="partial")
+    assert incomplete(r)
+
+
+# ---------------------------------------------------------------- Telegram reply: sources of the driver only (defect 2)
+
+def tg(r):
+    from sach.telegram_bot import format_reply
+    return format_reply(r)
+
+
+def test_telegram_more_sources_never_list_an_unverified_claims_link():
+    other = "https://altnews.in/fact-of-cow-urine"
+    r = res([live("Cow urine cures every disease", "UNVERIFIED", url=other, source="AltNews"), matched("the false one", "FALSE")], "FALSE")
+    text = tg(r)
+    assert other not in text and "altnews" not in text.lower()
+    assert REVIEW in text                                              # the matched driver's own review link
+
+
+def test_telegram_driver_pib_source_is_listed_and_other_claims_link_is_not():
+    other = "https://altnews.in/fact-of-cow-urine"
+    r = res([live("Cow urine cures every disease", "UNVERIFIED", url=other, source="AltNews"),
+             live("Govt gives 5000", "FALSE", url=PIB)], "FALSE")
+    text = tg(r)
+    assert PIB in text and other not in text
+
+
+def test_telegram_multi_claim_lines_name_each_claim_with_its_own_word():
+    r = res([live("Cow urine cures every disease", "UNVERIFIED"), matched("the false one", "FALSE")], "FALSE")
+    text = tg(r)
+    assert "❔ UNVERIFIED: “Cow urine cures every disease”" in text
+    assert "❌ False by BOOM: “the false one”" in text
+
+
+def test_telegram_single_claim_has_no_per_claim_lines():
+    r = res([live("Govt gives 5000", "FALSE", url=PIB)], "FALSE")
+    assert "❌ FALSE: “" not in tg(r)
+
+
+# ---------------------------------------------------------------- JSON API: card and card_en are verdict-aware (defect 3)
+
+def test_json_api_incomplete_unverified_card_says_could_not_finish(server, monkeypatch):
+    import sach.web as W
+    raw = unverified_escalated(degraded=True)
+    raw["card_en"] = render_card("UNVERIFIED", "en", [])
+    monkeypatch.setattr(W, "check_forward", lambda *a, **k: dict(raw))
+    code, body = _post(server, "Cow urine cures every disease", "/?format=json")
+    d = json.loads(body)
+    assert code == 200 and d["verdict"] == "UNVERIFIED"
+    assert INC_EN in d["card"] and NO_SOURCE not in d["card"].lower()
+    assert INC_EN in d["card_en"] and NO_SOURCE not in d["card_en"].lower()
+    assert set(raw) <= set(d)                                          # no key removed
+
+
+def test_json_api_complete_checks_are_byte_identical(server, monkeypatch):
+    import sach.web as W
+    raw = unverified_escalated()
+    raw["card_en"] = render_card("UNVERIFIED", "en", [])
+    monkeypatch.setattr(W, "check_forward", lambda *a, **k: dict(raw))
+    code, body = _post(server, "Cow urine cures every disease", "/?format=json")
+    d = json.loads(body)
+    assert d["card"] == raw["card"] and d["card_en"] == raw["card_en"]
+    assert NO_SOURCE in d["card"].lower()
+
+
+# ---------------------------------------------------------------- matched verdict pairing (defect 4)
+
+def cv(layer, verdict, match=None):
+    return SimpleNamespace(layer=layer, verdict=verdict, match=match or {})
+
+
+VISHVAS = {"checker": "Vishvas News", "rating_text": "True", "review_url": "https://vishvasnews.com/x"}
+
+
+def test_top_match_does_not_pair_a_live_false_with_a_matched_true():
+    assert match.top_match([cv("live", "FALSE"), cv("match", "TRUE", VISHVAS)], "FALSE") == {}
+
+
+def test_top_match_returns_the_driver_match_for_the_overall_verdict():
+    boom = {"checker": "BOOM", "rating_text": "False"}
+    assert match.top_match([cv("live", "UNVERIFIED"), cv("match", "FALSE", boom)], "FALSE") == boom
+    assert match.top_match([cv("match", "FALSE", boom), cv("match", "TRUE", VISHVAS)], "FALSE") == boom
+    assert match.top_match([cv("match", "TRUE", VISHVAS), cv("live", "FALSE")], "FALSE") == {}
+
+
+# ---------------------------------------------------------------- ClaimReview picks the driver (defect 5)
+
+def test_claimreview_uses_the_claim_behind_the_overall_verdict():
+    from sach import claimreview
+    r = {"verdict": "FALSE", "claims": [live("Cow urine cures every disease", "UNVERIFIED", url=FC, source="AltNews"),
+                                        live("Govt gives 5000", "FALSE", url=PIB)],
+         "language": "en", "checked_at": "2026-11-12T09:30:00+00:00"}
+    out = claimreview.result_review(r, LINK, SITE)
+    assert out and out["claimReviewed"] == "Govt gives 5000"
+    assert out["itemReviewed"] and FC not in json.dumps(out)
+
+
+# ---------------------------------------------------------------- source-less cards (defect 6)
+
+@pytest.mark.parametrize("lang, verdict, phrase", [
+    ("en", "FALSE", "This claim is false."),
+    ("hi", "FALSE", "यह दावा झूठ है।"),
+    ("te", "FALSE", "ఈ దావా అబద్ధం."),
+    ("en", "TRUE", "This claim is confirmed."),
+    ("hi", "TRUE", "इस दावे की पुष्टि हुई है।"),
+    ("te", "TRUE", "ఈ దావా ధృవీకరించబడింది."),
+])
+def test_card_without_citations_drops_the_source_phrase(lang, verdict, phrase):
+    card = render_card(verdict, lang, [])
+    lines = card.split("\n")
+    assert len(lines) == 2 and lines[1] == phrase
+    assert "says" not in card and "()" not in card and "  " not in card and not lines[1].startswith(" ")
+
+
+@pytest.mark.parametrize("lang", ["en", "hi", "te"])
+def test_misleading_card_without_citations_has_no_empty_brackets(lang):
+    card = render_card("MISLEADING", lang, [])
+    assert "()" not in card and "( )" not in card and "{src}" not in card
+    assert card.split("\n")[1].strip()
+
+
+def test_card_with_citations_is_unchanged():
+    c = render_card("FALSE", "en", [cite(PIB)])
+    assert c == "❌ FALSE\nPIB (Press Information Bureau) says this claim is false.\nSource: PIB (Press Information Bureau) - " + PIB

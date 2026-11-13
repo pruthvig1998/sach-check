@@ -156,6 +156,17 @@ INCOMPLETE_CARD = {  # the why-line of the card when the check was incomplete (r
  "hi": "Sach यह जाँच पूरी नहीं कर सका। इसका मतलब यह नहीं कि कुछ मौजूद नहीं है।",   # NOT NATIVE-REVIEWED
  "te": "ఈ తనిఖీని Sach పూర్తి చేయలేకపోయింది. ఏదీ లేదని దీని అర్థం కాదు.",   # NOT NATIVE-REVIEWED
 }
+WHY_NO_SOURCE = {  # the why-line of a card that has no citation to name (a matched or source-less verdict): no source phrase at all
+ "en": {"FALSE": "This claim is false.",
+        "TRUE": "This claim is confirmed.",
+        "MISLEADING": "Part of it is real, but the numbers, dates or framing in the forward are distorted."},
+ "hi": {"FALSE": "यह दावा झूठ है।",                                   # NOT NATIVE-REVIEWED
+        "TRUE": "इस दावे की पुष्टि हुई है।",                           # NOT NATIVE-REVIEWED
+        "MISLEADING": "इसका कुछ हिस्सा सही है, पर संख्या, तारीख या बात का ढंग गलत पेश किया गया है।"},   # NOT NATIVE-REVIEWED
+ "te": {"FALSE": "ఈ దావా అబద్ధం.",                                     # NOT NATIVE-REVIEWED
+        "TRUE": "ఈ దావా ధృవీకరించబడింది.",                              # NOT NATIVE-REVIEWED
+        "MISLEADING": "ఇందులో కొంత నిజం ఉంది, కానీ సంఖ్యలు, తేదీలు లేదా చెప్పిన తీరు వక్రీకరించబడింది."},   # NOT NATIVE-REVIEWED
+}
 INCOMPLETE_NOTICE = {  # the notice shown above the card on the result page
  "en": "Sach could not finish checking this (the AI checker or web search was unavailable). This is not a finding that nothing exists. "
        "Try again later or ask a human fact-checker.",
@@ -173,6 +184,9 @@ INCOMPLETE_ESC_NOTE = {  # the note above the human fact-checker links when the 
 
 
 def incomplete(res) -> bool:
-    """True when the check could not run fully: the AI judge failed or was unavailable (degraded), or web search was down or partial.
+    """True when the overall verdict is UNVERIFIED and the check could not run fully: the AI judge failed or was unavailable (degraded),
+    or web search was down or partial. A decisive verdict (TRUE, FALSE, MISLEADING) stands on its cited source, so it is never incomplete.
     Display-only: the verdict itself is never changed by this."""
+    if res.get("verdict") != "UNVERIFIED":
+        return False
     return bool(res.get("degraded")) or res.get("search_status") in ("down", "partial")

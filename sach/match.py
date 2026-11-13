@@ -424,9 +424,12 @@ def overall_match_rule(results: list[ClaimVerdict], overall: str) -> str:
             f"The overall result combines both, worst case first.")
 
 def top_match(results: list[ClaimVerdict], overall: str) -> dict:
-    m = [v for v in results if v.layer == "match"]
-    pick = next((v for v in m if v.verdict == overall), m[0] if m else None)
-    return pick.match if pick else {}
+    """Attribution for the overall verdict: the match of the DRIVER claim (the first claim whose verdict is the overall one, else the
+    first claim, as report.driver_index). {} when that driver claim is not a matched claim: never another claim's rating."""
+    if not results:
+        return {}
+    driver = next((v for v in results if v.verdict == overall), results[0])
+    return driver.match if driver.layer == "match" and driver.match else {}
 
 def ledger_fields(v: ClaimVerdict) -> dict:
     if v.layer != "match":
