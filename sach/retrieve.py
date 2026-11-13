@@ -66,7 +66,7 @@ def _page_text(html: str):
     return title, re.sub(r"\s+", " ", s.get_text(" ", strip=True))[:20000]
 
 import threading, time as _time
-from .search import (SearchChain, SearchRun, BRAVE_MIN_INTERVAL_S, _brave_last, _brave_throttle)   # noqa: F401 (re-exported: older tests patch them here)
+from .search import (SearchChain, SearchRun, BRAVE_MIN_INTERVAL_S, _brave_last, _brave_throttle, grounded_credential_usable)   # noqa: F401 (re-exported: older tests patch them here)
 
 class BraveRetriever:
     """Optional live web search (needs BRAVE_API_KEY and/or TAVILY_API_KEY; see sach/search.py for failover). Official
@@ -174,7 +174,7 @@ class BraveRetriever:
 
 def default_retrievers():
     r = [PibRetriever()]
-    if os.environ.get("BRAVE_API_KEY") or os.environ.get("TAVILY_API_KEY") or (os.environ.get("GOOGLE_SA_JSON") or "").strip():
+    if os.environ.get("BRAVE_API_KEY") or os.environ.get("TAVILY_API_KEY") or grounded_credential_usable():   # an unparseable GOOGLE_SA_JSON is off (D4)
         r.append(BraveRetriever())              # web search: Grounded (Vertex), Brave, then Tavily (sach/search.py)
     if os.environ.get("GOOGLE_FACTCHECK_API_KEY"):
         from .factcheck_api import FactCheckToolsRetriever

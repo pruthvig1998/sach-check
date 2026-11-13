@@ -286,6 +286,19 @@ def grounded_accepts(query: str) -> bool:
     sites = query_sites(query)
     return len(sites) == len(ops) and set(sites) == set(OFFICIAL_POOL_SITES)
 
+def is_official_pool(query: str) -> bool:
+    """True for the official-pool query: a site-restricted query whose restrictions are exactly OFFICIAL_POOL_SITES (the only query
+    shape grounded answers that is restricted; see grounded_accepts)."""
+    sites = query_sites(query)
+    return bool(sites) and grounded_accepts(query) and set(sites) == set(OFFICIAL_POOL_SITES)
+
+def is_pib_url(u) -> bool:
+    """The same PIB test the retriever's consumer uses (sach/retrieve.py _search_claim): the host ends with pib.gov.in."""
+    try:
+        return (urllib.parse.urlparse(u).hostname or "").endswith("pib.gov.in")
+    except ValueError:
+        return False
+
 def site_filter(query: str, urls) -> list:
     """Keep only the URLs on a site the query restricts to. A query without site: restrictions keeps everything."""
     sites = query_sites(query)
@@ -298,6 +311,14 @@ def site_filter(query: str, urls) -> list:
             return False
         return any(h == s or h.endswith("." + s) for s in sites)
     return [u for u in urls if on_site(u)]
+
+def grounded_credential_usable() -> bool:
+    """The grounded provider's own usable-credential test (SearchChain.from_env): GOOGLE_SA_JSON set and parseable. Unset or unparseable
+    is False, never an error (round 5, D4)."""
+    try:
+        return vertex.ServiceAccount.from_env() is not None
+    except ValueError:
+        return False
 
 # ---------------------------------------------------------------- chain + status
 class SearchRun:
@@ -365,7 +386,9 @@ class SearchChain:
         """URLs from the first provider that answers. [] when none does; `run` (if given) records whether one did. A provider with
         `fallthrough_empty` that answers with no URL hands over to the next one (its empty answer counts only if no other answers).
         Grounded is asked only the queries grounded_accepts() allows (round 4, P1): a query it may not answer is skipped by policy, is not
-        a failure, and is not counted in `run`. A grounded answer for a site-restricted query keeps only URLs on that site (site_filter)."""
+        a failure, and is not counted in `run`. A grounded answer for a site-restricted query keeps only URLs on that site (site_filter).
+        For the official-pool query, PIB URLs are removed from grounded's answer before it is judged (round 5, D1): if nothing else remains
+        the chain falls through to the next provider."""
         empty_from, others_failed, eligible = None, False, False
         for p in self.providers:
             if p.name == "grounded" and not grounded_accepts(query):
@@ -389,6 +412,10 @@ class SearchChain:
                 continue                                    # 5xx, 400, timeout, network, bad JSON: next provider, this query only
             if p.name == "grounded" and urls and query_sites(query):
                 urls = site_filter(query, urls)             # a result off the query's site is not an answer: fall through
+            if p.name == "grounded" and urls and is_official_pool(query):
+                # round 5 (D1): the official-pool consumer discards PIB URLs, so PIB is not evidence for this query. Removed before the
+                # answered/empty decision: an all-PIB grounded answer is empty and the chain falls through. PIB from other providers is untouched.
+                urls = [u for u in urls if not is_pib_url(u)]
             if not urls and getattr(p, "fallthrough_empty", False):
                 empty_from = empty_from or p.name
                 continue

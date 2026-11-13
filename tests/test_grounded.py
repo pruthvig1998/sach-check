@@ -647,3 +647,122 @@ def test_store_failure_refuses_the_attempt_and_the_cap_of_three_holds(sa, monkey
 def test_grounded_cap_parsing(monkeypatch, raw, expected):
     monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", raw)
     assert V.grounded_max_per_day() == expected
+
+# ---------------------------------------------------------------- round 5: D1 PIB-only grounded answers for the official pool, D3 strict cap digits, D4 SA gate
+from types import SimpleNamespace
+from test_vertex import http_error as _http_error
+
+MHA = "https://www.mha.gov.in/notice"
+WHO = "https://www.who.int/a"
+
+class Dispatch:
+    """A brave/tavily stand-in whose answer depends on the query text (so PIB, pool and fact-check queries can differ)."""
+    def __init__(self, name, fn):
+        self.name, self.fn, self.calls = name, fn, []
+    def search(self, query, count=8):
+        self.calls.append(query)
+        return self.fn(query)
+
+def _pool_brave(urls=(MHA,)):
+    return lambda q: list(urls) if "OR site:" in q else []           # the official pool answers; PIB and fact-check queries do not
+
+def _retriever_urls(monkeypatch, providers):
+    """The retriever's own consumer (_search_claim) on fake providers; returns the non-PIB official URLs it keeps, in order."""
+    monkeypatch.setattr(_R.BraveRetriever, "_evidence", lambda self, url, tier: SimpleNamespace(url=url, tier=tier))
+    r = _R.BraveRetriever(key="bk", chain=SearchChain(providers))
+    ev = r._search_claim("claim words")
+    return [e.url for e in ev if "pib.gov.in" not in e.url]
+
+def test_d1_pib_only_grounded_answer_falls_through_to_brave_for_the_official_pool():
+    G = FakeGrounded("grounded", [PIB_999])
+    B = Fake("brave", [MHA])
+    assert SearchChain([G, B]).search(POOL_Q) == [MHA] and B.calls == [POOL_Q]
+
+def test_d1_pib_only_grounded_answer_from_the_real_provider_falls_through(sa):
+    ch, tb = chunks_for(("pib.gov.in", PIB_999))
+    gs, g, rd = make(sa, ch, tb)
+    chain = SearchChain([gs, Fake("brave", [MHA])])
+    run = SearchRun()
+    assert chain.search(POOL_Q, run=run) == [MHA] and len(g.gen_calls()) == 1 and run.provider == "brave"
+
+def test_d1_mixed_grounded_answer_keeps_the_ministry_url_only_for_the_pool(sa):
+    G = FakeGrounded("grounded", [PIB_999, MHA])
+    assert SearchChain([G, Fake("brave", [WHO])]).search(POOL_Q) == [MHA]
+
+def test_d1_non_pib_official_grounded_urls_are_kept_for_the_pool():
+    assert SearchChain([FakeGrounded("grounded", [MHA, WHO]), Fake("brave", [])]).search(POOL_Q) == [MHA, WHO]
+
+def test_d1_pib_urls_from_other_providers_are_untouched_for_the_pool():
+    # the filter applies to grounded's answer only: brave's PIB URL is returned as before (the consumer decides what to do with it)
+    assert SearchChain([FakeGrounded("grounded", []), Fake("brave", [PIB_999])]).search(POOL_Q) == [PIB_999]
+
+def test_d1_unrestricted_query_still_keeps_grounded_pib_urls():
+    # only the official-pool consumer discards PIB; an unrestricted query's consumer keeps it, so grounded's PIB answer stands
+    G = FakeGrounded("grounded", [PIB_999])
+    assert SearchChain([G, Fake("brave", [MHA])]).search("claim words") == [PIB_999]
+
+@pytest.mark.parametrize("grounded_urls", [[PIB_999], [PIB_999, MHA], [MHA], []])
+@pytest.mark.parametrize("brave", ["ok", "empty", "raises"])
+def test_d1_matrix_grounded_never_returns_fewer_non_pib_official_urls_than_without_grounded(monkeypatch, grounded_urls, brave):
+    def brave_provider():
+        if brave == "raises":
+            return Dispatch("brave", lambda q: (_ for _ in ()).throw(_http_error(500)))
+        return Dispatch("brave", _pool_brave((MHA,) if brave == "ok" else ()))
+    with_g = _retriever_urls(monkeypatch, [FakeGrounded("grounded", list(grounded_urls)), brave_provider()])
+    without_g = _retriever_urls(monkeypatch, [brave_provider()])
+    assert len(with_g) >= len(without_g)
+    if brave == "ok":
+        assert with_g == [MHA] == without_g                  # same official evidence as the chain without grounded
+
+def test_d1_matrix_pib_only_grounded_equals_the_chain_without_grounded(monkeypatch):
+    for brave in ("ok", "empty", "raises"):
+        mk = lambda: Dispatch("brave", (lambda q: (_ for _ in ()).throw(_http_error(500))) if brave == "raises" else _pool_brave((MHA,) if brave == "ok" else ()))
+        assert _retriever_urls(monkeypatch, [FakeGrounded("grounded", [PIB_999]), mk()]) == _retriever_urls(monkeypatch, [mk()])
+
+def test_d1_grounded_pool_policy_is_scoped_to_the_pool_query():
+    # non-pool restricted queries are not asked grounded at all (existing policy), so no PIB filter is needed for them
+    G = FakeGrounded("grounded", [PIB_999])
+    assert SearchChain([G, Fake("brave", [MHA])]).search("site:pib.gov.in claim words") == [MHA] and G.calls == []
+
+# D3: plain decimal digits only (optionally surrounded by whitespace); everything else is the default 160
+@pytest.mark.parametrize("raw,expected", [("1_000", 160), ("+3", 160), ("1e3", 160), ("2.5", 160), ("-5", 160), ("0x10", 160),
+                                          ("1 000", 160), ("٣", 160), ("12abc", 160), (" 007 ", 7), ("\t0\n", 0),
+                                          ("99999999999999999999", 99999999999999999999)])
+def test_d3_cap_accepts_only_plain_decimal_digits(monkeypatch, raw, expected):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", raw)
+    assert V.grounded_max_per_day() == expected
+
+def test_d3_unset_is_the_default(monkeypatch):
+    monkeypatch.delenv("SACH_GROUNDED_MAX_PER_DAY", raising=False)
+    assert V.grounded_max_per_day() == 160
+
+# D4: a GOOGLE_SA_JSON that cannot be parsed does not enable the Brave retriever (behaves as if unset)
+@pytest.mark.parametrize("raw", ["garbage!!", "{}", "[]", "eyJhIjoxfQ"])
+def test_d4_unparseable_google_sa_does_not_add_the_brave_retriever(monkeypatch, raw):
+    for k in ("BRAVE_API_KEY", "TAVILY_API_KEY", "GOOGLE_FACTCHECK_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("GOOGLE_SA_JSON", raw)
+    assert [type(r).__name__ for r in R.default_retrievers()] == ["PibRetriever"]
+
+def test_d4_unparseable_google_sa_with_a_brave_key_is_unchanged(monkeypatch):
+    for k in ("TAVILY_API_KEY", "GOOGLE_FACTCHECK_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("GOOGLE_SA_JSON", "garbage!!"); monkeypatch.setenv("BRAVE_API_KEY", "bk")
+    assert [type(r).__name__ for r in R.default_retrievers()] == ["PibRetriever", "BraveRetriever"]
+
+def test_d4_usable_google_sa_still_adds_the_brave_retriever(rsa, monkeypatch):
+    for k in ("BRAVE_API_KEY", "TAVILY_API_KEY", "GOOGLE_FACTCHECK_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("GOOGLE_SA_JSON", _sa_json(rsa))
+    assert [type(r).__name__ for r in R.default_retrievers()] == ["PibRetriever", "BraveRetriever"]
+
+# round 5 docs: section 10 says what the code now does (the section is read from docs/scaling.md)
+def test_round5_docs_section_10_states_the_pib_discard_the_cap_caveat_and_the_d3_rule():
+    text = (pathlib.Path(__file__).resolve().parents[1] / "docs" / "scaling.md").read_text(encoding="utf-8")
+    sec = text[text.index("## 10. Grounded search"):]
+    sec = sec[:sec.index("\n## ", 5)] if "\n## " in sec[5:] else sec
+    assert "all-PIB" in sec and "falls through" in sec                        # (a) an all-PIB grounded answer for the pool query is discarded
+    assert "exact when the shared store answers" in sec                       # (b) the cap is exact only when the store answers
+    assert "can leave the store count slightly too high" in sec or "slightly too high" in sec
+    assert "web search unavailable" in sec and "no other provider answers" in sec   # (c) the generic status text
+    assert "1_000" in sec and "+3" in sec and "plain decimal digits" in sec  # (d) the D3 parsing rule

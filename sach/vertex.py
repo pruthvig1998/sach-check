@@ -378,13 +378,12 @@ def grounded_model() -> str:
     return m if _MODEL_RE.fullmatch(m) else GROUNDED_DEFAULT_MODEL
 
 def grounded_max_per_day() -> int:
-    """SACH_GROUNDED_MAX_PER_DAY: 0 = unlimited; a missing, empty, negative or non-numeric value is invalid and gives the default (fail safe)."""
+    """SACH_GROUNDED_MAX_PER_DAY: 0 = unlimited. Only plain ASCII decimal digits, optionally surrounded by whitespace, are accepted (round 5,
+    D3). Anything else ('1_000', '+3', '1e3', '2.5', '-5', '', 'abc') is invalid and gives the default 160 (fail safe)."""
     raw = (os.environ.get("SACH_GROUNDED_MAX_PER_DAY") or "").strip()
-    try:
-        v = int(raw)
-    except ValueError:
+    if not re.fullmatch(r"[0-9]+", raw):
         return GROUNDED_DEFAULT_MAX_PER_DAY
-    return v if v >= 0 else GROUNDED_DEFAULT_MAX_PER_DAY
+    return int(raw)
 
 class GroundedCounterDown(Exception):
     """The shared store that counts grounded prompts did not answer. The attempt is refused; nothing is counted in memory."""

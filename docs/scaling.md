@@ -235,21 +235,26 @@ are the official-pool domains `OFFICIAL_POOL_SITES`). Grounded is never asked a 
 query. Those go to Brave and then Tavily, as before. Reason: the round 4 review found that grounded, which ignores `site:` restrictions, answered a
 `site:pib.gov.in` query with a ministry page, so the PIB release was lost (reproduced with a fake provider; not checked against the live service). A query
 that no configured provider may answer is not counted as asked. If grounded answers a query that has a `site:` restriction, only URLs on that site are
-kept; if none remain, the chain asks the next provider. So a claim makes at most one grounded prompt (the official pool). Identical search text within 5
+kept; if none remain, the chain asks the next provider. For the official-pool query, PIB URLs are removed from grounded's answer before the chain
+decides whether grounded answered (round 5, D1): an all-PIB grounded answer is discarded as empty and the chain falls through to Brave and then Tavily,
+while non-PIB official URLs from grounded are kept. The reason is that the retriever discards PIB URLs for this query, so a PIB-only answer would
+leave the claim with no official evidence. PIB URLs from the other providers are not touched. So a claim makes at most one grounded prompt (the official pool). Identical search text within 5
 minutes is answered from an in-memory cache of that process and is not billed again. The status page has a `grounded` row (configured, ready or paused,
 calls today of the cap).
 
 **Cost and cap.** One grounded prompt is one charge however many searches the model runs internally (per Google's published pricing as read on 2026-11-13; unverified by us). The project owner's understanding is a free allowance of about 5,000 grounded prompts a month, with overage billed per 1,000
 prompts from the trial credit; neither figure is verified by us. Check https://cloud.google.com/vertex-ai/generative-ai/pricing.
-`SACH_GROUNDED_MAX_PER_DAY` caps grounded prompts per UTC day: the default is 160, `0` means unlimited, and a negative, empty or non-numeric value is
-invalid and means the default 160 (`" 7 "` is read as 7). The counter has its own key prefix (`gr:d:<UTC day>`, against the judge's `vx:d:<UTC day>`), so
+`SACH_GROUNDED_MAX_PER_DAY` caps grounded prompts per UTC day: the default is 160, `0` means unlimited. Only plain decimal digits (ASCII 0-9), optionally
+surrounded by whitespace, are accepted (`" 7 "` is read as 7, `"007"` as 7). Everything else is invalid and means the default 160: `"1_000"`, `"+3"`,
+`"1e3"`, `"2.5"`, `"-5"`, an empty value, or `"abc"`. The counter has its own key prefix (`gr:d:<UTC day>`, against the judge's `vx:d:<UTC day>`), so
 the two caps are separate and never add to each other.
 
 How the count is kept (code: `reserve_grounded` in `sach/vertex.py`):
 - With a shared store (the Upstash Redis settings are present, so `get_store()` returns a remote store), each attempt does one atomic `incr` on the day's
-  key. An over-cap attempt is taken back from that same key and refused. The cap is exact across serverless instances, except that a store error refuses
-  the attempt: nothing is counted in memory and no Vertex call is made. Grounded is then paused 60 s. A store call that times out may still have
-  counted the attempt, so the count can only be too high.
+  key. An over-cap attempt is taken back from that same key and refused. Across serverless instances the cap is exact when the shared store answers.
+  A store error refuses the attempt: nothing is counted in memory and no Vertex call is made. Grounded is then paused 60 s. If the take-back of an
+  over-cap attempt fails, the store count can be left slightly too high: the status page can overstate the calls, but the cap itself still holds,
+  because that attempt was refused. A store call that times out may also have counted the attempt, so the count can only be too high.
 - Without a shared store, the counter is this process's memory: its own dict, keyed by UTC day, holding only today. The shared memory flood rule
   (`limits._mem_incr`, which clears its dict past 500 keys) does not touch it. Each instance counts separately, so without a shared store the cap is best
   effort only, not a guarantee across instances.
@@ -266,4 +271,7 @@ claims a day; a month that goes past the allowance would be billed at the overag
 **Limits.** Google decides which pages it returns; we cannot steer it beyond the prompt. Only official hosts and listed fact-checkers are used, so a claim
 whose evidence is elsewhere gets no grounded result and the chain falls through. With grounded as the only provider, a
 PIB or fact-checker query gets no answer at all (grounded is never asked it) and is not counted as asked. Redirect resolution accepts only default-port (443) https Locations.
+A grounded cap or store pause reaches users as the generic "web search unavailable" notice (the "Web search was unavailable" box in `sach/site.py`) only
+if no other provider answers the queries in question: the check's status then becomes `down` or `partial`. When Brave or Tavily answers every query, the
+check is `ok` and the cap or pause shows nothing.
 Latency: 3.5-5 s, observed in one manual test, no record kept in the repo; not a guarantee.
