@@ -361,5 +361,79 @@ def test_scam_stamp_has_its_own_neutral_class_and_no_verdict_token():
     assert not set(tokens) & {"TRUE", "FALSE", "MISLEADING", "UNVERIFIED"}
     assert ".stamp.scamwarn{" in site.CSS
     rule = re.search(r"\.stamp\.scamwarn\{([^}]*)\}", site.CSS).group(1)
-    assert "var(--mis)" in rule
+    assert "var(--ink)" in rule and "var(--mis)" not in rule                  # DEF-3: neutral ink, not the MISLEADING colour
     assert "MISLEADING" not in h.split('class="stamp')[1].split("</div>")[0]
+
+
+# ------------------------------------------------------------------ DEF-3 / DEF-4 / UNVERIFIED wording
+import re as _re
+
+def _css_vars(block):
+    return dict(_re.findall(r"--([a-z-]+):\s*(#[0-9a-fA-F]{6})", block))
+
+def _lum(hexc):
+    rgb = [int(hexc[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+def _ratio(a, b):
+    hi, lo = sorted((_lum(a), _lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+def _theme_vars():
+    light = _css_vars(_re.search(r":root\{([^}]*)\}", site.CSS).group(1))
+    dark = _css_vars(_re.search(r":root\[data-theme=dark\]\{([^}]*)\}", site.CSS).group(1))
+    media = _css_vars(_re.search(r"@media\(prefers-color-scheme:dark\)\{:root:not\(\[data-theme=light\]\)\{([^}]*)\}", site.CSS).group(1))
+    return {"light": light, "dark": dark, "media-dark": media}
+
+def test_scam_stamp_is_neutral_ink_with_at_least_4_5_to_1_in_both_themes():
+    rule = _re.search(r"\.stamp\.scamwarn\{([^}]*)\}", site.CSS).group(1)
+    assert "var(--ink)" in rule and "3px solid var(--ink)" in rule and "opacity:1" in rule
+    for verdict_var in ("--false", "--true", "--mis", "--unv"):
+        assert f"var({verdict_var})" not in rule
+    assert not _re.search(r"#[0-9a-fA-F]{6}", rule)
+    for name, v in _theme_vars().items():
+        for bg in ("paper", "card"):
+            ratio = _ratio(v["ink"], v[bg])
+            assert ratio >= 4.5, (name, bg, round(ratio, 2))
+
+def test_scam_stamp_comment_in_honesty_matches_the_style():
+    src = open(honesty.__file__, encoding="utf-8").read()
+    line = next(l for l in src.splitlines() if "SCAM_STAMP =" in l)
+    assert "never a verdict colour" not in line                       # the old claim was false: the class used var(--mis)
+    assert "neutral" in line and "ink colour" in line
+
+def test_unverified_panel_says_probably_only_in_the_negated_sentence():
+    negated = {"en": "It does not mean probably true, and it does not mean probably false.",
+               "hi": "इसका मतलब यह नहीं कि यह शायद सच है, और यह भी नहीं कि यह शायद झूठ है।",
+               "te": "ఇది బహుశా నిజం అని కాదు, బహుశా అబద్ధం అని కూడా కాదు."}
+    forbidden = {"en": ["probably", "likely"], "hi": ["शायद"], "te": ["బహుశా"]}
+    for lang in ("en", "hi", "te"):
+        assert negated[lang] in UNVERIFIED_PANEL[lang]["meaning"]
+        for key, text in UNVERIFIED_PANEL[lang].items():
+            if key == "meaning":
+                text = text.replace(negated[lang], "")
+            low = text.lower()
+            for word in forbidden[lang] + (["likely"] if lang != "en" else []):
+                assert word not in low, (lang, key, word)
+    out = unverified_out()
+    for lang in ("en", "hi", "te"):
+        out["language"] = lang
+        panel = honesty.unverified_panel(out)
+        assert panel
+        visible = _re.sub(r"<[^>]+>", " ", panel)
+        assert visible.lower().count("probably") == (2 if lang == "en" else 0)
+        assert visible.lower().count("likely") == 0
+
+def test_no_claim_link_panel_summary_is_localised_in_hindi_and_telugu():
+    text = "Good morning 🙏 Visit http://bit.ly/xyz1 now to register."
+    en = linkcheck.panel_html(text, "en")
+    assert "1 found" in en                                              # English output unchanged
+    for lang in ("hi", "te"):
+        h = linkcheck.panel_html(text, lang)
+        assert h and "found" not in h.split("</summary>")[0]
+        assert "{n}" in linkcheck.TEXT[lang]["found"]
+        assert linkcheck.t("found", lang, n=1) != "1 found"
+    out, _ = run(text, ev=(), llm=NoneLLM(), log=False, use_cache=False)
+    out["language"] = "te"
+    assert linkcheck.t("found", "te", n=1) in result_block(out, text=text)

@@ -108,6 +108,9 @@ def extraction_html(res: dict) -> str:
     n, m = ex.get("sentences"), ex.get("checked")
     if not (isinstance(n, int) and isinstance(m, int)) or n <= m:
         return ""                                     # everything seen was checked, and no cap applied
+    if "skipped" not in ex:                           # counts-only form (the public permalink): no sentence text, so name the kinds left out
+        return (f'<details class="extract" style="margin-top:14px"><summary>Checked {m} of {n} sentences</summary>'
+                f'<p class="note" style="margin:8px 0 0">Short sentences, calls to action and sentences past the check limit are not checked.</p></details>')
     skipped = [s for s in (ex.get("skipped") or []) if isinstance(s, str) and s][:EXTRACT_SHOWN]
     items = "".join(f"<li>{_e(s)}</li>" for s in skipped)
     more = (n - m) - len(skipped)
@@ -118,6 +121,6 @@ def extraction_html(res: dict) -> str:
 
 
 # ------------------------------------------------------------------ 4. scam-shaped message with no checkable claim
-SCAM_STAMP = '<div class="stamp big scamwarn">Scam warning</div>'          # its own neutral warning class: never a verdict colour
+SCAM_STAMP = '<div class="stamp big scamwarn">Scam warning</div>'          # its own neutral class: normal ink colour with a 3px border and a warning prefix, not any verdict colour
 SCAM_LEAD = ('<p class="scamlead" style="margin:0 0 10px"><b>No checkable fact here, but this looks like a scam pattern. '
              'Do not click links or share personal details.</b></p>')
