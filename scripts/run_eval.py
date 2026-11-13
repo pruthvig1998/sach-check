@@ -78,8 +78,11 @@ def git_info():
 
 # ---------- scoring ----------
 def outcome(r):
-    """correct | abstained | overclaim_false | overclaim_true | wrong_other"""
+    """correct | abstained | overclaim_false | overclaim_true | wrong_other | error.
+    An ERROR (the check raised) is always 'error': a failure, never correct, abstained or a wrong verdict."""
     got, label = r["got"], r["label"]
+    if got == "ERROR":
+        return "error"
     if got == label:
         return "correct"
     if got == "UNVERIFIED":
@@ -92,12 +95,15 @@ def outcome(r):
 
 
 def by_lang(res):
-    """{lang: {n, correct, abstained, overclaimed_false, overclaimed_true, wrong_other}}; only languages present."""
+    """{lang: {n, correct, abstained, overclaimed_false, overclaimed_true, wrong_other}}; only languages present.
+    n counts every claim, ERRORs included; an ERROR is in none of the other buckets."""
     out = {}
     for r in res:
         d = out.setdefault(r["lang"], {"n": 0, "correct": 0, "abstained": 0, "overclaimed_false": 0, "overclaimed_true": 0, "wrong_other": 0})
         d["n"] += 1
         o = outcome(r)
+        if o == "error":
+            continue
         d[{"correct": "correct", "abstained": "abstained", "overclaim_false": "overclaimed_false",
            "overclaim_true": "overclaimed_true", "wrong_other": "wrong_other"}[o]] += 1
     return out
@@ -120,7 +126,9 @@ def summarize(res):
     o = [outcome(r) for r in res]
     return {"n": len(res), "correct": o.count("correct"), "overclaimed_false": o.count("overclaim_false"),
             "overclaimed_true": o.count("overclaim_true"), "abstained": o.count("abstained"),
-            "abstained_wrong": sum(x in ("overclaim_false", "overclaim_true", "wrong_other") for x in o)}   # name kept for the website: wrong TRUE/FALSE verdicts
+            "abstained_wrong": sum(x in ("overclaim_false", "overclaim_true", "wrong_other") for x in o)}
+    # 'abstained_wrong' keeps its old name and meaning: overclaims + other wrong verdicts. ERRORs are not in it (outcome 'error').
+    # The report's 'Wrong verdicts other than overclaims' line uses measures()['wrong_not_overclaim'] instead, which is the same count.
 
 
 LAYER_ORDER = ("match", "mixed", "live", "error")
@@ -169,7 +177,7 @@ def measures(res, failed=0):
             "accuracy": {"correct": o.count("correct"), "n": n},
             "abstention": {"abstained_on_decisive": sum(r["got"] == "UNVERIFIED" for r in decisive), "decisive_n": len(decisive)},
             "overclaim": {"false": o.count("overclaim_false"), "true": o.count("overclaim_true"), "n": n},
-            "wrong_not_overclaim": {"count": sum(x == "wrong_other" and r["got"] != "ERROR" for x, r in zip(o, res)), "n": n},
+            "wrong_not_overclaim": {"count": o.count("wrong_other"), "n": n},
             "failures": {"claims_with_any_failure": len(anyf), "judge_problems_degraded": len(deg), "search_failures": len(srch),
                          "errors": len(errs), "llm_source_failures": failed},
             "latency": latency(res)}
@@ -224,19 +232,39 @@ def latency_section(res):
     return L
 
 
+def why_tags(r):
+    """Why a non-exact-match claim is in the failed table. A claim can carry several tags; they are joined with commas by the caller."""
+    o = outcome(r)
+    tags = []
+    if r.get("degraded"):
+        tags.append("judge problem")
+    if r.get("search_status") in FAIL_SEARCH:
+        tags.append("search failure")
+    if o == "error":
+        tags.append("error")
+    if o == "wrong_other":
+        tags.append("wrong verdict")
+    if o in ("overclaim_false", "overclaim_true"):
+        tags.append("overclaim")
+    if o == "abstained":
+        tags.append("abstained")
+    return tags
+
+
 def failed_table(res):
     bad = [r for r in res if r.get("got") != r["label"]]
     L = ["", "## Failed, abstained and wrong cases", "",
          f"Every claim whose result is not an exact match: {len(bad)} of {len(res)}. Nothing is left out of this table.", "",
-         "| Claim | Lang | Label | Sach | Layer | Reason codes | Result | ms |", "|---|---|---|---|---|---|---|---|"]
+         "| Claim | Lang | Label | Sach | Layer | Reason codes | Result | Why | ms | Error message |", "|---|---|---|---|---|---|---|---|---|---|"]
     for r in bad:
         tag = {"abstained": "miss (abstained)", "overclaim_false": "OVERCLAIM (FALSE)", "overclaim_true": "OVERCLAIM (TRUE)",
-               "wrong_other": "ERROR" if r.get("got") == "ERROR" else "WRONG"}[outcome(r)]
+               "wrong_other": "WRONG", "error": "ERROR"}[outcome(r)]
         ms = r.get("ms")
+        why = ", ".join(why_tags(r)) or "-"
         L.append(f"| {_esc(r['claim'])} | {r['lang']} | {r['label']} | {r['got']} | {r.get('layer', 'live')} | "
-                 f"{_esc(', '.join(r.get('reasons') or []) or '-')} | {tag} | {'-' if ms is None else ms} |")
+                 f"{_esc(', '.join(r.get('reasons') or []) or '-')} | {tag} | {why} | {'-' if ms is None else ms} | {_esc(r.get('error_msg') or '-')} |")
     if not bad:
-        L.append("| none | | | | | | | |")
+        L.append("| none | | | | | | | | | |")
     return L
 
 
@@ -271,6 +299,20 @@ def save_checkpoint(c):
 
 
 # ---------- running ----------
+_LONG_RUN = re.compile(r"[A-Za-z0-9]{24,}")     # a run this long looks like a key or token
+
+
+def safe_error_message(e, limit=160):
+    """Short exception text for the checkpoint and the failed table: long alphanumeric runs (keys, tokens) are redacted first,
+    then the text is cut so it is at most `limit` characters."""
+    try:
+        text = str(e)
+    except Exception:
+        text = ""
+    text = _LONG_RUN.sub("[redacted]", " ".join(text.split()))
+    return text if len(text) <= limit else text[:limit - 3] + "..."
+
+
 def run(rows, ret, llm, ckpt, log=False, out=print, workers=1):
     """Check every row not already in the checkpoint; update + persist the checkpoint after each claim.
     workers > 1 checks that many claims at once (the pipeline is thread-safe: the web server runs it concurrently). Results, the checkpoint and the
@@ -285,21 +327,22 @@ def run(rows, ret, llm, ckpt, log=False, out=print, workers=1):
 
     def one(i, r):
         t0 = time.monotonic()
+        err_msg = None
         try:
             res, err = check_forward(r["claim"], ret, llm, log=log), None
         except Exception as e:                      # one broken claim must not abort the run: it is recorded as ERROR (a failure)
-            res, err = None, type(e).__name__
+            res, err, err_msg = None, type(e).__name__, safe_error_message(e)
         ms = round((time.monotonic() - t0) * 1000, 1)   # wall time of this claim's check, measured in this thread
         with lock:                                  # one writer at a time: the checkpoint file and the counters
             if res is None:
                 ckpt["results"][r["claim"]] = {"got": "ERROR", "reasons": [], "cites": [], "layer": "error", "ms": ms,
-                                               "degraded": False, "search_status": None, "error": err}
+                                               "degraded": False, "search_status": None, "error": err, "error_msg": err_msg}
             else:
                 ckpt["results"][r["claim"]] = {"got": res["verdict"], "reasons": [v["reason_code"] for v in res["claims"]],
                                                "cites": [c["url"] for v in res["claims"] for c in v["citations"]],
                                                "layer": res.get("layer", "live"),      # which layer answered: match | live | mixed
                                                "ms": ms, "degraded": bool(res.get("degraded")),
-                                               "search_status": res.get("search_status"), "error": None}
+                                               "search_status": res.get("search_status"), "error": None, "error_msg": None}
                 if res.get("search_status") in ("down", "partial"):
                     ckpt["search_failures"] = ckpt.get("search_failures", 0) + 1       # web search lost for this claim: not a full run
                 if res.get("degraded"):
@@ -350,7 +393,7 @@ def build_report(res, meta, degraded, partial, failed, docs=None):
           f"- Claims: **{n}** (see limitations)", f"- Exact-match accuracy: **{s['correct']}/{n}**",
           f"- **Overclaimed FALSE (the unforgivable failure): {s['overclaimed_false']}**",
           f"- **Overclaimed TRUE (also an overclaim): {s['overclaimed_true']}**",
-          f"- Wrong verdicts other than overclaims (e.g. MISLEADING where a TRUE/FALSE label stands): {s['abstained_wrong'] - s['overclaimed_false'] - s['overclaimed_true']}"]
+          f"- Wrong verdicts other than overclaims (e.g. MISLEADING where a TRUE/FALSE label stands; ERRORs excluded): {measures(res, failed)['wrong_not_overclaim']['count']}"]
     for l in ("FALSE", "TRUE", "UNVERIFIED"):
         g = [r for r in res if r["label"] == l]
         L.append(f"- Label {l}: {sum(r['got'] == l for r in g)}/{len(g)} correct; {sum(r['got'] == 'UNVERIFIED' for r in g)} abstained as UNVERIFIED")
@@ -374,12 +417,15 @@ def build_report(res, meta, degraded, partial, failed, docs=None):
     for lg in [x for x in LANGS if x in bl] + [x for x in bl if x not in LANGS]:
         d = bl[lg]
         L.append(f"| {lg} | {d['n']} | {d['correct']} | {d['abstained']} | {d['overclaimed_false']} | {d['overclaimed_true']} |")
+    k_unv = sum(r["label"] == "UNVERIFIED" for r in res)
     L += ["", "Abstained = Sach said UNVERIFIED where the label was not UNVERIFIED (safe but a miss).", "",
+          f"The site card's 'abstained' figure counts every such UNVERIFIED answer across all labels; the abstention rate in Measures counts only "
+          f"TRUE/FALSE-labelled claims. The {k_unv} UNVERIFIED-labelled controls are correct when Sach says UNVERIFIED, so they are in neither count.", "",
           "## Every claim", "", "| Claim | Lang | Label | Sach | Result |", "|---|---|---|---|---|"]
     for r in res:
         o = outcome(r)
         tag = {"correct": "ok", "abstained": "miss (abstained)", "overclaim_false": "OVERCLAIM (FALSE)",
-               "overclaim_true": "OVERCLAIM (TRUE)", "wrong_other": "WRONG"}[o]
+               "overclaim_true": "OVERCLAIM (TRUE)", "wrong_other": "WRONG", "error": "ERROR"}[o]
         L.append(f"| {_esc(r['claim'])} | {r['lang']} | {r['label']} | {r['got']} | {tag} |")
     L += failed_table(res)
     L += ["", "## Limitations (read before citing these numbers)",
@@ -419,6 +465,12 @@ def archive_previous(commit, docs=None):
     dest.write_text(banner + text, encoding="utf-8")
     cur.unlink()
     return dest
+
+
+def summary_payload(res, meta, eval_hash, judges, failed=0):
+    """data/eval_summary.json: the old keys (same meaning) plus 'measures'. Written only for a clean full run, so it has no ERROR rows in practice."""
+    return {**summarize(res), "commit": meta["commit"], "dirty": meta["dirty"], "date": meta["date"], "by_lang": by_lang(res),
+            "eval_set_hash": eval_hash, "retrievers": meta["retrievers"], "judges": judges, "measures": measures(res, failed)}
 
 
 # ---------- main ----------
@@ -492,9 +544,7 @@ def main(argv=None):
         archive_previous(commit)
         report = build_report(res, meta, degraded, partial, failed)    # rebuilt so "Previous runs" lists the file just archived
         target = DOCS / "evaluation.md"
-        json.dump({**summarize(res), "commit": commit, "dirty": dirty, "date": meta["date"], "by_lang": by_lang(res),
-                   "eval_set_hash": key["eval_hash"], "retrievers": meta["retrievers"], "judges": judges,
-                   "measures": measures(res, failed)},
+        json.dump(summary_payload(res, meta, key["eval_hash"], judges, failed),
                   open(SUMMARY, "w", encoding="utf-8"))   # read by the website
     target.write_text(report, encoding="utf-8")
     print("\n".join(report.split("\n")[:14]))

@@ -234,3 +234,117 @@ def test_per_claim_record_is_written_under_the_checkpoint_lock():
     body = src.split("def one(i, r):", 1)[1].split("todo = []", 1)[0]
     assert "with lock:" in body and body.index("with lock:") < body.index("save_checkpoint(ckpt)")
     assert "time.monotonic()" in body
+
+
+# ---------------------------------------------------------------- headline, measures table and JSON agree (defect 1)
+def _scenario():
+    """10 claims: 2 exact, 1 wrong-not-overclaim, 2 FALSE overclaims, 2 TRUE overclaims, 2 abstentions on decisive labels, 1 ERROR."""
+    spec = [("FALSE", "FALSE"), ("TRUE", "TRUE"),                       # exact
+            ("FALSE", "MISLEADING"),                                    # wrong, not an overclaim
+            ("TRUE", "FALSE"), ("TRUE", "FALSE"),                       # overclaim FALSE
+            ("FALSE", "TRUE"), ("FALSE", "TRUE"),                       # overclaim TRUE
+            ("TRUE", "UNVERIFIED"), ("FALSE", "UNVERIFIED"),            # abstained on decisive labels
+            ("TRUE", "ERROR")]                                          # the check raised
+    return [{"claim": f"s{i} {label} {got}", "label": label, "got": got, "lang": "en", "layer": "live", "seeded": False,
+             "reasons": [], "cites": [], "ms": 100.0, "degraded": False, "search_status": "ok", "error": None, "error_msg": None}
+            for i, (label, got) in enumerate(spec)]
+
+
+def _meta():
+    return {"commit": "c", "dirty": False, "date": "2026-11-13", "mode": "m", "retrievers": [], "judges": []}
+
+
+def test_scenario_headline_table_and_json_agree_exactly(tmp_path):
+    ev = _run_eval()
+    res = _scenario()
+    s = ev.summarize(res)
+    m = ev.measures(res, 0)
+    rep = ev.build_report(res, _meta(), True, "", 0, docs=tmp_path)
+    headline = next(l for l in rep.splitlines() if l.startswith("- Wrong verdicts other than overclaims"))
+    table = next(l for l in rep.splitlines() if l.startswith("| Wrong but not an overclaim"))
+    table_count = int(table.split("|")[2].strip())
+    payload = ev.summary_payload(res, _meta(), "hash", [], 0)
+    # counted by hand: 2 correct, 2 FALSE overclaims, 2 TRUE overclaims, 1 wrong-not-overclaim, 2 abstentions, 1 ERROR
+    assert (s["n"], s["correct"], s["overclaimed_false"], s["overclaimed_true"], s["abstained"]) == (10, 2, 2, 2, 2)
+    assert int(headline.rsplit(": ", 1)[1]) == 1 == table_count == m["wrong_not_overclaim"]["count"]
+    assert payload["measures"]["wrong_not_overclaim"]["count"] == 1 == payload["measures"]["wrong_not_overclaim"]["n"] - 9
+    assert payload["abstained_wrong"] == 5          # old key, old meaning: 2 + 2 overclaims + 1 wrong verdict; the ERROR is not in it
+    assert payload["measures"]["failures"]["errors"] == 1 and payload["measures"]["accuracy"] == {"correct": 2, "n": 10}
+    assert "Exact-match accuracy: **2/10**" in rep
+
+
+def test_an_error_is_not_counted_as_a_wrong_verdict_anywhere():
+    ev = _run_eval()
+    res = [_row("ERROR", "TRUE", error="ValueError")]
+    assert ev.outcome(res[0]) == "error"
+    assert ev.summarize(res)["abstained_wrong"] == 0 and ev.summarize(res)["n"] == 1
+    assert ev.by_lang(res)["en"] == {"n": 1, "correct": 0, "abstained": 0, "overclaimed_false": 0, "overclaimed_true": 0, "wrong_other": 0}
+    assert ev.measures(res)["wrong_not_overclaim"]["count"] == 0
+
+
+# ---------------------------------------------------------------- error_msg: redacted, truncated (defect 2)
+def test_safe_error_message_redacts_long_runs_and_truncates():
+    ev = _run_eval()
+    key = "sk" + "Ab3" * 10                       # 32 alphanumeric characters, looks like a key
+    msg = ev.safe_error_message(ValueError(f"auth failed for {key} " + "detail " * 60))
+    assert key not in msg and "[redacted]" in msg
+    assert len(msg) <= 160 and msg.endswith("...")
+    assert ev.safe_error_message(ValueError("short and plain")) == "short and plain"
+    assert ev.safe_error_message(ValueError("x" * 30 + " " + "y" * 23)) == "[redacted] " + "y" * 23   # 23 is below the 24 threshold
+
+
+def test_run_stores_error_msg_and_the_failed_table_shows_it(monkeypatch):
+    ev = _run_eval()
+    monkeypatch.setattr(ev, "save_checkpoint", lambda c: None)
+    secret = "Q" * 40
+
+    def check(text, ret, llm, log=False):
+        raise RuntimeError(f"token {secret} rejected " + "x" * 300)
+    monkeypatch.setattr(ev, "check_forward", check)
+    rows = [{"claim": "boom", "label": "TRUE", "lang": "en", "seeded": False}]
+    ck = {"key": {}, "results": {}, "llm_failures": 0, "search_failures": 0, "no_llm": False}
+    out = ev.run(rows, [], _Llm(), ck, out=lambda *_: None)
+    got = ck["results"]["boom"]
+    assert got["error"] == "RuntimeError" and got["got"] == "ERROR"
+    assert secret not in got["error_msg"] and "[redacted]" in got["error_msg"] and len(got["error_msg"]) <= 160
+    text = "\n".join(ev.failed_table(out))
+    assert "Error message" in text and "[redacted]" in text and "rejected" in text
+
+
+# ---------------------------------------------------------------- Why column (defect 4)
+def test_why_column_gives_every_reason_and_failed_table_shows_it():
+    ev = _run_eval()
+    cases = {
+        "judge problem, wrong verdict": _row("MISLEADING", "TRUE", degraded=True),
+        "search failure, overclaim": _row("FALSE", "TRUE", search_status="partial"),
+        "abstained": _row("UNVERIFIED", "FALSE"),
+        "overclaim": _row("TRUE", "FALSE"),
+        "error": _row("ERROR", "TRUE", error="KeyError"),
+        "judge problem, search failure, abstained": _row("UNVERIFIED", "TRUE", degraded=True, search_status="down"),
+    }
+    for expected, r in cases.items():
+        r["claim"] = f"why {expected}"
+        assert ", ".join(ev.why_tags(r)) == expected
+    text = "\n".join(ev.failed_table(list(cases.values()) + [_row("FALSE", "FALSE")]))
+    assert "| Why |" in text
+    for expected, r in cases.items():
+        assert f"| {expected} |" in text
+    why_cells = [l.split("|")[8].strip() for l in text.splitlines() if l.startswith("| why ")]
+    assert len(why_cells) == len(cases) and all(c != "-" for c in why_cells)        # every listed row has a reason
+
+
+# ---------------------------------------------------------------- site card label (defect 3) and docs (defects 3 and 5)
+def test_report_says_what_the_site_card_abstained_counts():
+    ev = _run_eval()
+    res = [_row("UNVERIFIED", "UNVERIFIED"), _row("UNVERIFIED", "UNVERIFIED"), _row("UNVERIFIED", "TRUE"), _row("FALSE", "FALSE")]
+    rep = ev.build_report(res, _meta(), False, "", 0, docs=None)
+    assert "The site card's 'abstained' figure counts every such UNVERIFIED answer across all labels" in rep
+    assert "the abstention rate in Measures counts only TRUE/FALSE-labelled claims" in rep
+    assert "The 2 UNVERIFIED-labelled controls are correct" in rep
+
+
+def test_method_doc_explains_the_card_number_and_the_layers():
+    doc = (ROOT / "docs" / "evaluation-method.md").read_text(encoding="utf-8")
+    assert "Site card \"abstained\"" in doc and "only because the set has no MISLEADING rows" in doc
+    latency_line = next(l for l in doc.splitlines() if l.startswith("- **Latency**"))
+    assert "`mixed`" in latency_line and "`error`" in latency_line
