@@ -1,0 +1,140 @@
+{
+  "_about": "Verified official addresses of brands and bodies that scammers imitate most in India. Single source of truth for the link checker (sach/linkcheck.py). Every domain has an evidence URL and the date it was checked. A domain is listed only if an official page confirms it: the brand's own site redirecting to or linking it, or a regulator/government page that links it. Anything that could not be confirmed is NOT here (see docs/link-checker.md, 'Dropped'). To add one: see docs/link-checker.md.",
+  "checked": "2026-11-13",
+  "brands": [
+    {"brand": "State Bank of India", "short": "SBI", "tokens": ["sbi", "onlinesbi", "sbicard", "sbilife", "sbimf", "yono"], "kind": "bank", "domains": [
+      {"d": "sbi.bank.in", "evidence": "https://sbi.bank.in/", "how": "SBI's own site on the RBI-mandated .bank.in zone (RBI circular RBI/2025-26/28)"},
+      {"d": "sbi.co.in", "evidence": "https://sbi.co.in/redirect/", "how": "old SBI address; redirects to https://sbi.bank.in/"},
+      {"d": "onlinesbi.sbi", "evidence": "https://onlinesbi.sbi/", "how": "SBI net banking; redirects to https://onlinesbi.sbi.bank.in/"},
+      {"d": "sbicard.com", "body": "SBI Card", "evidence": "https://www.sbicard.com/", "how": "SBI Card's own site (own-site evidence only)"},
+      {"d": "sbilife.co.in", "body": "SBI Life Insurance", "evidence": "https://irdai.gov.in/life2", "how": "linked from the IRDAI life insurers list (https://www.sbilife.co.in/en/about-us/investor-relations)"},
+      {"d": "sbimf.com", "body": "SBI Mutual Fund", "evidence": "https://www.sbimf.com/", "how": "SBI Mutual Fund's own site (own-site evidence only)"}
+    ]},
+    {"brand": "HDFC Bank", "short": "HDFC", "tokens": ["hdfc", "hdfcbank", "hdfclife", "hdfcergo", "hdfcfund"], "kind": "bank", "domains": [
+      {"d": "hdfc.bank.in", "evidence": "https://www.hdfc.bank.in/", "how": "HDFC Bank's own site on the .bank.in zone"},
+      {"d": "hdfcbank.com", "evidence": "https://www.hdfcbank.com/", "how": "old HDFC Bank address; redirects to https://www.hdfc.bank.in/"},
+      {"d": "hdfclife.com", "body": "HDFC Life Insurance", "evidence": "https://www.hdfc.bank.in/", "how": "linked from HDFC Bank's home page and from the IRDAI life insurers list https://irdai.gov.in/life2"},
+      {"d": "hdfcfund.com", "body": "HDFC Mutual Fund", "evidence": "https://www.hdfc.bank.in/", "how": "linked from HDFC Bank's home page"},
+      {"d": "hdfcergo.com", "body": "HDFC ERGO General Insurance", "evidence": "https://www.hdfc.bank.in/", "how": "linked from HDFC Bank's home page"}
+    ]},
+    {"brand": "ICICI Bank", "short": "ICICI", "tokens": ["icici", "icicibank", "iciciprulife"], "kind": "bank", "domains": [
+      {"d": "icici.bank.in", "evidence": "https://www.icici.bank.in/", "how": "ICICI Bank's own site on the .bank.in zone"},
+      {"d": "icicibank.com", "evidence": "https://www.icicibank.com/", "how": "old ICICI Bank address; redirects to https://www.icici.bank.in/"},
+      {"d": "iciciprulife.com", "body": "ICICI Prudential Life Insurance", "evidence": "https://irdai.gov.in/life2", "how": "linked from the IRDAI life insurers list"}
+    ]},
+    {"brand": "Axis Bank", "short": "Axis Bank", "tokens": ["axisbank"], "kind": "bank", "domains": [
+      {"d": "axis.bank.in", "evidence": "https://www.axis.bank.in/", "how": "Axis Bank's own site on the .bank.in zone"},
+      {"d": "axisbank.com", "evidence": "https://axisbank.com/", "how": "old Axis Bank address; redirects to https://www.axis.bank.in/"}
+    ]},
+    {"brand": "Punjab National Bank", "short": "PNB", "tokens": ["pnb", "pnbindia"], "kind": "bank", "domains": [
+      {"d": "pnb.bank.in", "evidence": "https://pnb.bank.in/", "how": "PNB's own site on the .bank.in zone"},
+      {"d": "pnbindia.in", "evidence": "https://pnbindia.in/", "how": "old PNB address; redirects to https://pnb.bank.in/"}
+    ]},
+    {"brand": "Bank of Baroda", "short": "Bank of Baroda", "tokens": ["bankofbaroda"], "kind": "bank", "domains": [
+      {"d": "bankofbaroda.bank.in", "evidence": "https://bankofbaroda.bank.in/", "how": "Bank of Baroda's own site on the .bank.in zone"},
+      {"d": "bankofbaroda.in", "evidence": "https://bankofbaroda.in/", "how": "old address; redirects to https://bankofbaroda.bank.in/"},
+      {"d": "bankofbaroda.com", "evidence": "https://bankofbaroda.com/", "how": "old address; redirects to https://bankofbaroda.bank.in/"}
+    ]},
+    {"brand": "Kotak Mahindra Bank", "short": "Kotak", "tokens": ["kotak"], "kind": "bank", "domains": [
+      {"d": "kotak.bank.in", "evidence": "https://www.kotak.bank.in/en/home.html", "how": "Kotak's own site on the .bank.in zone"},
+      {"d": "kotak.com", "evidence": "https://kotak.com/", "how": "old Kotak address; redirects to https://www.kotak.bank.in/"}
+    ]},
+    {"brand": "Canara Bank", "short": "Canara Bank", "tokens": ["canarabank", "canara"], "kind": "bank", "domains": [
+      {"d": "canarabank.bank.in", "evidence": "https://www.canarabank.bank.in/", "how": "Canara Bank's own site on the .bank.in zone"},
+      {"d": "canarabank.com", "evidence": "https://canarabank.com/", "how": "old address; redirects to https://www.canarabank.bank.in/"}
+    ]},
+    {"brand": "Union Bank of India", "short": "Union Bank", "tokens": ["unionbankofindia", "unionbank"], "kind": "bank", "domains": [
+      {"d": "unionbankofindia.bank.in", "evidence": "https://www.unionbankofindia.bank.in/en/home", "how": "Union Bank's own site on the .bank.in zone"}
+    ]},
+    {"brand": "IDFC FIRST Bank", "short": "IDFC FIRST", "tokens": ["idfc", "idfcfirst", "idfcfirstbank"], "kind": "bank", "domains": [
+      {"d": "idfcfirst.bank.in", "evidence": "https://www.idfcfirst.bank.in/", "how": "IDFC FIRST Bank's own site on the .bank.in zone"},
+      {"d": "idfcfirstbank.com", "evidence": "https://idfcfirstbank.com/", "how": "old address; redirects to https://www.idfcfirst.bank.in/"}
+    ]},
+    {"brand": "Yes Bank", "short": "Yes Bank", "tokens": ["yesbank"], "kind": "bank", "domains": [
+      {"d": "yes.bank.in", "evidence": "https://www.yes.bank.in/", "how": "Yes Bank's own site on the .bank.in zone"},
+      {"d": "yesbank.in", "evidence": "https://yesbank.in/", "how": "old address; redirects to https://www.yes.bank.in/"}
+    ]},
+    {"brand": "Paytm", "short": "Paytm", "tokens": ["paytm"], "kind": "payments", "domains": [
+      {"d": "paytm.com", "evidence": "https://paytm.com/", "how": "Paytm's own site (own-site evidence only)"}
+    ]},
+    {"brand": "PhonePe", "short": "PhonePe", "tokens": ["phonepe"], "kind": "payments", "domains": [
+      {"d": "phonepe.com", "evidence": "https://www.phonepe.com/", "how": "PhonePe's own site (own-site evidence only)"}
+    ]},
+    {"brand": "Google Pay", "short": "Google Pay", "tokens": ["googlepay", "gpay"], "kind": "payments", "domains": [
+      {"d": "pay.google.com", "evidence": "https://pay.google.com/intl/en_in/about/", "how": "Google Pay's own page for India; only this host, not all of google.com"}
+    ]},
+    {"brand": "NPCI (BHIM, UPI)", "short": "NPCI", "tokens": ["npci", "bhim", "bhimupi"], "kind": "payments", "domains": [
+      {"d": "npci.org.in", "evidence": "https://www.npci.org.in/", "how": "National Payments Corporation of India, operator of UPI and BHIM; already on Sach's official list (docs/sources.md)"}
+    ]},
+    {"brand": "IRCTC", "short": "IRCTC", "tokens": ["irctc"], "kind": "government", "domains": [
+      {"d": "irctc.co.in", "evidence": "https://www.irctc.co.in/", "how": "title 'IRCTC - Official Indian Railway Catering & Tourism Corporation Portal'; already on Sach's official list"}
+    ]},
+    {"brand": "EPFO (Provident Fund)", "short": "EPFO", "tokens": ["epfo", "epfindia", "umang"], "kind": "government", "domains": [
+      {"d": "epfindia.gov.in", "evidence": "https://www.epfindia.gov.in/", "how": "redirects to https://www.epfo.gov.in/ (a .gov.in address)"},
+      {"d": "epfo.gov.in", "body": "EPFO", "evidence": "https://www.epfo.gov.in/", "how": "Employees' Provident Fund Organisation, a .gov.in address"},
+      {"d": "umang.gov.in", "body": "UMANG (Government of India)", "evidence": "https://web.umang.gov.in/", "how": "UMANG government services app site, a .gov.in address"}
+    ]},
+    {"brand": "UIDAI (Aadhaar)", "short": "UIDAI", "tokens": ["uidai", "aadhaar", "aadhar", "myaadhaar"], "kind": "government", "domains": [
+      {"d": "uidai.gov.in", "evidence": "https://uidai.gov.in/", "how": "Unique Identification Authority of India, a .gov.in address"},
+      {"d": "myaadhaar.uidai.gov.in", "body": "UIDAI myAadhaar", "evidence": "https://myaadhaar.uidai.gov.in/", "how": "UIDAI's myAadhaar portal"}
+    ]},
+    {"brand": "Income Tax Department", "short": "Income Tax", "tokens": ["incometax", "incometaxindia", "income-tax"], "kind": "government", "domains": [
+      {"d": "incometax.gov.in", "evidence": "https://www.incometax.gov.in/iec/foportal/", "how": "Income Tax Department e-filing portal, a .gov.in address"}
+    ]},
+    {"brand": "GST Portal", "short": "GST", "tokens": ["gst", "gstin"], "kind": "government", "domains": [
+      {"d": "gst.gov.in", "evidence": "https://www.gst.gov.in/", "how": "Goods and Services Tax portal, a .gov.in address"}
+    ]},
+    {"brand": "DigiLocker", "short": "DigiLocker", "tokens": ["digilocker"], "kind": "government", "domains": [
+      {"d": "digilocker.gov.in", "evidence": "https://www.digilocker.gov.in/", "how": "DigiLocker, a .gov.in address"}
+    ]},
+    {"brand": "PM-KISAN", "short": "PM-KISAN", "tokens": ["pmkisan", "pm-kisan"], "kind": "government", "domains": [
+      {"d": "pmkisan.gov.in", "evidence": "https://pmkisan.gov.in/", "how": "PM-KISAN portal, a .gov.in address (the site's certificate did not verify from the checking machine on 2026-11-13; the address is on the registry-restricted .gov.in zone)"}
+    ]},
+    {"brand": "India Post", "short": "India Post", "tokens": ["indiapost"], "kind": "government", "domains": [
+      {"d": "indiapost.gov.in", "evidence": "https://www.indiapost.gov.in/", "how": "India Post, a .gov.in address"}
+    ]},
+    {"brand": "Life Insurance Corporation of India", "short": "LIC", "tokens": ["lic", "licindia"], "kind": "insurance", "domains": [
+      {"d": "licindia.in", "evidence": "https://irdai.gov.in/life2", "how": "listed by the insurance regulator IRDAI (https://www.licindia.in/public-disclosure)"}
+    ]},
+    {"brand": "Reliance Jio", "short": "Jio", "tokens": ["jio", "myjio"], "kind": "telecom", "domains": [
+      {"d": "jio.com", "evidence": "https://www.ril.com/", "how": "linked from the home page of its parent Reliance Industries (https://www.jio.com/)"}
+    ]},
+    {"brand": "Airtel", "short": "Airtel", "tokens": ["airtel"], "kind": "telecom", "domains": [
+      {"d": "airtel.in", "evidence": "https://www.airtel.in/", "how": "Airtel's own site (own-site evidence only)"}
+    ]},
+    {"brand": "Vi (Vodafone Idea)", "short": "Vi", "tokens": ["myvi", "vodafoneidea"], "kind": "telecom", "domains": [
+      {"d": "myvi.in", "evidence": "https://www.myvi.in/", "how": "Vi's own site (own-site evidence only)"}
+    ]},
+    {"brand": "BSNL", "short": "BSNL", "tokens": ["bsnl"], "kind": "telecom", "domains": [
+      {"d": "bsnl.co.in", "evidence": "https://bsnl.co.in/", "how": "BSNL's own site (own-site evidence only)"}
+    ]},
+    {"brand": "Amazon", "short": "Amazon", "tokens": ["amazon"], "kind": "shopping", "domains": [
+      {"d": "amazon.in", "evidence": "https://www.amazon.in/", "how": "Amazon India's own site (own-site evidence only)"},
+      {"d": "amazon.com", "body": "Amazon", "evidence": "https://www.amazon.com/", "how": "Amazon's own site (own-site evidence only)"}
+    ]},
+    {"brand": "Flipkart", "short": "Flipkart", "tokens": ["flipkart"], "kind": "shopping", "domains": [
+      {"d": "flipkart.com", "evidence": "https://www.flipkart.com/", "how": "Flipkart's own site (own-site evidence only)"}
+    ]}
+  ],
+  "dropped": [
+    {"d": "unionbankofindia.co.in", "brand": "Union Bank of India", "why": "certificate hostname mismatch / timeout from the checking machine on 2026-11-13; could not confirm"},
+    {"d": "bhimupi.org.in", "brand": "BHIM", "why": "certificate did not verify on 2026-11-13 and NPCI's pages did not link it; BHIM is covered by npci.org.in"},
+    {"d": "icicilombard.com", "brand": "ICICI", "why": "not checked against an official page in this pass"},
+    {"d": "yesbank.bank.in", "brand": "Yes Bank", "why": "does not exist (the site is yes.bank.in)"}
+  ],
+  "phones": [
+    {"number": "+918799711259", "display": "+91 87997 11259", "what": "PIB Fact Check WhatsApp number (send a forward to be fact-checked)", "evidence": "https://factcheck.pib.gov.in/", "checked": "2026-11-13", "source_note": "PIB Fact Check page, also used by sach/report.py"},
+    {"number": "1930", "display": "1930", "what": "National Cyber Crime Helpline (report financial fraud)", "evidence": "https://sancharsaathi.gov.in/", "checked": "2026-11-13", "source_note": "Sanchar Saathi (Department of Telecommunications) says to report financial fraud to the cyber-crime helpline 1930"},
+    {"number": "112", "display": "112", "what": "National emergency (police) helpline", "evidence": "https://sancharsaathi.gov.in/", "checked": "2026-11-13", "source_note": "Sanchar Saathi lists the national police helpline as 112"},
+    {"number": "181", "display": "181", "what": "National women's helpline", "evidence": "https://sancharsaathi.gov.in/", "checked": "2026-11-13", "source_note": "Sanchar Saathi lists the national women helpline as 181"},
+    {"number": "1909", "display": "1909", "what": "TRAI Do Not Disturb (DND) number: call or SMS to register your preferences", "evidence": "https://sancharsaathi.gov.in/", "checked": "2026-11-13", "source_note": "Sanchar Saathi: preferences by SMS to short code 1909 or by calling 1909"},
+    {"number": "14422", "display": "14422", "what": "Sanchar Saathi 'Know Your Mobile' SMS short code (send KYM and the 15-digit IMEI)", "evidence": "https://sancharsaathi.gov.in/", "checked": "2026-11-13", "source_note": "Sanchar Saathi page"},
+    {"number": "1800110420", "display": "1800 110 420", "what": "Department of Telecommunications toll-free number for Sanchar Saathi complaints (also 1963)", "evidence": "https://sancharsaathi.gov.in/", "checked": "2026-11-13", "source_note": "Sanchar Saathi page"},
+    {"number": "1947", "display": "1947", "what": "UIDAI (Aadhaar) helpline", "evidence": "https://uidai.gov.in/", "checked": "2026-11-13", "source_note": "UIDAI home page lists 1947 as its contact number"},
+    {"number": "1800 103 0025", "display": "1800 103 0025", "what": "Income Tax Department e-filing helpline (toll free)", "evidence": "https://www.incometax.gov.in/iec/foportal/contact-us", "checked": "2026-11-13", "source_note": "Income Tax Department contact page"}
+  ],
+  "reporting": [
+    {"what": "Report cyber-crime and online financial fraud", "address": "cybercrime.gov.in", "evidence": "https://cybercrime.gov.in/", "checked": "2026-11-13"},
+    {"what": "Report suspicious calls, messages and links (Chakshu)", "address": "sancharsaathi.gov.in", "evidence": "https://sancharsaathi.gov.in/", "checked": "2026-11-13"}
+  ]
+}
