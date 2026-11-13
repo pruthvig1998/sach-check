@@ -159,10 +159,11 @@ def split_message(text: str, limit: int = CHUNK) -> list:
     return out or [text[:limit] or "."]
 
 def format_reply(res: dict) -> str:
-    card = str(res.get("card") or "").strip()
+    from .report import display_card as _dc
+    card = _dc(res).strip()
     parts = [card]
     if res.get("card_en") and res.get("language") != "en":
-        parts.append("In English:\n" + str(res["card_en"]).strip())
+        parts.append("In English:\n" + _dc(res, "card_en").strip())
     seen = set(re.findall(r"https?://\S+", "\n".join(parts)))
     more = []
     for c in res.get("claims") or []:

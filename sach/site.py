@@ -3,10 +3,10 @@ from __future__ import annotations
 import html, json, os
 from urllib.parse import quote
 from . import ledger, match, pwa, share
-from .i18n import LABEL, text_lang
+from .i18n import INCOMPLETE_NOTICE, LABEL, incomplete, text_lang, tr as i18n_tr
 from .lang import SUPPORTED, NAMES, NATIVE, RTL, INDIAN_LANGS, html_lang
 from . import timefmt
-from .report import report_html, card_data_script
+from .report import display_card, report_html, card_data_script
 from .ocr import OCR_BLOCK
 from .scamsigns import CSS as SIGNS_CSS, signs_html
 from .siteurl import site_url        # noqa: F401  (re-exported: the one place that knows the site's public address)
@@ -599,7 +599,11 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
             vcell, note = f'<span class="tag {c["verdict"]}">{c["verdict"]}</span>', esc(c["reason_code"].replace("_", " "))
         rows += (f'<tr role="row"><td role="cell" data-label="Claim">{esc(c["claim"]["text"])}<br><span class="note">{esc(c["claim"]["domain"])} · {note}</span></td>'
                  f'<td role="cell" data-label="Verdict">{vcell}</td><td role="cell" data-label="Citations">{cites}</td></tr>')
-    card = esc(res["card"])
+    card = esc(display_card(res))
+    inc_html = ""
+    if incomplete(res):             # shown first, above the card and its buttons: the check did not finish, which is not "nothing found"
+        inc_html = (f'<div class="honest incomplete" role="status" style="margin:0 0 14px"><p style="margin:0">'
+                    f'<b>{esc(i18n_tr(INCOMPLETE_NOTICE, text_lang(res.get("language", "en"))))}</b></p></div>')
     softtip = ""
     if tip_config() and v in TIP_QUIPS and not ms:
         softtip = f'<p class="softtip note">{esc(TIP_QUIPS[v])} <a href="/#tip">Chip in for the corrections desk ☕</a> (optional; never affects a verdict).</p>'
@@ -614,7 +618,7 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
     if res.get("card_en"):
         said = "".join(f'<li><span class="note">{esc(c["claim"]["text"])}</span><br><b>{esc(c["english"])}</b></li>' for c in res["claims"] if c.get("english"))
         english = (f'<div class="honest" style="margin-top:22px;border-left-color:var(--true)" id="english"><b>What this means in English</b>'
-                   f'<div class="bubble" style="margin:10px 0;background:var(--paper)"><span id="cardtext_en">{esc(res["card_en"])}</span></div>'
+                   f'<div class="bubble" style="margin:10px 0;background:var(--paper)"><span id="cardtext_en">{esc(display_card(res, "card_en"))}</span></div>'
                    + (f'<p class="note" style="margin:8px 0 4px">We understood the forward as:</p><ul style="padding-left:18px;margin:0">{said}</ul>' if said else
                       ('<p class="note" style="margin:8px 0 0">English rendering of the claim itself was not available for this check.</p>' if res.get('input_language', 'en') != 'en' else ''))
                    + '<div class="row"><button class="btn ghost" id="copy2" type="button">Copy both languages</button></div></div>')
@@ -640,7 +644,7 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
                  quote("Claim(s):\n" + "\n".join("- " + c["claim"]["text"] for c in res["claims"]) + f"\n\n{issue_what}\nWhat is wrong:\n"))
     panel = match.match_panel(res, text, lang_choice) + match.escalation_html(res, site_url())
     return f"""<div class="result" id="result"><div>{stamp_html}</div>
-<div><p class="kicker">Forward this card back to the group · reply language: {esc(LANG_NAME.get(res['language'], res['language'].upper()))}{' (your choice)' if chosen else ' (matched to the forward)'}</p>
+<div>{inc_html}<p class="kicker">Forward this card back to the group · reply language: {esc(LANG_NAME.get(res['language'], res['language'].upper()))}{' (your choice)' if chosen else ' (matched to the forward)'}</p>
 {cachednote}<div class="bubble"{card_attrs(res.get('language', 'en'))}><span id="cardtext">{card}</span><small dir="ltr">Sach ✓✓</small></div>
 <div class="row actions" role="group" aria-label="Share this verdict">{share_btns}<button class="btn ghost" id="copy" type="button">Copy card</button>
 <button class="btn ghost" id="dl" type="button">Download image</button><button class="btn ghost" id="img-share" type="button" hidden>Share image</button>{listen_buttons(res.get('language', 'en'), bool(res.get('card_en')))}</div>

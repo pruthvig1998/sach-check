@@ -17,7 +17,7 @@ from __future__ import annotations
 import html, json, unicodedata
 from urllib.parse import quote
 from . import timefmt
-from .i18n import LABEL, text_lang
+from .i18n import INCOMPLETE_CARD, LABEL, WHY, incomplete, text_lang, tr
 from .models import AUTHORITATIVE
 from .siteurl import site_url
 
@@ -52,6 +52,34 @@ def _clip(text: str, limit: int) -> str:
         while cut > 0 and (unicodedata.category(text[cut]) in _MARKS or text[cut - 1] in _VIRAMAS):
             cut -= 1
     return text[:cut].rstrip() + "…"
+
+
+def driver_index(res: dict) -> int:
+    """Index of the claim that DRIVES the overall verdict: the first claim whose own verdict equals the overall one (the first FALSE for
+    FALSE, the first MISLEADING for MISLEADING, ...). Falls back to the first claim (0) when none matches."""
+    claims = res.get("claims") or []
+    v = res.get("verdict")
+    return next((i for i, c in enumerate(claims) if c.get("verdict") == v), 0)
+
+
+def driver_claim(res: dict):
+    """The claim that drives the overall verdict, or None when there are no claims. Never pair the overall verdict with claims[0]."""
+    claims = res.get("claims") or []
+    return claims[driver_index(res)] if claims else None
+
+
+def display_card(res: dict, key: str = "card") -> str:
+    """The card text as shown and shared. When the check was incomplete, the UNVERIFIED sentence ('no official source ... confirms or
+    denies') is replaced by a statement that the check could not finish. Display only: the verdict and stored result are unchanged."""
+    card = str(res.get(key) or "")
+    if not incomplete(res):
+        return card
+    new = tr(INCOMPLETE_CARD, text_lang(res.get("language", "en")) if key == "card" else "en")
+    for table in WHY.values():
+        old = table.get("UNVERIFIED")
+        if old:
+            card = card.replace(old, new)
+    return card
 
 
 def false_claims(result: dict) -> list:
@@ -132,13 +160,12 @@ def card_data(res: dict) -> dict:
     v = res["verdict"]
     lang = res.get("language", "en")
     labels = LABEL.get(lang, LABEL["en"])
-    lines = str(res.get("card", "")).split("\n")
-    claims = res.get("claims") or []
-    cites = [x for c in claims for x in (c.get("citations") or [])]
+    lines = display_card(res).split("\n")
+    drv = driver_claim(res)                         # every field below describes the claim that drives the overall verdict
+    cites = list((drv or {}).get("citations") or [])
     lead = ([x for x in cites if x.get("tier") in AUTHORITATIVE] or cites or [None])[0]
-    ms = [c for c in claims if c.get("layer") == "match" and c.get("match")]
-    if ms:       # a matched verdict is THEIR verdict: the image names the checker, the review date and their rating, never Sach's label
-        c0 = next((c for c in ms if c["verdict"] == v), ms[0])
+    if drv is not None and drv.get("layer") == "match" and drv.get("match"):   # a matched verdict is THEIR verdict: checker, date, their rating
+        c0 = drv
         m = c0["match"]
         word = str(m.get("rating_text", ""))
         return {"verdict": c0["verdict"], "word": word, "word_en": word, "lang": "en",
@@ -147,7 +174,7 @@ def card_data(res: dict) -> dict:
                 "match": {"checker": m["checker"], "review_url": m["review_url"], "review_date": m["review_date"], "rating_text": word}}
     return {"verdict": v, "word": labels.get(v, v), "word_en": LABEL["en"].get(v, v), "lang": text_lang(lang),
             "why": lines[1] if len(lines) > 1 else "",
-            "claim": _clean(claims[0]["claim"]["text"]) if claims else "",
+            "claim": _clean(drv["claim"]["text"]) if drv else "",
             "source": _clean(lead.get("source", "")) if lead else "",
             "date": str(lead.get("date_accessed", ""))[:10] if lead else ""}
 

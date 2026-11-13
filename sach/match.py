@@ -33,7 +33,7 @@ from urllib.parse import quote
 from . import index as pib_index
 from . import pibposts
 from .fetch import is_factchecker, host_of
-from .i18n import EMOJI, tr
+from .i18n import EMOJI, INCOMPLETE_ESC_NOTE, incomplete, text_lang, tr
 from .models import Claim, ClaimVerdict, FALSE, MISLEADING, TRUE, TIER_PIB, TIER_FACTCHECKER
 from .report import PIB_WHATSAPP_DIGITS, PIB_WHATSAPP_DISPLAY, PIB_PORTAL, _clean, _clip
 from .stance import (_NEGATION, _META, _GENERIC, _STOP, _stem, critical_words, direction_conflict, distinctive, has_injection,
@@ -445,12 +445,15 @@ ESC_NOTE = {"en": "We found no official source for this. Tap a name to open What
             "hi": "हमें इसके लिए कोई सरकारी स्रोत नहीं मिला। किसी नाम पर टैप करें, WhatsApp आपके सवाल के साथ खुलेगा; भेजना आपको खुद है। Sach कुछ नहीं भेजता।",   # NOT NATIVE-REVIEWED
             "te": "దీనికి అధికారిక ఆధారం దొరకలేదు. ఒక పేరును నొక్కితే WhatsApp మీ ప్రశ్నతో తెరుచుకుంటుంది; మీరే పంపండి. Sach ఏమీ పంపదు."}   # NOT NATIVE-REVIEWED
 
-def escalation_text(claim: str, site: str) -> str:
-    return f"Please fact-check this message: {_clip(_clean(claim), 600).rstrip(' .!?')}. Checked on Sach ({site}) and no official source was found."
+def escalation_text(claim: str, site: str, incomplete: bool = False) -> str:
+    head = f"Please fact-check this message: {_clip(_clean(claim), 600).rstrip(' .!?')}."
+    if incomplete:            # the check did not finish: never say that no official source was found
+        return f"{head} Checked on Sach ({site}). Sach could not finish checking this."
+    return f"{head} Checked on Sach ({site}) and no official source was found."
 
-def escalation_options(claim: str, site: str) -> list[dict]:
+def escalation_options(claim: str, site: str, incomplete: bool = False) -> list[dict]:
     """PIB Fact Check first, then each verified independent tipline. Plain wa.me links with the question prefilled; Sach sends nothing."""
-    body = quote(escalation_text(claim, site), safe="")
+    body = quote(escalation_text(claim, site, incomplete), safe="")
     opts = [{"name": PIB_NAME, "number": PIB_WHATSAPP_DISPLAY, "url": f"https://wa.me/{PIB_WHATSAPP_DIGITS}?text={body}", "source": PIB_PORTAL}]
     for name, display, digits, src in TIPLINES:
         opts.append({"name": name, "number": display, "url": f"https://wa.me/{digits}?text={body}", "source": src})
@@ -468,17 +471,21 @@ def escalation_html(res: dict, site: str) -> str:
         return ""
     lang = res.get("language", "en")
     e = html.escape
+    inc = incomplete(res)
     items = "".join(f'<li><a class="btn ghost esc-btn" href="{e(o["url"])}" target="_blank" rel="noopener">'
-                    f'<b>{e(o["name"])}</b><span>{e(o["number"])}</span></a></li>' for o in escalation_options(escalation_claim(res), site))
+                    f'<b>{e(o["name"])}</b><span>{e(o["number"])}</span></a></li>'
+                    for o in escalation_options(escalation_claim(res), site, inc))
+    note = tr(INCOMPLETE_ESC_NOTE, text_lang(lang)) if inc else tr(ESC_NOTE, lang)
     return (f'<section class="escalate" id="escalate" aria-labelledby="esc-h"><h3 id="esc-h">{e(tr(ESC_HEAD, lang))}</h3>'
-            f'<p class="note">{e(tr(ESC_NOTE, lang))}</p><ul class="esc-list">{items}</ul></section>')
+            f'<p class="note">{e(note)}</p><ul class="esc-list">{items}</ul></section>')
 
 def escalation_lines(res: dict, site: str) -> str:
     """Plain text for Telegram: name, number and the prefilled WhatsApp link."""
     if not escalated(res):
         return ""
     lang = res.get("language", "en")
-    rows = [f"- {o['name']} ({o['number']}): {o['url']}" for o in escalation_options(escalation_claim(res), site)]
+    rows = [f"- {o['name']} ({o['number']}): {o['url']}"
+            for o in escalation_options(escalation_claim(res), site, incomplete(res))]
     return tr(ESC_HEAD, lang) + ":\n" + "\n".join(rows)
 
 # ------------------------------------------------------------------------------------------------ result page pieces

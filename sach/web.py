@@ -12,6 +12,7 @@ from . import telegram_bot as tg
 from . import ocr
 from . import match, pwa, share, claimreview, trending, linkcheck
 from . import siteurl
+from .i18n import incomplete
 from . import limits
 from .legal import PAGES as LEGAL_PAGES, legal_page
 from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_png, tip_qr_svg, upi_link
@@ -411,7 +412,7 @@ class Handler(BaseHTTPRequestHandler):
         res = dict(res); res["warning_signs"] = scam_signs(text)   # advice only: from THIS request's text, never cached or stored
         if want_json:
             if match.escalated(res):
-                res["escalation_options"] = match.escalation_options(match.escalation_claim(res), siteurl.site_url(self))
+                res["escalation_options"] = match.escalation_options(match.escalation_claim(res), siteurl.site_url(self), incomplete(res))
             return self._json(res)
         rid = share.ensure_share(text, None if lang_choice == "auto" else lang_choice, res, MAX_CHARS)
         link = share.permalink(rid, siteurl.site_url(self)) if rid else None
