@@ -54,10 +54,11 @@ def check(providers=None, out=print) -> int:
         except Exception as e:
             bad += 1
             out(f"{name:8} FAIL {classify(e)}")
-    if not configured:
+    if not configured and not bad:
         out("\nNo search keys: Sach runs on its built-in PIB list only (search status 'off').")
     elif bad:
-        out(f"\n{bad} problem(s). A failing provider is skipped automatically at runtime (402/401/403: for 6 hours; 429: for its Retry-After).")
+        out(f"\n{bad} problem(s). A failing provider is skipped automatically at runtime: Brave and Tavily 401/402/403/432/433 for 6 hours; "
+            "grounded 401/403 for 10 minutes; 429 for its Retry-After.")
     else:
         out("\nAll configured search providers healthy.")
     return bad

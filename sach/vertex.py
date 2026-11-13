@@ -203,9 +203,7 @@ def _call(opener, req, timeout, what, auth=False):
         if auth and code in (400, 401, 403):
             code = 401
         raise VertexError("vertex: %s failed with HTTP %d" % (what, code), code, headers)
-    err = VertexError("vertex: %s failed (%s)" % (what, "network error" if kind == "network" else "unreadable reply"))
-    err.before_google = kind == "network"                  # no answer came back at all: the call was never served (see not_billed)
-    raise err
+    raise VertexError("vertex: %s failed (%s)" % (what, "network error" if kind == "network" else "unreadable reply"))
 
 
 # ---------------------------------------------------------------- token cache
@@ -330,7 +328,10 @@ def seconds_to_utc_midnight(now: float) -> float:
 def models() -> list:
     return [m.strip() for m in os.environ.get("SACH_VERTEX_MODELS", DEFAULT_MODELS).split(",") if m.strip()]
 
-def _reserve(prefix: str, cap: int, st=None, now=None, what: str = "vertex") -> None:
+def reserve_call(st=None, now=None) -> None:
+    """Count one billed call against today's cap. Raises VertexCapReached when the cap is used up (the attempt is given back, a
+    'skipped' counter is bumped). Never raises anything else: a broken store only makes the cap per-instance."""
+    cap = max_per_day()
     if cap <= 0:
         return
     now = time.time() if now is None else now
@@ -338,7 +339,7 @@ def _reserve(prefix: str, cap: int, st=None, now=None, what: str = "vertex") -> 
         st = st or store.get_store()
     except Exception:
         st = None
-    key = "%s:d:%d" % (prefix, int(now // 86400))
+    key = _day_key(now)
     n, _ = limits._incr(st, key, 2 * 86400) if st is not None else (limits._mem_incr(key), False)
     if n > cap:
         try:
@@ -346,52 +347,18 @@ def _reserve(prefix: str, cap: int, st=None, now=None, what: str = "vertex") -> 
                 st.incr(key, -1)
             else:
                 limits._mem_incr(key, -1)
-            limits._incr(st, "%s:skipped:%d" % (prefix, int(now // 86400)), 2 * 86400) if st is not None else None
+            limits._incr(st, "vx:skipped:%d" % int(now // 86400), 2 * 86400) if st is not None else None
         except Exception:
             pass
-        raise VertexCapReached("%s: daily call cap reached (resumes 00:00 UTC)" % what)
+        raise VertexCapReached("vertex: daily call cap reached (resumes 00:00 UTC)")
 
-def reserve_call(st=None, now=None) -> None:
-    """Count one billed call against today's cap. Raises VertexCapReached when the cap is used up (the attempt is given back, a
-    'skipped' counter is bumped). Never raises anything else: a broken store only makes the cap per-instance."""
-    _reserve("vx", max_per_day(), st, now)
-
-def _release(prefix: str, cap: int, st=None, now=None) -> None:
-    """Give one reserved call back (the mirror of _reserve's decrement). Never raises."""
-    if cap <= 0:
-        return
+def usage(st=None, now=None) -> dict:
+    """For the status page: counts only, never any credential material."""
     now = time.time() if now is None else now
+    out = {"calls_today": 0, "max_per_day": max_per_day(), "skipped_over_cap_today": 0}
     try:
         st = st or store.get_store()
-    except Exception:
-        st = None
-    key = "%s:d:%d" % (prefix, int(now // 86400))
-    try:
-        if st is not None and getattr(st, "remote", False):
-            st.incr(key, -1)
-        else:
-            limits._mem_incr(key, -1)
-    except Exception:
-        pass
-
-def not_billed(err) -> bool:
-    """True when a failed call never got a served answer from Google, so its reserved slot is given back: a timeout, a network error,
-    401/403 (auth), 5xx. A 429 (rate limited), any 4xx other than 401/403, and a reply that came back but could not be read stay counted."""
-    if isinstance(err, TimeoutError):
-        return True
-    if isinstance(err, VertexCapReached) or not isinstance(err, VertexError):
-        return False
-    if getattr(err, "before_google", False):
-        return True
-    code = err.code
-    return code in (401, 403) or (isinstance(code, int) and code >= 500)
-
-def _usage(prefix: str, cap: int, st=None, now=None) -> dict:
-    now = time.time() if now is None else now
-    out = {"calls_today": 0, "max_per_day": cap, "skipped_over_cap_today": 0}
-    try:
-        st = st or store.get_store()
-        kd, ks = "%s:d:%d" % (prefix, int(now // 86400)), "%s:skipped:%d" % (prefix, int(now // 86400))
+        kd, ks = _day_key(now), "vx:skipped:%d" % int(now // 86400)
         c = st.counters([kd, ks]) if getattr(st, "remote", False) else {}
         with limits._mem_lock:
             mem = dict(limits._mem)
@@ -400,10 +367,6 @@ def _usage(prefix: str, cap: int, st=None, now=None) -> dict:
     except Exception:
         pass
     return out
-
-def usage(st=None, now=None) -> dict:
-    """For the status page: counts only, never any credential material."""
-    return _usage("vx", max_per_day(), st, now)
 
 
 # ---------------------------------------------------------------- Grounding with Google Search (used by sach/search.py)
@@ -417,16 +380,61 @@ def grounded_model() -> str:
 def grounded_max_per_day() -> int:
     return limits._env_int("SACH_GROUNDED_MAX_PER_DAY", GROUNDED_DEFAULT_MAX_PER_DAY)
 
-def reserve_grounded(st=None, now=None) -> None:
-    """One grounded prompt against SACH_GROUNDED_MAX_PER_DAY (separate counter from the judge cap). Raises VertexCapReached."""
-    _reserve("gr", grounded_max_per_day(), st, now, what="grounded search")
+def _undo_over_cap(st, key: str, from_store: bool) -> None:
+    """Take back one over-cap increment from the place that counted it (the store, or this instance's memory). Memory never goes
+    below zero; a store that cannot be reached is left alone. Never raises."""
+    try:
+        if from_store and st is not None:
+            st.incr(key, -1)
+        else:
+            with limits._mem_lock:
+                if limits._mem.get(key, 0) > 0:
+                    limits._mem[key] -= 1
+    except Exception:
+        pass
 
-def release_grounded(st=None, now=None) -> None:
-    """Give back one grounded reservation whose call never reached Google (see not_billed). Never raises."""
-    _release("gr", grounded_max_per_day(), st, now)
+def reserve_grounded(st=None, now=None) -> None:
+    """One grounded prompt against SACH_GROUNDED_MAX_PER_DAY, its own counter (gr:d:<UTC day>), separate from the judge cap.
+    Every call that reaches this step counts, whatever its outcome: there is no give-back. Raises VertexCapReached."""
+    cap = grounded_max_per_day()
+    if cap <= 0:
+        return
+    now = time.time() if now is None else now
+    try:
+        st = st or store.get_store()
+    except Exception:
+        st = None
+    day = int(now // 86400)
+    key = "gr:d:%d" % day
+    if st is not None:
+        n, from_store = limits._incr(st, key, 2 * 86400)
+    else:
+        n, from_store = limits._mem_incr(key), False
+    if n > cap:
+        _undo_over_cap(st, key, from_store)
+        try:
+            if st is not None:
+                limits._incr(st, "gr:skipped:%d" % day, 2 * 86400)
+        except Exception:
+            pass
+        raise VertexCapReached("grounded search: daily call cap reached (resumes 00:00 UTC)")
 
 def grounded_usage(st=None, now=None) -> dict:
-    return _usage("gr", grounded_max_per_day(), st, now)
+    """For the status page: counts only."""
+    now = time.time() if now is None else now
+    cap = grounded_max_per_day()
+    out = {"calls_today": 0, "max_per_day": cap, "skipped_over_cap_today": 0}
+    try:
+        st = st or store.get_store()
+        kd, ks = "gr:d:%d" % int(now // 86400), "gr:skipped:%d" % int(now // 86400)
+        c = st.counters([kd, ks]) if getattr(st, "remote", False) else {}
+        with limits._mem_lock:
+            mem = dict(limits._mem)
+        out["calls_today"] = max(int(c.get(kd, 0) or 0), int(mem.get(kd, 0)), 0)
+        out["skipped_over_cap_today"] = max(int(c.get(ks, 0) or 0), int(mem.get(ks, 0)), 0)
+    except Exception:
+        pass
+    return out
 
 def grounded_body(text: str) -> dict:
     return {"contents": [{"role": "user", "parts": [{"text":

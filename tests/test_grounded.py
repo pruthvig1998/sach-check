@@ -141,6 +141,26 @@ def test_public_https_url():
     assert public_https_url("https://pib.gov.in/x") and not public_https_url("ftp://pib.gov.in/")
     assert public_https_url("https://8.8.8.8/")                       # a global IP literal is public; the trust filter will drop it
 
+@pytest.mark.parametrize("host", ["127.1", "0x7f.0.0.1", "0177.0.0.1", "2130706433", "0x7f000001", "1.2.3", "10.1", "0x7f.1",
+                                  "08.8.8.8", "1.2.3.4.5", "0xab", "1.0x7f", "a..b", "0x", "127.0.0.1", "10.0.0.1", "192.168.1.1"])
+def test_numeric_looking_or_non_global_hosts_are_rejected(host):
+    assert public_https_url("https://%s/x" % host) == ""
+
+@pytest.mark.parametrize("url", ["https://pib.gov.in/", "https://mohfw.gov.in/a", "https://8.8.8.8/", "https://[2606:4700:4700::1111]/",
+                                 "https://www.rbi.org.in/x", "https://dlas1.ucloud.int/"])
+def test_real_hostnames_and_global_literals_are_accepted(url):
+    assert public_https_url(url) == url
+
+def test_docs_section_10_matches_the_code():
+    text = (pathlib.Path(__file__).resolve().parents[1] / "docs" / "scaling.md").read_text(encoding="utf-8")
+    sec = text[text.index("## 10. Grounded search"):]
+    sec = sec[:sec.index("\n## ", 5)] if "\n## " in sec[5:] else sec
+    assert "give" not in sec.lower() and "released" not in sec.lower()          # the give-back mechanism is removed
+    assert "up to three queries" not in sec and "four" in sec                  # PIB short, PIB keyword, official, fact-checker
+    assert "per Google's published pricing as read on 2026-11-13; unverified by us" in sec
+    assert "observed 3.5-5 s in one manual test on 2026-11-13 (not a guarantee)" in sec
+    assert "3.5-5 s" not in sec.replace("observed 3.5-5 s", "")
+
 def test_failure_drops_only_that_url(sa):
     ch, tb = chunks_for(("pib.gov.in", PIB), ("mha.gov.in", TimeoutError()), ("mohfw.gov.in", "https://mohfw.gov.in/a"))
     gs, g, rd = make(sa, ch, tb)
@@ -362,37 +382,106 @@ def test_three_failed_token_attempts_do_not_exhaust_a_cap_of_three(sa, monkeypat
         gs.search("claim 9")
 
 @pytest.mark.parametrize("err", [TimeoutError(), urllib.error.URLError("boom"), http_error(500), http_error(503),
-                                 http_error(401), http_error(403)])
-def test_failed_grounded_call_that_never_reached_google_gives_its_slot_back(sa, monkeypatch, err):
+                                 http_error(401), http_error(403), http_error(429), http_error(400), http_error(404)])
+def test_every_failed_generate_call_counts_against_the_cap(sa, monkeypatch, err):
+    # no give-back: a call that reached the reserve step is counted, whatever its outcome (conservative)
     gs, g, clk, now = _cap_setup(sa, 1, monkeypatch, gen_error=err)
     with pytest.raises(Exception):
         gs.search("claim")
-    assert V.grounded_usage(now=now)["calls_today"] == 0
+    assert V.grounded_usage(now=now)["calls_today"] == 1
     g.gen_error = None
-    assert gs.search("claim") == [PIB]                            # the one slot is still there
-    assert V.grounded_usage(now=now)["calls_today"] == 1
-
-@pytest.mark.parametrize("err", [http_error(429), http_error(400), http_error(404)])
-def test_429_and_other_4xx_stay_counted(sa, monkeypatch, err):
-    gs, g, clk, now = _cap_setup(sa, 5, monkeypatch, gen_error=err)
-    with pytest.raises(V.VertexError):
-        gs.search("claim")
-    assert V.grounded_usage(now=now)["calls_today"] == 1
+    with pytest.raises(S.SearchPaused):
+        gs.search("claim 2")                                       # the slot was used up by the failed call
+    assert len(g.gen_calls()) == 1 and V.grounded_usage(now=now)["calls_today"] == 1
 
 def test_successful_call_stays_counted(sa, monkeypatch):
     gs, g, clk, now = _cap_setup(sa, 5, monkeypatch)
     assert gs.search("claim") == [PIB]
     assert V.grounded_usage(now=now)["calls_today"] == 1
 
-def test_reserve_then_release_restores_the_count(monkeypatch):
+def test_give_back_mechanism_is_gone():
+    for name in ("release_grounded", "not_billed", "_release"):
+        assert not hasattr(V, name)
+
+def test_reserve_grounded_then_over_cap_leaves_the_count_at_the_cap(monkeypatch):
     monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "2")
     now = 86400 * 60 + 5.0
-    V.reserve_grounded(None, now)
-    assert V.grounded_usage(now=now)["calls_today"] == 1
-    V.release_grounded(None, now)
-    assert V.grounded_usage(now=now)["calls_today"] == 0
+    V.reserve_grounded(None, now); V.reserve_grounded(None, now)
+    with pytest.raises(V.VertexCapReached):
+        V.reserve_grounded(None, now)
+    assert V.grounded_usage(now=now)["calls_today"] == 2 and V.grounded_usage(now=now)["skipped_over_cap_today"] == 1
     monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "0")
-    V.release_grounded(None, now)                                 # unlimited: nothing was counted, nothing to give back
+    for _ in range(3):
+        V.reserve_grounded(None, now)                             # unlimited: nothing counted, nothing raised
+    assert V.grounded_usage(now=now)["calls_today"] == 2
+
+def test_over_cap_never_decrements_a_store_it_did_not_increment(monkeypatch):
+    # the remote store is healthy and already counted call A; call B's remote incr fails, so B is counted in memory and over the cap.
+    # Undoing B must not touch the remote counter (old code decremented the remote store and drove it to 0).
+    from test_scale import FakeStore
+    from sach import limits
+    class FailOnce(FakeStore):
+        fail_next = False
+        def incr(self, name, by=1):
+            if self.fail_next:
+                self.fail_next = False
+                return 0                                          # one failed remote increment, then healthy again
+            return super().incr(name, by)
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "1")
+    now = 86400 * 70 + 9.0
+    key = "gr:d:%d" % int(now // 86400)
+    limits.reset_memory()
+    st = FailOnce()
+    V.reserve_grounded(st, now)                                   # call A: remote count 1
+    st.fail_next = True
+    limits._mem_incr(key, 5)                                      # memory already over the cap, so call B is rejected
+    with pytest.raises(V.VertexCapReached):
+        V.reserve_grounded(st, now)                               # call B: remote incr fails, memory fallback, rejected
+    assert st.counters([key])[key] == 1                           # the healthy remote counter still says one call
+    limits.reset_memory()
+
+def test_counter_never_goes_below_zero_under_threads_and_memory_resets(monkeypatch):
+    import threading
+    from sach import limits
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "3")
+    monkeypatch.setattr(V.store, "get_store", lambda: None)       # no shared store: the in-memory fallback
+    now = 86400 * 80 + 1.0
+    key = "gr:d:%d" % int(now // 86400)
+    limits.reset_memory()
+    ok, low, lock = [], [0], threading.Lock()
+    stop = threading.Event()
+
+    def reset_loop():
+        while not stop.is_set():
+            limits.reset_memory()
+
+    def worker():
+        for _ in range(40):
+            try:
+                V.reserve_grounded(None, now)
+                with lock: ok.append(1)
+            except V.VertexCapReached:
+                pass
+            with limits._mem_lock:
+                with lock: low[0] = min(low[0], limits._mem.get(key, 0))
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    assert low[0] >= 0                                            # sampled after every call, no reset running
+    assert V.grounded_usage(now=now)["calls_today"] == 3 and len(ok) == 3   # no resets: exactly the cap
+    limits.reset_memory()
+    resetter = threading.Thread(target=reset_loop)
+    resetter.start()
+    try:
+        ts = [threading.Thread(target=worker) for _ in range(8)]
+        for t in ts: t.start()
+        for t in ts: t.join()
+    finally:
+        stop.set(); resetter.join()
+    assert low[0] >= 0 and V.grounded_usage(now=now)["calls_today"] >= 0
+    assert limits._mem.get(key, 0) >= 0
+    limits.reset_memory()
 
 # ---------------------------------------------------------------- status, secrets
 def test_status_rows(sa, monkeypatch):
@@ -424,6 +513,9 @@ def test_check_search_reports_an_unparseable_service_account_as_such(monkeypatch
     bad = cs.check(out=lines.append)
     text = "\n".join(lines)
     assert "GOOGLE_SA_JSON is set but could not be parsed" in text and "no key" not in text.split("\n")[0]
+    assert "No search keys" not in text                           # a set-but-broken credential is not 'off'
+    assert "grounded 401/403 for 10 minutes" in text                 # grounded's auth pause is 600 s, not Brave/Tavily's 6 hours
+    assert "grounded 401/403 for 6 hours" not in text
     assert bad == 1
     lines.clear(); monkeypatch.delenv("GOOGLE_SA_JSON")
     assert cs.check(out=lines.append) == 0 and "no key (set GOOGLE_SA_JSON" in "\n".join(lines)

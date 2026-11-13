@@ -163,6 +163,12 @@ def public_https_url(url) -> str:
         pass
     if "." not in host or host.endswith(_BAD_SUFFIXES) or not re.fullmatch(r"[a-z0-9.\-]+", host):
         return ""
+    labels = host.split(".")
+    # resolvers and browsers read 127.1, 0x7f.0.0.1, 0177.0.0.1 and 1.0x7f as IPv4 numbers: a name whose last label is all digits or
+    # 0x-hex is such a literal, not a DNS name, so it is refused unless ipaddress parsed it above. The last label must hold a letter.
+    tld = labels[-1]
+    if any(not label for label in labels) or not re.search(r"[a-z]", tld) or re.fullmatch(r"0x[0-9a-f]*|[0-9]+", tld):
+        return ""
     return url
 
 def resolve_redirect(uri: str, opener=None, timeout: float = RESOLVE_TIMEOUT_S) -> str:
@@ -234,17 +240,12 @@ class GroundedSearch:
             hit = self._cache.get(text)
             if hit and now - hit[0] < GROUNDED_CACHE_S:
                 return list(hit[1])
-        self.client.access_token(timeout=self.timeout)       # token first: a token failure must not use up the daily cap
+        self.client.access_token(timeout=self.timeout)       # token first: a failed token attempt never uses up the daily cap
         try:
-            vertex.reserve_grounded(self._st, now)
+            vertex.reserve_grounded(self._st, now)            # from here every attempt counts, failed or not (no give-back)
         except vertex.VertexCapReached:
             raise SearchPaused("grounded: daily cap reached", vertex.seconds_to_utc_midnight(now)) from None
-        try:
-            chunks = vertex.generate_grounded(self.client, self.model or vertex.grounded_model(), text, timeout=self.timeout)
-        except Exception as e:
-            if vertex.not_billed(e):                          # never served by Google (timeout, network, 401/403, 5xx): give the slot back
-                vertex.release_grounded(self._st, now)
-            raise
+        chunks = vertex.generate_grounded(self.client, self.model or vertex.grounded_model(), text, timeout=self.timeout)
         uris = list(dict.fromkeys(u for t, u in chunks if not self._skip_title(t)))[:MAX_REDIRECTS_RESOLVED]
         if uris:
             with ThreadPoolExecutor(max_workers=min(RESOLVE_WORKERS, len(uris))) as ex:
