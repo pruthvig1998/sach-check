@@ -228,27 +228,42 @@ official URL, the chain asks the next provider for that query. An empty grounded
 recorded as not answered. 401/403 pauses grounded 10 minutes, 429 for its Retry-After, 5xx and timeouts only skip it for that query, and the daily cap
 pauses it until 00:00 UTC.
 
-**Queries per claim.** The retriever runs up to four searches per claim: the PIB short form, the PIB keyword form (only when the short form found no PIB
-page), the official pool, and the fact-checkers (only when no PIB or official page was found). If grounded is reached for each of them and returns
-nothing, that is up to four billed grounded prompts for one claim. Identical search text within 5 minutes is answered from an in-memory cache of that
-process and is not billed again. The status page has a `grounded` row (configured, ready or paused, calls today of the cap).
+**Queries per claim and routing.** The retriever runs up to four searches per claim: the PIB short form, the PIB keyword form (only when the short
+form found no PIB page), the official pool, and the fact-checkers (only when no PIB or official page was found). Grounded is asked only the queries that
+`grounded_accepts` in `sach/search.py` allows: a query with no `site:` or `inurl:` operator, and the official-pool query (its only `site:` restrictions
+are the official-pool domains `OFFICIAL_POOL_SITES`). Grounded is never asked a PIB query, a single-ministry query, a fact-checker query or any `inurl:`
+query. Those go to Brave and then Tavily, as before. Reason: the round 4 review found that grounded, which ignores `site:` restrictions, answered a
+`site:pib.gov.in` query with a ministry page, so the PIB release was lost (reproduced with a fake provider; not checked against the live service). A query
+that no configured provider may answer is not counted as asked. If grounded answers a query that has a `site:` restriction, only URLs on that site are
+kept; if none remain, the chain asks the next provider. So a claim makes at most one grounded prompt (the official pool). Identical search text within 5
+minutes is answered from an in-memory cache of that process and is not billed again. The status page has a `grounded` row (configured, ready or paused,
+calls today of the cap).
 
 **Cost and cap.** One grounded prompt is one charge however many searches the model runs internally (per Google's published pricing as read on 2026-11-13; unverified by us). The project owner's understanding is a free allowance of about 5,000 grounded prompts a month, with overage billed per 1,000
 prompts from the trial credit; neither figure is verified by us. Check https://cloud.google.com/vertex-ai/generative-ai/pricing.
-`SACH_GROUNDED_MAX_PER_DAY` (default 160, 0 = unlimited) caps grounded prompts per UTC day. The counter lives in the same shared store as the Vertex
-judge's cap, under its own key prefix (`gr:d:<UTC day>`, against the judge's `vx:d:<UTC day>`), so the two caps are separate and never add to each
-other. Without a shared store the counter is in this process's memory, which is cleared when it holds more than 500 keys; without a shared store the cap
-is therefore best effort.
+`SACH_GROUNDED_MAX_PER_DAY` caps grounded prompts per UTC day: the default is 160, `0` means unlimited, and a negative, empty or non-numeric value is
+invalid and means the default 160 (`" 7 "` is read as 7). The counter has its own key prefix (`gr:d:<UTC day>`, against the judge's `vx:d:<UTC day>`), so
+the two caps are separate and never add to each other.
+
+How the count is kept (code: `reserve_grounded` in `sach/vertex.py`):
+- With a shared store (the Upstash Redis settings are present, so `get_store()` returns a remote store), each attempt does one atomic `incr` on the day's
+  key. An over-cap attempt is taken back from that same key and refused. The cap is exact across serverless instances, except that a store error refuses
+  the attempt: nothing is counted in memory and no Vertex call is made. Grounded is then paused 60 s. A store call that times out may still have
+  counted the attempt, so the count can only be too high.
+- Without a shared store, the counter is this process's memory: its own dict, keyed by UTC day, holding only today. The shared memory flood rule
+  (`limits._mem_incr`, which clears its dict past 500 keys) does not touch it. Each instance counts separately, so without a shared store the cap is best
+  effort only, not a guarantee across instances.
 
 The access token is fetched before a slot is taken, so a failed token attempt uses no slot. From the reserve step on, every attempt counts, whatever its
 outcome (timeout, network error, 401/403, 429, 5xx, other 4xx, or an unreadable reply). This is conservative: some of those calls may never have been
-billed. An attempt over the cap is not counted. Once a slot is taken it is never returned. Arithmetic: 160 a day is 4,800 in a 30-day month and 4,960 in a 31-day month, both
-under the ~5,000 allowance quoted above (unverified). Because one claim can use up to four prompts, 160 a day is about 40 claims a day in the worst case;
-a month that goes past the allowance would be billed at the overage price (unverified).
+billed. An attempt over the cap is not counted. Once a slot is taken it is never returned. Arithmetic: 160 a day is 4,800 in a 30-day month and 4,960 in a
+31-day month, both under the ~5,000 allowance quoted above (unverified). Because one claim makes at most one grounded prompt, 160 a day is at most 160
+claims a day; a month that goes past the allowance would be billed at the overage price (unverified).
 
 **Setup.** Nothing new: it uses the same `GOOGLE_SA_JSON` service account. Role `roles/aiplatform.user` is believed sufficient; verify when setting up.
 `python scripts/check_search.py` probes it with one billed prompt (it counts against the cap), and reports a set but unparseable `GOOGLE_SA_JSON` as such.
 
 **Limits.** Google decides which pages it returns; we cannot steer it beyond the prompt. Only official hosts and listed fact-checkers are used, so a claim
-whose evidence is elsewhere gets no grounded result and the chain falls through. Redirect resolution accepts only default-port (443) https Locations.
-Latency: observed 3.5-5 s in one manual test on 2026-11-13 (not a guarantee).
+whose evidence is elsewhere gets no grounded result and the chain falls through. With grounded as the only provider, a
+PIB or fact-checker query gets no answer at all (grounded is never asked it) and is not counted as asked. Redirect resolution accepts only default-port (443) https Locations.
+Latency: 3.5-5 s, observed in one manual test, no record kept in the repo; not a guarantee.

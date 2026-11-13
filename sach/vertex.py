@@ -378,24 +378,37 @@ def grounded_model() -> str:
     return m if _MODEL_RE.fullmatch(m) else GROUNDED_DEFAULT_MODEL
 
 def grounded_max_per_day() -> int:
-    return limits._env_int("SACH_GROUNDED_MAX_PER_DAY", GROUNDED_DEFAULT_MAX_PER_DAY)
-
-def _undo_over_cap(st, key: str, from_store: bool) -> None:
-    """Take back one over-cap increment from the place that counted it (the store, or this instance's memory). Memory never goes
-    below zero; a store that cannot be reached is left alone. Never raises."""
+    """SACH_GROUNDED_MAX_PER_DAY: 0 = unlimited; a missing, empty, negative or non-numeric value is invalid and gives the default (fail safe)."""
+    raw = (os.environ.get("SACH_GROUNDED_MAX_PER_DAY") or "").strip()
     try:
-        if from_store and st is not None:
-            st.incr(key, -1)
-        else:
-            with limits._mem_lock:
-                if limits._mem.get(key, 0) > 0:
-                    limits._mem[key] -= 1
-    except Exception:
-        pass
+        v = int(raw)
+    except ValueError:
+        return GROUNDED_DEFAULT_MAX_PER_DAY
+    return v if v >= 0 else GROUNDED_DEFAULT_MAX_PER_DAY
+
+class GroundedCounterDown(Exception):
+    """The shared store that counts grounded prompts did not answer. The attempt is refused; nothing is counted in memory."""
+
+# Memory counter for the grounded cap, used only when no shared store is configured (get_store() then returns a non-remote store).
+# Its own dict, keyed by UTC day, holding only today: the shared limits._mem flood rule never touches it (round 4, C1).
+_grounded_mem: dict = {}
+_grounded_lock = threading.Lock()
+
+def _grounded_mem_day(day: int) -> dict:
+    """Caller holds _grounded_lock. Keeps the entry for `day` and drops every other day."""
+    for d in [d for d in _grounded_mem if d != day]:
+        del _grounded_mem[d]
+    return _grounded_mem.setdefault(day, {"calls": 0, "skipped": 0})
+
+def reset_grounded_memory() -> None:
+    with _grounded_lock:
+        _grounded_mem.clear()
 
 def reserve_grounded(st=None, now=None) -> None:
-    """One grounded prompt against SACH_GROUNDED_MAX_PER_DAY, its own counter (gr:d:<UTC day>), separate from the judge cap.
-    Every call that reaches this step counts, whatever its outcome: there is no give-back. Raises VertexCapReached."""
+    """One grounded prompt against SACH_GROUNDED_MAX_PER_DAY (0 = unlimited). Every attempt that reaches this step counts, whatever its
+    outcome. With a shared store (remote): one atomic incr on gr:d:<UTC day>; an over-cap attempt is taken back from that same counter; a
+    failed incr raises GroundedCounterDown and the attempt is refused (never counted in memory, so no double count). Without a shared store:
+    the module's own memory counter. Raises VertexCapReached (cap used up) or GroundedCounterDown."""
     cap = grounded_max_per_day()
     if cap <= 0:
         return
@@ -405,33 +418,56 @@ def reserve_grounded(st=None, now=None) -> None:
     except Exception:
         st = None
     day = int(now // 86400)
-    key = "gr:d:%d" % day
-    if st is not None:
-        n, from_store = limits._incr(st, key, 2 * 86400)
-    else:
-        n, from_store = limits._mem_incr(key), False
-    if n > cap:
-        _undo_over_cap(st, key, from_store)
+    key, skey = "gr:d:%d" % day, "gr:skipped:%d" % day
+    if st is not None and getattr(st, "remote", False):
         try:
-            if st is not None:
-                limits._incr(st, "gr:skipped:%d" % day, 2 * 86400)
+            n = st.incr(key, 1)
         except Exception:
-            pass
-        raise VertexCapReached("grounded search: daily call cap reached (resumes 00:00 UTC)")
+            n = 0
+        if not (isinstance(n, int) and n > 0):
+            raise GroundedCounterDown("grounded search: shared counter unavailable, attempt refused")
+        if n == 1:
+            try:
+                st.expire(key, 2 * 86400)
+            except Exception:
+                pass
+        if n > cap:
+            try:
+                st.incr(key, -1)                  # take back this over-cap attempt: it is our own increment
+            except Exception:
+                pass
+            try:
+                if st.incr(skey, 1) == 1:
+                    st.expire(skey, 2 * 86400)
+            except Exception:
+                pass
+            raise VertexCapReached("grounded search: daily call cap reached (resumes 00:00 UTC)")
+        return
+    with _grounded_lock:
+        slot = _grounded_mem_day(day)
+        if slot["calls"] + 1 > cap:
+            slot["skipped"] += 1
+            raise VertexCapReached("grounded search: daily call cap reached (resumes 00:00 UTC)")
+        slot["calls"] += 1
 
 def grounded_usage(st=None, now=None) -> dict:
     """For the status page: counts only."""
     now = time.time() if now is None else now
     cap = grounded_max_per_day()
+    day = int(now // 86400)
+    kd, ks = "gr:d:%d" % day, "gr:skipped:%d" % day
     out = {"calls_today": 0, "max_per_day": cap, "skipped_over_cap_today": 0}
     try:
         st = st or store.get_store()
-        kd, ks = "gr:d:%d" % int(now // 86400), "gr:skipped:%d" % int(now // 86400)
-        c = st.counters([kd, ks]) if getattr(st, "remote", False) else {}
-        with limits._mem_lock:
-            mem = dict(limits._mem)
-        out["calls_today"] = max(int(c.get(kd, 0) or 0), int(mem.get(kd, 0)), 0)
-        out["skipped_over_cap_today"] = max(int(c.get(ks, 0) or 0), int(mem.get(ks, 0)), 0)
+        if getattr(st, "remote", False):
+            c = st.counters([kd, ks])
+            out["calls_today"] = max(int(c.get(kd, 0) or 0), 0)
+            out["skipped_over_cap_today"] = max(int(c.get(ks, 0) or 0), 0)
+        else:
+            with _grounded_lock:
+                slot = dict(_grounded_mem.get(day, {}))
+            out["calls_today"] = int(slot.get("calls", 0))
+            out["skipped_over_cap_today"] = int(slot.get("skipped", 0))
     except Exception:
         pass
     return out

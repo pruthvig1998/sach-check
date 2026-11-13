@@ -128,6 +128,7 @@ MAX_REDIRECTS_RESOLVED = 12
 RESOLVE_WORKERS = 6
 RESOLVE_TIMEOUT_S = 3.0
 GROUNDED_CACHE_S = 300
+GROUNDED_STORE_PAUSE_S = 60        # the shared counter failed: grounded is paused this long (its attempts are refused meanwhile)
 _BAD_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home", ".corp", ".test", ".invalid", ".example")
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -234,6 +235,8 @@ class GroundedSearch:
         return not (is_official(u) or is_factchecker(u) or any(t == d or t.endswith("." + d) for d in FACTCHECKER_PATHS))
 
     def search(self, query: str, count: int = 8) -> list[str]:
+        if not grounded_accepts(query):
+            return []                                        # never a site:/inurl: query (the chain also skips it); no call, no count
         text = TavilySearch._split(query)[0] or query
         now = self._clock()
         with self._lock:
@@ -245,6 +248,9 @@ class GroundedSearch:
             vertex.reserve_grounded(self._st, now)            # from here every attempt counts, failed or not (no give-back)
         except vertex.VertexCapReached:
             raise SearchPaused("grounded: daily cap reached", vertex.seconds_to_utc_midnight(now)) from None
+        except vertex.GroundedCounterDown:
+            # the shared counter did not answer: refuse this attempt and pause grounded briefly (no in-memory count, so no double count)
+            raise SearchPaused("grounded: shared counter unavailable, attempt refused", GROUNDED_STORE_PAUSE_S) from None
         chunks = vertex.generate_grounded(self.client, self.model or vertex.grounded_model(), text, timeout=self.timeout)
         uris = list(dict.fromkeys(u for t, u in chunks if not self._skip_title(t)))[:MAX_REDIRECTS_RESOLVED]
         if uris:
@@ -258,6 +264,40 @@ class GroundedSearch:
                 self._cache.clear()
             self._cache[text] = (now, list(urls))
         return urls
+
+# ---------------------------------------------------------------- which queries grounded may answer (round 4, P1)
+OFFICIAL_POOL_SITES = ("gov.in", "nic.in", "who.int", "rbi.org.in", "mygov.in", "sansad.in", "bank.in", "licindia.in")
+_OPERATOR = re.compile(r"\b(?:site|inurl):", re.I)
+_SITE_VALUE = re.compile(r"\bsite:([A-Za-z0-9.\-]+)", re.I)
+
+def query_sites(query: str) -> list:
+    """The domains of the `site:` restrictions in a query, lower-cased, in order."""
+    return [d.lower() for d in _SITE_VALUE.findall(query or "")]
+
+def grounded_accepts(query: str) -> bool:
+    """Grounded (Google Search inside Gemini) cannot honour `site:` or `inurl:`, and answers with ANY official URL. So it answers only:
+    unrestricted queries (no site:/inurl: operator), and the official-pool query, whose only site: restrictions are exactly
+    OFFICIAL_POOL_SITES. Every other restricted query (PIB, one ministry, fact-checkers, inurl:) skips grounded and goes to brave/tavily."""
+    ops = _OPERATOR.findall(query or "")
+    if not ops:
+        return True
+    if any(o.lower().startswith("inurl") for o in ops):
+        return False
+    sites = query_sites(query)
+    return len(sites) == len(ops) and set(sites) == set(OFFICIAL_POOL_SITES)
+
+def site_filter(query: str, urls) -> list:
+    """Keep only the URLs on a site the query restricts to. A query without site: restrictions keeps everything."""
+    sites = query_sites(query)
+    if not sites:
+        return list(urls)
+    def on_site(u) -> bool:
+        try:
+            h = (urllib.parse.urlparse(u).hostname or "").lower()
+        except ValueError:
+            return False
+        return any(h == s or h.endswith("." + s) for s in sites)
+    return [u for u in urls if on_site(u)]
 
 # ---------------------------------------------------------------- chain + status
 class SearchRun:
@@ -323,9 +363,14 @@ class SearchChain:
 
     def search(self, query: str, count: int = 8, run: SearchRun | None = None) -> list[str]:
         """URLs from the first provider that answers. [] when none does; `run` (if given) records whether one did. A provider with
-        `fallthrough_empty` that answers with no URL hands over to the next one (its empty answer counts only if no other answers)."""
-        empty_from, others_failed = None, False
+        `fallthrough_empty` that answers with no URL hands over to the next one (its empty answer counts only if no other answers).
+        Grounded is asked only the queries grounded_accepts() allows (round 4, P1): a query it may not answer is skipped by policy, is not
+        a failure, and is not counted in `run`. A grounded answer for a site-restricted query keeps only URLs on that site (site_filter)."""
+        empty_from, others_failed, eligible = None, False, False
         for p in self.providers:
+            if p.name == "grounded" and not grounded_accepts(query):
+                continue                                    # policy: grounded never answers site:/inurl: queries (not asked, not counted)
+            eligible = True
             if self.paused_until(p.name) > self._clock():
                 others_failed = True                        # skipped: it did not answer this query
                 continue                                    # paused: skip without a call
@@ -342,6 +387,8 @@ class SearchChain:
                 elif code == 429:
                     self._pause(p.name, retry_after_s(e))
                 continue                                    # 5xx, 400, timeout, network, bad JSON: next provider, this query only
+            if p.name == "grounded" and urls and query_sites(query):
+                urls = site_filter(query, urls)             # a result off the query's site is not an answer: fall through
             if not urls and getattr(p, "fallthrough_empty", False):
                 empty_from = empty_from or p.name
                 continue
@@ -352,6 +399,8 @@ class SearchChain:
             if run is not None:
                 run.record(True, empty_from)                 # the empty grounded answer stands only when nothing else failed
             return []
+        if not eligible:
+            return []                                       # no provider may answer this query: nothing was asked, nothing recorded
         if run is not None:
             run.record(False, None)
         return []

@@ -22,3 +22,4 @@ def _isolate(tmp_path, monkeypatch):
     limits.reset_memory()
     from sach import vertex
     vertex.reset_providers()
+    vertex.reset_grounded_memory()        # the grounded cap's own in-process counter (round 4, C1)

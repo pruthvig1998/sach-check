@@ -62,7 +62,7 @@ def chunks_for(*pairs):
 def test_request_body_and_endpoint(sa):
     ch, tb = chunks_for(("pib.gov.in", PIB))
     gs, g, rd = make(sa, ch, tb)
-    assert gs.search("site:pib.gov.in Mahila Yojana Rs 5000") == [PIB]
+    assert gs.search("Mahila Yojana Rs 5000") == [PIB]                # round 4 (P1): an unrestricted query (a site: query is refused, see test_grounded_search_itself_refuses_site_restricted_queries)
     req = g.gen_calls()[0]
     assert req.full_url == "https://aiplatform.googleapis.com/v1/projects/%s/locations/global/publishers/google/models/gemini-3.1-flash-lite:generateContent" % PROJECT
     body = json.loads(req.data)
@@ -156,10 +156,11 @@ def test_docs_section_10_matches_the_code():
     sec = text[text.index("## 10. Grounded search"):]
     sec = sec[:sec.index("\n## ", 5)] if "\n## " in sec[5:] else sec
     assert "give" not in sec.lower() and "released" not in sec.lower()          # the give-back mechanism is removed
-    assert "up to three queries" not in sec and "four" in sec                  # PIB short, PIB keyword, official, fact-checker
+    assert "up to three queries" not in sec and "makes at most one grounded prompt" in sec    # only the official pool query reaches grounded
+    assert "site:" in sec and "inurl:" in sec                                  # the round 4 routing rule is documented
     assert "per Google's published pricing as read on 2026-11-13; unverified by us" in sec
-    assert "observed 3.5-5 s in one manual test on 2026-11-13 (not a guarantee)" in sec
-    assert "3.5-5 s" not in sec.replace("observed 3.5-5 s", "")
+    assert "observed in one manual test, no record kept in the repo" in sec
+    assert sec.count("3.5-5 s") == 1 and "3.5-5 s" in sec.split("observed in one manual test")[0]
 
 def test_failure_drops_only_that_url(sa):
     ch, tb = chunks_for(("pib.gov.in", PIB), ("mha.gov.in", TimeoutError()), ("mohfw.gov.in", "https://mohfw.gov.in/a"))
@@ -415,30 +416,26 @@ def test_reserve_grounded_then_over_cap_leaves_the_count_at_the_cap(monkeypatch)
         V.reserve_grounded(None, now)                             # unlimited: nothing counted, nothing raised
     assert V.grounded_usage(now=now)["calls_today"] == 2
 
-def test_over_cap_never_decrements_a_store_it_did_not_increment(monkeypatch):
-    # the remote store is healthy and already counted call A; call B's remote incr fails, so B is counted in memory and over the cap.
-    # Undoing B must not touch the remote counter (old code decremented the remote store and drove it to 0).
+def test_failed_remote_increment_is_refused_not_counted_in_memory(monkeypatch):
+    # round 4 (C2): the remote store's incr fails once; the attempt is refused (GroundedCounterDown), nothing is counted in memory,
+    # and the healthy remote counter still says one call.
     from test_scale import FakeStore
-    from sach import limits
     class FailOnce(FakeStore):
         fail_next = False
         def incr(self, name, by=1):
             if self.fail_next:
                 self.fail_next = False
-                return 0                                          # one failed remote increment, then healthy again
+                return 0
             return super().incr(name, by)
     monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "1")
     now = 86400 * 70 + 9.0
     key = "gr:d:%d" % int(now // 86400)
-    limits.reset_memory()
     st = FailOnce()
     V.reserve_grounded(st, now)                                   # call A: remote count 1
     st.fail_next = True
-    limits._mem_incr(key, 5)                                      # memory already over the cap, so call B is rejected
-    with pytest.raises(V.VertexCapReached):
-        V.reserve_grounded(st, now)                               # call B: remote incr fails, memory fallback, rejected
-    assert st.counters([key])[key] == 1                           # the healthy remote counter still says one call
-    limits.reset_memory()
+    with pytest.raises(V.GroundedCounterDown):
+        V.reserve_grounded(st, now)                               # call B: remote incr fails, refused
+    assert st.counters([key])[key] == 1 and not V._grounded_mem   # the healthy remote counter still says one call; memory untouched
 
 def test_counter_never_goes_below_zero_under_threads_and_memory_resets(monkeypatch):
     import threading
@@ -479,8 +476,7 @@ def test_counter_never_goes_below_zero_under_threads_and_memory_resets(monkeypat
         for t in ts: t.join()
     finally:
         stop.set(); resetter.join()
-    assert low[0] >= 0 and V.grounded_usage(now=now)["calls_today"] >= 0
-    assert limits._mem.get(key, 0) >= 0
+    assert low[0] >= 0 and V.grounded_usage(now=now)["calls_today"] == 3   # the grounded memory is not cleared by the shared reset
     limits.reset_memory()
 
 # ---------------------------------------------------------------- status, secrets
@@ -496,8 +492,7 @@ def test_status_rows(sa, monkeypatch):
     Ret.chain._pause("grounded", 100)
     rows = {r["provider"]: r for r in status.search_providers([Ret()])}
     assert rows["grounded"]["state"] == "paused" and rows["grounded"]["paused_for_s"] > 0
-    from sach import limits
-    limits.reset_memory()
+    V.reset_grounded_memory()                  # round 4 (C1): the grounded counter has its own reset, not limits.reset_memory()
     off = {r["provider"]: r for r in status.search_providers([])}
     assert off["grounded"]["configured"] is False and off["grounded"]["state"] == "off" and off["grounded"]["calls_today"] == 0
     page = status.status_page({**status.status_data(None, [Ret()]), }).decode()
@@ -531,3 +526,124 @@ def test_no_secret_in_errors_repr_or_urls(sa):
     gs2, g2, rd = make(sa, ch, tb)
     gs2.search("claim")
     assert rd.reqs and all(r.get_header("Authorization") is None and r.get_method() == "GET" for r in rd.reqs)   # the token never goes to the redirect host
+
+# ---------------------------------------------------------------- round 4: P1 query routing, C1 memory, C2 store refusal, C3 cap parsing
+from sach import retrieve as _R
+PIB_999 = "https://pib.gov.in/PressReleasePage.aspx?PRID=999"
+POOL_Q = "claim words " + _R.BraveRetriever.OFFICIAL_Q
+
+def test_p1_pib_targeted_query_gets_the_pib_release_not_the_ministry_page():
+    G = FakeGrounded("grounded", ["https://www.mha.gov.in/notice"])
+    B = Fake("brave", [PIB_999])
+    run = SearchRun()
+    assert SearchChain([G, B]).search("site:pib.gov.in claim words", run=run) == [PIB_999]
+    assert G.calls == [] and B.calls == ["site:pib.gov.in claim words"] and run.provider == "brave"
+
+@pytest.mark.parametrize("q", ["site:pib.gov.in claim words", "claim words site:mohfw.gov.in", "claim words inurl:pib.gov.in",
+                               "claim words (site:boomlive.in OR site:altnews.in)", "claim words (site:gov.in OR site:nic.in)",
+                               "site:"])
+def test_restricted_queries_never_reach_grounded(q):
+    G = FakeGrounded("grounded", ["https://www.mha.gov.in/notice"])
+    B = Fake("brave", ["https://x.gov.in/"])
+    assert SearchChain([G, B]).search(q) == ["https://x.gov.in/"] and G.calls == []
+
+@pytest.mark.parametrize("q", ["claim words", POOL_Q])
+def test_unrestricted_and_official_pool_queries_are_answered_by_grounded(q):
+    G = FakeGrounded("grounded", ["https://www.mha.gov.in/notice"])
+    B = Fake("brave", ["https://x.gov.in/"])
+    assert SearchChain([G, B]).search(q) == ["https://www.mha.gov.in/notice"] and B.calls == []
+
+def test_grounded_result_off_the_query_site_is_dropped_and_the_next_provider_is_asked():
+    G = FakeGrounded("grounded", ["https://www.boomlive.in/fact-check/x"])
+    B = Fake("brave", ["https://www.who.int/a"])
+    assert SearchChain([G, B]).search(POOL_Q) == ["https://www.who.int/a"] and B.calls == [POOL_Q]
+
+def test_grounded_only_chain_does_not_count_a_query_it_may_not_answer():
+    G = FakeGrounded("grounded", ["https://www.mha.gov.in/notice"])
+    run = SearchRun()
+    assert SearchChain([G]).search("site:pib.gov.in x", run=run) == [] and run.total == 0 and G.calls == []
+
+def test_grounded_search_itself_refuses_site_restricted_queries(sa):
+    ch, tb = chunks_for(("pib.gov.in", PIB))
+    gs, g, rd = make(sa, ch, tb)
+    assert gs.search("site:pib.gov.in claim") == [] and g.gen_calls() == []
+
+def test_each_query_shape_of_the_retriever_routes_as_designed(monkeypatch):
+    G = FakeGrounded("grounded", ["https://www.mha.gov.in/notice"])
+    B = Fake("brave", [PIB_999])
+    monkeypatch.setattr(_R.BraveRetriever, "_evidence", lambda self, url, tier: None)   # no page fetches in this test
+    r = _R.BraveRetriever(key="bk", chain=SearchChain([G, B]))
+    short, kw = r._short("claim words"), r._keywords("claim words")
+    assert r._search_claim("claim words") == []
+    pib_q = "site:pib.gov.in " + short
+    fc_q = short + " " + _R.BraveRetriever.FC_Q
+    assert G.calls == [kw + " " + _R.BraveRetriever.OFFICIAL_Q]          # only the official pool reaches grounded
+    assert B.calls[0] == pib_q and B.calls[-1] == fc_q                 # PIB first and fact-checkers last go to brave
+
+def test_retriever_pool_falls_through_to_brave_when_grounded_is_empty(monkeypatch):
+    G = FakeGrounded("grounded", [])
+    B = Fake("brave", ["https://www.mha.gov.in/notice"])
+    monkeypatch.setattr(_R.BraveRetriever, "_evidence", lambda self, url, tier: None)
+    r = _R.BraveRetriever(key="bk", chain=SearchChain([G, B]))
+    r._search_claim("claim words")
+    assert len(G.calls) == 1 and any("OR site:" in q for q in B.calls)
+
+# ---------------------------------------------------------------- C1: memory counter is its own, never cleared by the shared flood rule
+def test_grounded_cap_is_not_reset_by_the_shared_memory_flood(monkeypatch):
+    from sach import limits
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "2")
+    now = 86400 * 90 + 7.0
+    V.reserve_grounded(None, now)
+    for i in range(600):
+        limits._mem_incr("lv:m:%d" % i)            # per-minute admission keys: past 500 the shared dict is cleared
+    V.reserve_grounded(None, now)
+    with pytest.raises(V.VertexCapReached):
+        V.reserve_grounded(None, now)
+    assert V.grounded_usage(now=now)["calls_today"] == 2
+
+def test_grounded_memory_keeps_only_today(monkeypatch):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "100")
+    for d in range(5):
+        V.reserve_grounded(None, 86400 * (200 + d) + 1.0)
+    assert len(V._grounded_mem) == 1
+
+# ---------------------------------------------------------------- C2: a failing shared store refuses the attempt, never counts in memory
+class FailFirst:
+    """A remote store whose first `n` incr calls fail the way UpstashStore does (return 0)."""
+    remote = True
+    def __init__(self, n):
+        from test_scale import FakeStore
+        self.inner, self.n = FakeStore(), n
+    def incr(self, name, by=1):
+        if self.n > 0:
+            self.n -= 1
+            return 0
+        return self.inner.incr(name, by)
+    def expire(self, name, ttl_s):
+        self.inner.expire(name, ttl_s)
+    def counters(self, names):
+        return self.inner.counters(names)
+
+def test_store_failure_refuses_the_attempt_and_the_cap_of_three_holds(sa, monkeypatch):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "3")
+    now = 86400 * 95 + 3.0
+    st = FailFirst(1)
+    ch, tb = chunks_for(("pib.gov.in", PIB))
+    g = Gen(ch)
+    gs = GroundedSearch(V.VertexClient(sa, V.TokenProvider(sa, g), g), opener=Redirects(tb), st=st, clock=lambda: now)
+    outcomes = []
+    for i in range(10):
+        try:
+            outcomes.append(gs.search("claim %d" % i))
+        except S.SearchPaused as e:
+            outcomes.append(("paused", e.pause_s))
+    assert outcomes[0] == ("paused", 60)                          # the store failed: refused, not counted in memory
+    assert len(g.gen_calls()) == 3                                # at most the cap in total over ten attempts
+    assert st.inner.counters(["gr:d:%d" % int(now // 86400)])["gr:d:%d" % int(now // 86400)] == 3
+
+# ---------------------------------------------------------------- C3: negative and non-numeric values are invalid -> 160
+@pytest.mark.parametrize("raw,expected", [("-1", 160), ("-500", 160), ("abc", 160), ("1.5", 160), ("", 160), ("  ", 160),
+                                          (" 7 ", 7), ("0", 0), ("12", 12)])
+def test_grounded_cap_parsing(monkeypatch, raw, expected):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", raw)
+    assert V.grounded_max_per_day() == expected
