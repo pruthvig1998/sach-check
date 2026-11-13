@@ -4,6 +4,7 @@ data/eval_summary.json at request time, and each one carries a plain-English 'ho
 If a source is unavailable the figure is None in the data and "not available" on the page, never a placeholder."""
 from __future__ import annotations
 import json, os
+from . import timefmt
 from . import fetch, ledger, store
 from .lang import NAMES, SUPPORTED
 from . import trending
@@ -182,7 +183,7 @@ def impact_page() -> bytes:
     honest = ('<div class="honest imp-honest" id="honesty"><h2 style="font-size:22px">Read this first</h2>'
               '<p><b>Counting since %s.</b> This server\'s counters are <b>%s</b>%s.</p>'
               '<p>Numbers are computed from the ledger and counters on every page load; nothing here is typed in. %s</p></div>') % (
-        esc(since) if since else "not available (no check has been counted yet)",
+        esc(timefmt.fmt_ist(since)) if since else "not available (no check has been counted yet)",
         "persistent" if persistent else "temporary",
         "" if persistent else ": they reset when the server restarts",
         esc(d["storage_note"]))
@@ -220,11 +221,11 @@ def impact_page() -> bytes:
     how = "".join("<li><b>%s</b>: %s</li>" % (esc(k.replace("_", " ")), esc(t)) for k, t in d["how"].items())
     how += "<li><b>sources policy</b>: %s</li><li><b>evaluation</b>: %s</li>" % (esc(sp["how"]), esc(ev["how"]))
     body = ('<div class="wrap imp-sec"><section style="border:0"><p class="kicker">Live numbers</p><h1 style="font-size:clamp(34px,9vw,64px)">Impact</h1>'
-            '<p class="sub">What Sach has done, counted by the server itself. Generated %s UTC.</p>%s'
+            '<p class="sub">What Sach has done, counted by the server itself. Generated %s.</p>%s'
             '<h2>Checks</h2><div class="imp-stats">%s</div>%s%s'
             '%s<h2 style="margin-top:34px">Evaluation</h2>%s'
             '<h2 style="margin-top:34px">Public ledger</h2><p>%s</p><h3>Latest FALSE verdicts</h3>%s<p class="note">%s <a href="/?view=ledger">Open the full ledger</a>.</p>'
             '<h2 style="margin-top:34px">How each number is computed</h2><ul class="imp-how">%s</ul>'
             '<p class="note"><a href="/?view=impact&amp;format=json">The same data as JSON</a> &middot; <a href="/?view=status" rel="nofollow">Service status</a></p></section></div>') % (
-        esc(d["generated_at"].replace("T", " ")), honest, stats, vblock, lblock, trending.section_html(trending.IMPACT_TOP), evb, esc(ledger_line), recent, esc(sp_line), how)
+        esc(timefmt.fmt_ist(d["generated_at"])), honest, stats, vblock, lblock, trending.section_html(trending.IMPACT_TOP), evb, esc(ledger_line), recent, esc(sp_line), how)
     return layout(body, "Impact — Sach", path="/impact").replace(b"</style>", ("\n" + IMPACT_CSS).encode() + b"</style>", 1)

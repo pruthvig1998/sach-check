@@ -6,6 +6,7 @@ Never shows keys, key suffixes or IP addresses: a Gemini judge's internal name c
 are labelled by position ("gemini #1") here, never by their internal name."""
 from __future__ import annotations
 import time
+from . import timefmt
 from . import gtranslate, ledger, limits, store
 
 _AI = [("groq", "GROQ_API_KEY"), ("gemini", "GEMINI_API_KEY"), ("openrouter", "OPENROUTER_API_KEY"), ("mistral", "MISTRAL_API_KEY"),
@@ -103,16 +104,16 @@ def status_page(d: dict) -> bytes:
     g = d["google_translation"]
     gt_used = "%s of %s" % (g["chars_today"], g["max_chars_per_day"]) if g["max_chars_per_day"] else "%s (no limit)" % g["chars_today"]
     body = ('<div class="wrap" style="padding:30px 0"><p class="kicker">Health</p><h1 style="font-size:clamp(32px,8vw,56px)">Status</h1>'
-            '<p class="sub">Updated %s UTC. %s</p>'
+            '<p class="sub">Updated %s. %s</p>'
             '<h2>AI judges</h2><div style="overflow-x:auto"><table><thead><tr><th>Provider</th><th>Configured</th><th>Now</th><th>Models paused</th><th>Failures since start</th></tr></thead><tbody>%s</tbody></table></div>'
             '<h2 style="margin-top:28px">Web search</h2><div style="overflow-x:auto"><table><thead><tr><th>Provider</th><th>Configured</th><th>Now</th><th>Paused for</th></tr></thead><tbody>%s</tbody></table></div>'
-            '<h2 style="margin-top:28px">Live-check budget</h2><ul><li>This minute: <b>%s</b></li><li>Today (UTC): <b>%s</b></li><li>Refused as busy today: <b>%s</b></li></ul><p class="note">%s</p>'
-            '<h2 style="margin-top:28px">Google Translation</h2><ul><li>Configured: <b>%s</b></li><li>Characters today (UTC): <b>%s</b></li><li>Skipped because the budget was used: <b>%s</b></li></ul><p class="note">Optional first-choice translator for non-English forwards; when it is off, over budget or unavailable, the AI translator is used. Repeats come from the cache and are not counted.</p>'
+            '<h2 style="margin-top:28px">Live-check budget</h2><ul><li>This minute: <b>%s</b></li><li>Today (resets 5:30 am IST): <b>%s</b></li><li>Refused as busy today: <b>%s</b></li></ul><p class="note">%s</p>'
+            '<h2 style="margin-top:28px">Google Translation</h2><ul><li>Configured: <b>%s</b></li><li>Characters today (resets 5:30 am IST): <b>%s</b></li><li>Skipped because the budget was used: <b>%s</b></li></ul><p class="note">Optional first-choice translator for non-English forwards; when it is off, over budget or unavailable, the AI translator is used. Repeats come from the cache and are not counted.</p>'
             '<h2 style="margin-top:28px">Checks</h2><ul><li>All time: <b>%s</b> (cache hits <b>%s</b>, everything else <b>%s</b>)</li><li>Counting since: %s</li></ul><p class="note">%s</p>'
             '<p class="note"><a href="/?view=status&amp;format=json">The same data as JSON</a> &middot; <a href="/impact">Impact</a></p></div>') % (
-        esc(d["generated_at"].replace("T", " ")), esc(d["scope_note"]), ai, se, esc(lim(b["minute"])), esc(lim(b["day_utc"])),
+        esc(timefmt.fmt_ist(d["generated_at"])), esc(d["scope_note"]), ai, se, esc(lim(b["minute"])), esc(lim(b["day_utc"])),
         b["refused_busy_today"], esc(b["note"]), "yes" if g["configured"] else "no", esc(gt_used), g["skipped_over_budget_today"], ck["total_all_time"], ck["cache_hits_all_time"], ck["live_all_time"],
-        esc(str(ck["counting_since"] or "not available")), esc(ck["note"]))
+        esc(timefmt.fmt_ist(ck["counting_since"]) if ck["counting_since"] else "not available"), esc(ck["note"]))
     return layout(body, "Status — Sach", path="/?view=status", noindex=True)
 
 

@@ -300,7 +300,7 @@ def test_trace_lists_every_judged_source_including_uncited():
     c = out["claims"][0]
     srcs = c["trace"]["sources"]
     assert len(srcs) == 2
-    assert all(set(s) == {"source", "url", "tier", "fetched_at", "title", "stance"} for s in srcs)
+    assert all({"source", "url", "tier", "fetched_at", "title", "stance"} <= set(s) <= {"source", "url", "tier", "fetched_at", "title", "stance", "judged"} for s in srcs)
     by = {s["url"]: s for s in srcs}
     assert by[PIB.url]["stance"] == "contradicts" and by[OFFICIAL.url]["stance"] == "none"
     assert {x["url"] for x in c["citations"]} == {PIB.url}          # the second source was judged but not cited
@@ -377,7 +377,8 @@ def test_cached_result_shows_first_checked_line():
     first, _ = run()
     hit, _ = run()
     h = result_block(hit)
-    assert f"First checked on {first['checked_at'][:10]}. This is a stored result for a repeated message." in h
+    from sach import timefmt
+    assert f"First checked on {timefmt.fmt_ist(first['checked_at'])}. This is a stored result for a repeated message." in h
     assert "First checked" not in result_block(first)
 
 # ---------------------------------------------------------------- JSON API and HTML via the real server
@@ -393,3 +394,20 @@ def test_json_api_includes_trace_and_cached_flags(server):
     assert d2["cached"] is True and d2["first_checked_at"] == d["checked_at"] and d2["served_at"]
     code, html = _post(server, FALSE_TEXT)
     assert "How this verdict was reached" in html and "First checked on" in html
+
+
+# --- 13 Nov incident: a silent judge failure became a cached UNVERIFIED. Old UNVERIFIED live results are re-checked; evidence-backed ones stay.
+def test_old_unverified_live_result_without_judge_timing_is_treated_as_a_miss(monkeypatch):
+    from sach import cache
+    old = {"verdict": "UNVERIFIED", "claims": [{"reason_code": "no_evidence", "trace": {"layer": "LIVE", "sources": []}}], "layer": "live"}
+    assert cache._poisoned(old) is True
+    new = {"verdict": "UNVERIFIED", "claims": [{"reason_code": "no_evidence", "trace": {"layer": "LIVE", "timing_ms": {"retrieve": 5, "judge": 5, "judge_window": 30000}}}]}
+    assert cache._poisoned(new) is False                                          # recorded judging: a genuine "no evidence"
+    assert cache._poisoned({"verdict": "FALSE", "claims": [{"trace": {}}]}) is False        # decisive results carry cited evidence
+    assert cache._poisoned({"verdict": "UNVERIFIED", "layer": "match", "claims": [{"trace": {}}]}) is False
+    assert cache._poisoned({"verdict": "UNVERIFIED", "no_claims": True, "claims": []}) is False
+
+def test_a_check_with_a_failed_or_timed_out_judge_is_degraded_and_never_cached():
+    from sach import cache
+    out = {"verdict": "UNVERIFIED", "degraded": True, "claims": [{"reason_code": "no_evidence"}]}
+    assert cache.storable(out) is False

@@ -37,7 +37,7 @@ def test_build_report_shape_and_roundtrip():
     assert "Government will give Rs 5000 to every woman. Forward to all groups!" in r["body"]
     assert "Sach's verdict: FALSE. An official source contradicts this claim." in r["body"]
     assert f"{CITE['source']}: {CITE['url']} (accessed 2026-11-10)" in r["body"]
-    assert "Checked with Sach (https://" in r["body"] and "on 2026-11-12. Sach is an independent open-source tool, not a government service." in r["body"]
+    assert "Checked with Sach (https://" in r["body"] and "on 12 Nov 2026. Sach is an independent open-source tool, not a government service." in r["body"]
     wa = urlparse(r["whatsapp_url"])
     assert (wa.scheme, wa.netloc, wa.path) == ("https", "wa.me", "/918799711259")
     assert parse_qs(wa.query, keep_blank_values=True)["text"] == [r["body"]]

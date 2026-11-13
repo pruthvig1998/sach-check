@@ -26,10 +26,23 @@ def storable(out: dict) -> bool:
 def ttl_for(out: dict) -> int:
     return TTL_UNVERIFIED_S if out.get("verdict") == "UNVERIFIED" else TTL_DECISIVE_S
 
+def _poisoned(v: dict) -> bool:
+    """An UNVERIFIED live result stored before judge outcomes were recorded (no `timing_ms` in any claim trace) may be a silent
+    judge failure that got cached (13 Nov incident). Treat it as a miss so the claim is checked again; decisive verdicts and
+    matches carry real evidence and stay valid."""
+    if v.get("verdict") != "UNVERIFIED" or v.get("layer") == "match" or v.get("no_claims"):
+        return False
+    claims = v.get("claims") or []
+    return bool(claims) and not any((c.get("trace") or {}).get("timing_ms") for c in claims if isinstance(c, dict))
+
 def lookup(text: str, reply_lang: str | None):
     try:
         v = store.get_store().get(key(text, reply_lang))
-        return v if isinstance(v, dict) and v.get("verdict") and "claims" in v else None
+        if not (isinstance(v, dict) and v.get("verdict") and "claims" in v):
+            return None
+        if _poisoned(v):
+            return None
+        return v
     except Exception:
         return None
 

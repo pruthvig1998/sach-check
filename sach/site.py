@@ -5,6 +5,7 @@ from urllib.parse import quote
 from . import ledger, match, pwa, share
 from .i18n import LABEL, text_lang
 from .lang import SUPPORTED, NAMES, NATIVE, RTL, INDIAN_LANGS, html_lang
+from . import timefmt
 from .report import report_html, card_data_script
 from .ocr import OCR_BLOCK
 from .scamsigns import CSS as SIGNS_CSS, signs_html
@@ -460,10 +461,10 @@ def trace_block(res: dict) -> str:
             items = ""
             for x in srcs:
                 w = _STANCE_WORD.get(x.get("stance"), "NEITHER")
-                when = esc(str(x.get("fetched_at", ""))[:16].replace("T", " "))
+                when = esc(timefmt.fmt_ist(x.get("fetched_at", "")))
                 title = f' · {esc(x["title"])}' if x.get("title") else ""
                 items += (f'<li><span class="st {w}">{w}</span><a href="{esc(x.get("url", ""))}" rel="noopener">{esc(x.get("source", ""))}</a>'
-                          f'<br><span class="note">{esc(_TIER_WORD.get(x.get("tier"), str(x.get("tier", ""))))} · fetched {when} UTC{title}</span></li>')
+                          f'<br><span class="note">{esc(_TIER_WORD.get(x.get("tier"), str(x.get("tier", ""))))} · fetched {when}{title}</span></li>')
             h += f'<p class="note">Sources judged for this claim:</p><ul>{items}</ul>'
         else:
             h += '<p class="note">No sources were found for this claim.</p>'
@@ -618,7 +619,7 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
                    + '<div class="row"><button class="btn ghost" id="copy2" type="button">Copy both languages</button></div></div>')
     cachednote = ""
     if res.get("cached"):
-        first = str(res.get("first_checked_at") or res.get("checked_at") or "")[:10]
+        first = timefmt.fmt_ist(res.get("first_checked_at") or res.get("checked_at") or "")
         cachednote = f'<p class="note" role="status" style="margin:0 0 10px">First checked on {esc(first)}. This is a stored result for a repeated message.</p>'
     tr = trace_block(res)
     share_btns, share_data = share.result_share_html(res, site_url(), link)
@@ -644,7 +645,7 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
 <button class="btn ghost" id="dl" type="button">Download image</button><button class="btn ghost" id="img-share" type="button" hidden>Share image</button>{listen_buttons(res.get('language', 'en'), bool(res.get('card_en')))}</div>
 {share_data}{panel}<p class="invitebox note">{share.invite_link(site_url())}</p>{signs_html(res.get("warning_signs"), res.get("language", "en"))}{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
 <div style="overflow-x:auto"><table class="stack" role="table"><thead role="rowgroup"><tr role="row"><th role="columnheader">Claim</th><th role="columnheader">Verdict</th><th role="columnheader">Citations</th></tr></thead><tbody role="rowgroup">{rows}</tbody></table></div>
-{tr}<p class="note" style="margin-top:14px">Checked {esc(res['checked_at'][:16].replace('T',' '))} UTC. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
+{tr}<p class="note" style="margin-top:14px">Checked {esc(timefmt.fmt_ist(res['checked_at']))}. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
 
 
 def lang_options(reply: str = "auto") -> str:
@@ -815,7 +816,7 @@ def ledger_page() -> bytes:
         cites = "".join(f'<div class="cite"><a href="{esc(c["url"])}" rel="noopener">{esc(c["source"])}</a> <span>· {esc(c["tier"].replace("_"," "))} · {esc(c["date_accessed"])}</span></div>'
                         for c in r["citations"]) or '<span class="note">none found</span>'
         rows += (f'<tr role="row" id="{claimreview.row_id(r)}" data-v="{esc(r["verdict"])}"><td role="cell" data-label="Claim">{esc(r["claim"])}</td><td role="cell" data-label="Verdict"><span class="tag {esc(r["verdict"])}">{esc(r["verdict"])}</span></td>'
-                 f'<td role="cell" data-label="Citations">{cites}</td><td role="cell" data-label="Checked" class="note">{esc(r["checked_at"][:10])}</td></tr>')
+                 f'<td role="cell" data-label="Citations">{cites}</td><td role="cell" data-label="Checked" class="note">{esc(timefmt.fmt_ist_date(r["checked_at"]))}</td></tr>')
     if not rows:
         rows = '<tr data-v="NONE"><td colspan="4" class="note">No claims checked yet.</td></tr>'
     btns = "".join(f'<button type="button" data-v="{v}" aria-pressed="{"true" if v=="ALL" else "false"}">{v.title() if v!="ALL" else "All"}</button>'

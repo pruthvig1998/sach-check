@@ -16,6 +16,7 @@ PIB Fact Check channels, verified from official PIB pages on 2026-11-12 (fetched
 from __future__ import annotations
 import html, json, unicodedata
 from urllib.parse import quote
+from . import timefmt
 from .i18n import LABEL, text_lang
 from .models import AUTHORITATIVE
 from .siteurl import site_url
@@ -90,7 +91,7 @@ def build_report(result: dict, lang: str = "en") -> dict:
     claims = false_claims(result)
     if not claims:
         return {}
-    checked = str(result.get("checked_at", ""))[:10]
+    checked = timefmt.fmt_ist_date(result.get("checked_at", ""))
     srcs = _sources(claims)
     # Trim least important first: extra citation lines, then claim length, then extra claims. URLs are whole lines' tails: never cut.
     plans = [(len(claims), 600, k) for k in range(len(srcs), 0, -1)] + [(len(claims), n, min(1, len(srcs))) for n in (400, 250, 150, 90)]

@@ -11,6 +11,7 @@ from __future__ import annotations
 import email.policy, html, json, re, time
 from email.parser import BytesParser
 from urllib.parse import quote
+from . import timefmt
 from . import cache, store
 from .i18n import tr, text_lang
 from .lang import SUPPORTED
@@ -94,7 +95,7 @@ def load_share(rid):
 
 def shared_header(rec: dict) -> str:
     res = rec["result"]
-    first = esc(str(res.get("first_checked_at") or res.get("checked_at") or "")[:10])
+    first = esc(timefmt.fmt_ist(res.get("first_checked_at") or res.get("checked_at") or ""))
     return (f'<div class="shared" id="sharedhdr" role="note"><p class="kicker">Someone shared this Sach check with you</p>'
             f'<p class="note" style="margin:6px 0 4px">The forward that was checked:</p><blockquote class="fwd">{esc(rec["text"])}</blockquote>'
             f'<p class="note" style="margin:6px 0 12px">First checked on {first}.</p>'

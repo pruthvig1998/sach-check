@@ -35,7 +35,14 @@ def _search_one(r, q):
     fn = getattr(r, "search_with_status", None)
     return fn(q) if fn else (r.search(q), None)
 
+class _JudgeError(Exception):
+    def __init__(self, kind: str, ms: int):
+        super().__init__(kind)
+        self.kind, self.ms = kind, ms
+
+
 def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, english: str = "", tinfo: dict | None = None) -> ClaimVerdict:
+    t_start = time.monotonic()
     left = lambda cap: max(0.3, min(cap, deadline - time.monotonic()))
     q = claim.text                                      # text used for searching + judging
     tinfo = tinfo if tinfo is not None else {}
@@ -68,20 +75,44 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
         if k not in seen:
             seen.add(k); uniq.append(e)
     evidence = uniq[:8]
+    t_judge = time.monotonic()
+    t_retrieved = t_judge
     ex = ThreadPoolExecutor(max_workers=8)              # LLM calls are slow; judge sources in parallel
-    futs = [ex.submit(judge, q, e, llm) for e in evidence]
-    wait(futs, timeout=left(JUDGE_DEADLINE_S))
+    def _judge_timed(e):
+        t = time.monotonic()
+        try:
+            return judge(q, e, llm), int((time.monotonic() - t) * 1000)
+        except Exception as exc:                        # judge() already swallows provider errors; anything raised here is a bug: say so
+            raise _JudgeError(type(exc).__name__, int((time.monotonic() - t) * 1000))
+    futs = [ex.submit(_judge_timed, e) for e in evidence]
+    window = left(JUDGE_DEADLINE_S)
+    wait(futs, timeout=window)
+    problems = 0
     for e, f in zip(evidence, futs):
         try:
-            e.stance = f.result(timeout=0) if f.done() else "none"
-        except Exception:
-            e.stance = "none"                           # hung/failed judge call -> no stance -> UNVERIFIED, never a guess
+            if f.done():
+                e.stance, ms = f.result(timeout=0)
+                e.judge_note = {"outcome": "answered", "ms": ms}
+            else:
+                e.stance = "none"                       # still running at the deadline: the AI did not answer in time
+                e.judge_note = {"outcome": "timeout", "ms": int(window * 1000)}
+                problems += 1
+        except _JudgeError as je:
+            e.stance = "none"
+            e.judge_note = {"outcome": "error:" + je.kind, "ms": je.ms}
+            problems += 1
+        except Exception as exc:
+            e.stance = "none"                           # never a guess: no stance -> UNVERIFIED, but now it is visible and flagged
+            e.judge_note = {"outcome": "error:" + type(exc).__name__, "ms": 0}
+            problems += 1
     ex.shutdown(wait=False)
     v = decide(claim, evidence)
     v.english = q if q != claim.text else ""
     v.trace = build_trace(q, evidence, v.reason_code, tinfo.get("translator") or "none")      # every judged source, cited or not
     v.detected = tinfo.get("detected")
     v.trace["layer"] = "LIVE"
+    v.trace["timing_ms"] = {"retrieve": int((t_retrieved - t_start) * 1000), "judge": int((time.monotonic() - t_judge) * 1000), "judge_window": int(window * 1000)}
+    v.judge_problems = problems                         # sources whose AI judge did not answer (timeout or error): read by check_forward
     v.search_status, v.search_provider = combine_status(sstat), ",".join(dict.fromkeys(sprov))   # not in to_dict(): read by check_forward
     return v
 
@@ -171,7 +202,10 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
         out["card_en"] = card_en                                   # same verdict and citations, in English
     out["search_status"] = combine_status([getattr(v, "search_status", None) for v in live]) if live else "ok"   # ok | partial | down | off
     out["search_provider"] = ",".join(dict.fromkeys(p for v in live for p in getattr(v, "search_provider", "").split(",") if p))
-    out["degraded"] = bool(live) and (llm is None or getattr(llm, "failures", 0) > fails_before)   # AI judge missing/at capacity: clear PIB debunks only
+    judge_problems = sum(getattr(v, "judge_problems", 0) for v in live)
+    out["degraded"] = bool(live) and (llm is None or getattr(llm, "failures", 0) > fails_before or judge_problems > 0)   # AI judge missing, at capacity, timed out or failed: never "neutral"
+    if judge_problems:
+        out["judge_problems"] = judge_problems
     tlayer = {"live": "LIVE", "match": "MATCH", "mixed": "MATCH+LIVE"}[layer]
     if layer == "live" and overall == UNVERIFIED and not any(v.reason_code == "timed_out" for v in results):
         tlayer = "ESCALATED"                                       # UNVERIFIED live result: the card offers human fact-checkers

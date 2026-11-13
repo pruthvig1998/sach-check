@@ -61,7 +61,8 @@ RULE_TEXT = {
 def build_trace(searched_as: str, evidence: list, reason_code: str, translator: str | None = None) -> dict:
     t = {"searched_as": searched_as,
          "sources": [{"source": e.source_name, "url": e.url, "tier": e.tier, "fetched_at": e.fetched_at,
-                      "title": e.title, "stance": e.stance} for e in evidence[:8]],
+                      "title": e.title, "stance": e.stance,
+                      **({"judged": e.judge_note} if getattr(e, "judge_note", None) else {})} for e in evidence[:8]],
          "rule": reason_code, "rule_text": RULE_TEXT.get(reason_code, "")}
     if translator:
         t["translator"] = translator          # "google" | "llm" | "none": who produced the English used for searching
