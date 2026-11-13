@@ -97,6 +97,7 @@ For a whole forward: any FALSE claim makes it **FALSE**; otherwise any MISLEADIN
 - **Voice in and read-aloud** (browser speech, where your device has a voice for the language).
 - **Screenshot reading:** Gemini vision turns an image into text that you review before checking (never stored).
 - **Scam warning signs** (urgency, "forward to 10 groups", suspicious links): advice shown beside the verdict, deterministic, and it never changes a verdict.
+- **Link, number and UPI ID checker** (second tool, no AI): paste a link, a UPI ID, a phone number, an app name or a whole forward and Sach says, per item, whether it is on its verified official list, imitates an official address (with the rule that fired and the real address), matches a scam pattern, or is something it cannot vouch for. It never says "safe". Details and limits: [docs/link-checker.md](docs/link-checker.md).
 - **Report to PIB Fact Check:** opens PIB's own channels with the claim ready to send. Sach never sends anything for you.
 - **Shareable verdict image** and a WhatsApp-ready text reply with a permanent "Full evidence" link.
 - **Verdict trace:** per claim, every source that was looked at, its stance, and the quote that decided it.
@@ -105,6 +106,10 @@ For a whole forward: any FALSE claim makes it **FALSE**; otherwise any MISLEADIN
 - **Telegram bot:** forward a message to the bot, get the same card. Free to run: [docs/telegram-bot.md](docs/telegram-bot.md).
 - **[Impact page](https://sachcheck.in/impact):** live usage numbers and a JSON endpoint; `scripts/snapshot_impact.py` freezes them into `evidence/` so they can be cited later.
 - **Policy pages** (terms, privacy, refund, contact) and an optional **tip jar** (UPI QR, and Razorpay checkout when configured). Tips never affect verdicts; this is covered by tests.
+
+## Link checker
+
+A second tool under the main checker (`#linkcheck`, or `/?view=link&q=...` without JavaScript; JSON: `POST /?api=linkcheck {"text": "..."}`). Deterministic rules plus tiny free lookups: the verified official list in `data/official_brands.json`, optional RDAP domain age (hostname only) and optional Google Safe Browsing (`GOOGLE_SAFEBROWSING_API_KEY`). It makes no AI calls, never opens the page you paste, and the only request it ever sends toward a short link is a guarded HEAD/ranged GET to the shortener itself. See [docs/link-checker.md](docs/link-checker.md).
 
 ## Evaluation
 

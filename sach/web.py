@@ -10,12 +10,13 @@ from .retrieve import default_retrievers
 from . import razorpay_pay as rzp
 from . import telegram_bot as tg
 from . import ocr
-from . import match, pwa, share, claimreview, trending
+from . import match, pwa, share, claimreview, trending, linkcheck
 from . import siteurl
 from . import limits
 from .legal import PAGES as LEGAL_PAGES, legal_page
 from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_png, tip_qr_svg, upi_link
 
+LINK_LIMIT, LINK_EXPAND_LIMIT = 20, 6          # link checker: own buckets, never shared with fact-checks or tips
 RATE_LIMIT, RATE_WINDOW = 8, 60          # best-effort per-IP checks per minute (serverless instances don't share state)
 _hits: dict = {}
 _hits_lock = threading.Lock()
@@ -81,7 +82,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _robots(self):
         site = siteurl.site_url(self)
-        body = ("User-agent: *\nAllow: /\nDisallow: /?api=\nDisallow: /?go=\nDisallow: /?view=pay\nDisallow: /?view=tipqr\nDisallow: /?view=status\nDisallow: /?r=\n"
+        body = ("User-agent: *\nAllow: /\nDisallow: /?api=\nDisallow: /?go=\nDisallow: /?view=pay\nDisallow: /?view=tipqr\nDisallow: /?view=status\nDisallow: /?view=link\nDisallow: /?r=\n"
                 f"Sitemap: {site}/sitemap.xml\n")
         self._send(body.encode(), ctype="text/plain; charset=utf-8")
 
@@ -136,6 +137,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("X-Robots-Tag", "noindex")
             self.end_headers()
             return self.wfile.write(svg)
+        if view == "link":                                   # no-JS link checker: the pasted text is in the URL only on this path
+            return self._linkview(qs)
         if "r" in qs and not view and u.path in ("", "/", "/api/index"):      # a shared result link
             return self._shared(qs["r"][0])
         if pwa.serve(self, u.path, qs):                      # manifest, icons, service worker, WhatsApp share target
@@ -178,6 +181,46 @@ class Handler(BaseHTTPRequestHandler):
         else:
             # plain "/" (or the Vercel entry path) is the real home page; any other path or an unknown ?view= still shows home, but is not indexed
             self._send(home(noindex=bool(view) or u.path not in ("", "/", "/api/index")))
+
+    def _linkview(self, qs):
+        """GET /?view=link&q=<text>: server-rendered, escaped, noindex, never cached. Offline rules plus the optional hostname lookups."""
+        q = qs.get("q", [""])[0][:linkcheck.MAX_INPUT]
+        lang = qs.get("lang", ["en"])[0]
+        lang = lang if lang in ("en", "hi", "te") else "en"
+        if q.strip() and rate_limited(self._client_ip(), "linkcheck", LINK_LIMIT):
+            return self._send(home(noindex=True, lc_prefill=q, lc_result='<p class="lc-sum" role="alert">You are checking quickly. Please wait a minute and try again.</p>'),
+                              429, cache="no-store")
+        out, q = linkcheck.view_page_result(q, lang, site=siteurl.site_url(self))
+        self._send(home(noindex=True, lc_prefill=q, lc_result=out), cache="no-store", extra={"X-Robots-Tag": "noindex"})
+
+    def _linkcheck_api(self, api: str):
+        """POST /?api=linkcheck {text} and /?api=linkexpand {url}. Own rate-limit buckets. The text is never stored or logged."""
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            n = 0
+        if n > 200_000:
+            return self._json({"error": "That is too much text. Please paste less than 4,000 characters."}, 413)
+        try:
+            body = json.loads(self.rfile.read(max(n, 0)).decode("utf-8", "replace") or "{}")
+        except Exception:
+            body = {}
+        body = body if isinstance(body, dict) else {}
+        lang = str(body.get("lang") or "en")[:5].lower()
+        lang = lang if lang in ("en", "hi", "te") else "en"
+        if api == "linkexpand":
+            if rate_limited(self._client_ip(), "linkexpand", LINK_EXPAND_LIMIT):
+                return self._json({"ok": False, "error": "Please wait a minute and try again."}, 429)
+            url = str(body.get("url") or "")[:500]
+            if not url or not linkcheck.network_enabled():
+                return self._json({"ok": False, "reason": "unavailable"})
+            return self._json(linkcheck.expand_and_analyze(url, str(body.get("context") or "")[:linkcheck.MAX_INPUT], lang))
+        if rate_limited(self._client_ip(), "linkcheck", LINK_LIMIT):
+            return self._json({"error": "You are checking quickly. Please wait a minute and try again."}, 429)
+        text = body.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return self._json({"error": linkcheck.t("empty", lang)}, 400)
+        return self._json(linkcheck.check_text(text, lang=lang, site=siteurl.site_url(self)))
 
     def _shared(self, rid: str):
         """GET /?r=<id>: the stored result, or a friendly 'expired' page. The id is validated and never echoed back."""
@@ -317,6 +360,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._tg_webhook()
         if api == "ocr":
             return self._ocr()
+        if api in ("linkcheck", "linkexpand"):
+            return self._linkcheck_api(api)
         if parse_qs(urlparse(self.path).query).get("via", [""])[0] == "share" and "multipart/form-data" in (self.headers.get("Content-Type") or ""):
             return self._share_post()
         if api in ("rzp-order", "rzp-verify", "rzp-webhook"):

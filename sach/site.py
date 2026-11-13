@@ -10,6 +10,7 @@ from .report import report_html, card_data_script
 from .ocr import OCR_BLOCK
 from .scamsigns import CSS as SIGNS_CSS, signs_html
 from .siteurl import site_url        # noqa: F401  (re-exported: the one place that knows the site's public address)
+from . import linkcheck
 from .voice import VOICE_JS, VOICE_CSS, voice_controls, progress_panel, listen_buttons
 
 REPO = "https://github.com/pruthvig1998/sach-check"
@@ -410,7 +411,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards", path: 
 <link rel="icon" type="image/png" href="/?view=icon&amp;size=192">
 {pwa.HEAD}
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="{FONTS}" rel="stylesheet"><style>{CSS}{VOICE_CSS}{share.CSS}</style>
+<link href="{FONTS}" rel="stylesheet"><style>{CSS}{VOICE_CSS}{share.CSS}{linkcheck.CSS}</style>
 <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script></head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="wrap"><a class="logo" href="/" title="Sach (Hindi सच) and nijam (Telugu నిజం) both mean “truth”">Sach<small><span class="sc">सच · నిజం · </span>truth</small></a>
@@ -419,7 +420,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards", path: 
 <main id="main">{body}</main>
 <footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Bharat Agentic-AI Hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
 <div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/?view=impact">Impact</a> · <a href="/#api">API</a> · <a href="/?view=status" rel="nofollow">Status</a>{tip_link}<br>{share.invite_link(base)}<br><a href="/?view=terms">Terms</a> · <a href="/?view=privacy">Privacy</a> · <a href="/?view=refund">Refunds</a> · <a href="/?view=contact">Contact</a></div></div></footer>
-{share.BAR_HTML}<script>{JS}{share.JS}</script><script>{VOICE_JS}</script>{pwa.SCRIPT}</body></html>""".encode()
+{share.BAR_HTML}<script>{JS}{share.JS}{linkcheck.JS}</script><script>{VOICE_JS}</script>{pwa.SCRIPT}</body></html>""".encode()
 
 
 def stamp(v: str, cls="") -> str:
@@ -580,7 +581,7 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
         return (f'<div class="result" id="result"><div><div class="stamp big UNVERIFIED">No claim</div></div>'
                 f'<div><p class="kicker">Nothing to check</p><div class="bubble"{card_attrs(res.get("language", "en"))}><span id="cardtext">{esc(res["card"])}</span></div>'
                 f'<p class="note" style="margin-top:14px">Greetings, links, emoji and bare numbers are not factual claims. Paste the sentence that makes the claim.</p>'
-                f'{signs_html(res.get("warning_signs"), res.get("language", "en"))}</div></div>')
+                f'{signs_html(res.get("warning_signs"), res.get("language", "en"))}{linkcheck.panel_html(text)}</div></div>')
     rows = ""
     ms = match.matched_claims(res)
     for c in res["claims"]:
@@ -643,7 +644,7 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
 {cachednote}<div class="bubble"{card_attrs(res.get('language', 'en'))}><span id="cardtext">{card}</span><small dir="ltr">Sach ✓✓</small></div>
 <div class="row actions" role="group" aria-label="Share this verdict">{share_btns}<button class="btn ghost" id="copy" type="button">Copy card</button>
 <button class="btn ghost" id="dl" type="button">Download image</button><button class="btn ghost" id="img-share" type="button" hidden>Share image</button>{listen_buttons(res.get('language', 'en'), bool(res.get('card_en')))}</div>
-{share_data}{panel}<p class="invitebox note">{share.invite_link(site_url())}</p>{signs_html(res.get("warning_signs"), res.get("language", "en"))}{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
+{share_data}{panel}<p class="invitebox note">{share.invite_link(site_url())}</p>{signs_html(res.get("warning_signs"), res.get("language", "en"))}{linkcheck.panel_html(text)}{report_html(res)}{card_data_script(res)}{notice}{english}{softtip}<h3 style="font-family:var(--serif);margin:26px 0 6px">Claims checked</h3>
 <div style="overflow-x:auto"><table class="stack" role="table"><thead role="rowgroup"><tr role="row"><th role="columnheader">Claim</th><th role="columnheader">Verdict</th><th role="columnheader">Citations</th></tr></thead><tbody role="rowgroup">{rows}</tbody></table></div>
 {tr}<p class="note" style="margin-top:14px">Checked {esc(timefmt.fmt_ist(res['checked_at']))}. <a href="{esc(issue)}" rel="noopener">Report a wrong verdict</a></p></div></div>"""
 
@@ -659,7 +660,7 @@ def lang_options(reply: str = "auto") -> str:
             + f'<optgroup label="Written in English letters">{opt("tl", "Tinglish · Telugu in English letters")}</optgroup>')
 
 
-def home(result: str = "", prefill: str = "", error: str = "", reply: str = "auto", noindex: bool = False, autorun: bool = False, notice: str = "") -> bytes:
+def home(result: str = "", prefill: str = "", error: str = "", reply: str = "auto", noindex: bool = False, autorun: bool = False, notice: str = "", lc_result: str = "", lc_prefill: str = "") -> bytes:
     chips = "".join(f'<button type="button" class="chip" data-text="{esc(e["text"])}"><b class="{e["verdict"]}">{e["verdict"]}</b>{esc(e["title"])} · {e["lang"]}</button>' for e in EXAMPLES)
     opts = lang_options(reply)
     ev = eval_display()                      # None = "Evaluation pending" (old format, degraded or missing file)
@@ -733,6 +734,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <p class="note" style="margin:10px 0 0">Tip: press Ctrl/Cmd + Enter to check. Only the individual claims (never your name) go to the public ledger.</p>
 <div id="busy" role="status"><i></i>Reading PIB and official pages… this usually takes 10 to 30 seconds.</div>{progress_panel()}</form>{share.HOWTO_HTML}
 <div id="results">{f'<p role="alert" style="color:var(--false);font-weight:600;margin-top:14px">{esc(error)}</p>' if error else ''}{result}</div></div></div></section>
+{linkcheck.section_html("en", lc_prefill, lc_result)}
 {pwa.HOME_HTML}
 {trend_html}
 <section id="how"><div class="wrap"><h2>How it works</h2><p class="sub">Four steps, all visible. Nothing is invented: a citation appears only if we actually fetched that page.</p>
@@ -774,7 +776,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 
 → {{"verdict":"FALSE","language":"en","card":"…","claims":[{{"verdict":"FALSE","citations":[{{"url":"https://pib.gov.in/…"}}]}}]}}</pre>
 <div class="row"><a class="btn ghost" href="/?view=ledger">Open the public ledger →</a><a class="btn ghost" href="{REPO}" rel="noopener">Source on GitHub →</a></div></div></section>"""
-    return layout(body, path="/", noindex=bool(result or prefill or error or noindex))
+    return layout(body, path="/", noindex=bool(result or prefill or error or noindex or lc_result or lc_prefill))
 
 
 def pay_page(amount: int | None = None, bad_amount: bool = False, alt: bool = False) -> bytes:
