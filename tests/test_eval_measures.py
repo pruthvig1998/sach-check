@@ -93,7 +93,7 @@ def test_measures_section_and_report_sections_are_present(tmp_path):
         assert section in rep
     assert "accuracy counts abstentions" in rep.lower().replace("`", "")
     assert "Exact-match accuracy: **1/4**" in rep and "Overclaimed FALSE (the unforgivable failure): 0" in rep     # old headline lines kept
-    assert "Abstention rate" in rep and "| 1 | 4 decisive-label claims | 25.0% |" in rep
+    assert "Abstention rate" in rep and "| 0 | 4 decisive-label claims | 0.0% |" in rep      # the degraded UNVERIFIED is not a real abstention
     assert "Claims without timing: **0**" in rep
     assert "Judge problem" in rep and "Search failure" in rep and "ERROR (checking the claim raised" in rep
 
@@ -131,7 +131,7 @@ def test_run_records_ms_and_flags_and_handles_a_raising_claim(monkeypatch):
     out = ev.run(rows, [], _Llm(), ck, out=lambda *_: None, workers=2)
     assert len(out) == 4                                                    # the run finished
     err = ck["results"]["claim 2"]
-    assert err["got"] == "ERROR" and err["error"] == "ValueError" and err["layer"] == "error"
+    assert err["status"] == "error" and err["got"] is None and err["error"] == "ValueError" and err["layer"] == "error"
     assert ck["results"]["claim 1"]["degraded"] is True and ck["results"]["claim 3"]["search_status"] == "partial"
     assert ck["results"]["claim 0"]["error"] is None and ck["results"]["claim 0"]["ms"] >= 15
     assert all(ck["results"][c]["ms"] >= 0 for c in ck["results"])
@@ -305,7 +305,7 @@ def test_run_stores_error_msg_in_checkpoint_and_the_failed_table_shows_only_the_
     ck = {"key": {}, "results": {}, "llm_failures": 0, "search_failures": 0, "no_llm": False}
     out = ev.run(rows, [], _Llm(), ck, out=lambda *_: None)
     got = ck["results"]["boom"]
-    assert got["error"] == "RuntimeError" and got["got"] == "ERROR"
+    assert got["error"] == "RuntimeError" and got["status"] == "error" and got["got"] is None
     assert secret not in got["error_msg"] and "[redacted]" in got["error_msg"] and len(got["error_msg"]) <= 160
     text = "\n".join(ev.failed_table(out))
     # the committed table no longer carries message text: only the exception class name in the Error column

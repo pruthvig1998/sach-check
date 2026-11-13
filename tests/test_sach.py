@@ -710,7 +710,7 @@ class _FakeBrave(R.BraveRetriever):
         return []
 
 def _stub_pages(monkeypatch, titles):
-    monkeypatch.setattr(R, "fetch", lambda url: {"status": 200, "fetched_at": TS, "body": f"<html><title>{titles.get(url, 'Page')}</title><body>{titles.get(url, 'Page')} text</body></html>"})
+    monkeypatch.setattr(R, "fetch", lambda url: {"status": 200, "final_url": url, "fetched_at": TS, "body": f"<html><title>{titles.get(url, 'Page')}</title><body>{titles.get(url, 'Page')} text</body></html>"})
 
 def test_brave_runs_pib_then_official_and_skips_factcheckers_when_authoritative_found(monkeypatch):
     _stub_pages(monkeypatch, {})
@@ -734,7 +734,7 @@ def test_brave_falls_back_to_keyword_pib_query_then_factcheckers_when_nothing_of
 
 def test_brave_pib_pages_are_parsed_and_tiered_as_debunks(monkeypatch):
     html = "<html><title>Press Release Page</title><h2>Fake news on WhatsApp claims Government giving Rs 1000</h2><div id='PdfDiv'>The claim is fake.</div></html>"
-    monkeypatch.setattr(R, "fetch", lambda url: {"status": 200, "fetched_at": TS, "body": html})
+    monkeypatch.setattr(R, "fetch", lambda url: {"status": 200, "final_url": url, "fetched_at": TS, "body": html})
     b = _FakeBrave({"site:pib.gov.in": ["https://www.pib.gov.in/PressReleasePage.aspx?PRID=1618314&reg=3&lang=1"]})
     ev = b.search("Government giving Rs 1000 Corona Sahayata Yojana")
     assert ev[0].tier == TIER_PIB and ev[0].title.startswith("Fake news on WhatsApp") and ev[0].source_name.startswith("PIB")

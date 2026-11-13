@@ -2,7 +2,7 @@
 from __future__ import annotations
 import re
 from bs4 import BeautifulSoup
-from .fetch import fetch
+from .fetch import fetch, http_host_of
 from .langwords import DEBUNK_RE
 
 PR_URL = "https://pib.gov.in/PressReleasePage.aspx?PRID={}"
@@ -10,6 +10,10 @@ RSS_URL = "https://www.pib.gov.in/RssMain.aspx?ModId={mod}&Lang={lang}&Regid={re
 DEBUNK_MARKERS = re.compile(
     r"\b(fake|false|misleading|baseless|fabricated|hoax|no such|#?PIBFactCheck|not true|incorrect|"
     r"clarif\w+|misinformation|rumou?rs?)\b|फर्जी|फ़र्ज़ी|झूठ|भ्रामक|अफवाह|నకిలీ|అబద్ధ|తప్పుడు|" + DEBUNK_RE, re.I)
+
+def is_pib(url: str) -> bool:
+    host = http_host_of(url)
+    return host == "pib.gov.in" or host.endswith(".pib.gov.in")
 
 def parse_release(html: str) -> dict:
     s = BeautifulSoup(html, "html.parser")
@@ -30,9 +34,9 @@ def parse_release(html: str) -> dict:
     return {"title": title, "body": re.sub(r"\s+", " ", body), "ministry": ministry, "posted_on": date}
 
 def get_release(prid: int | str) -> dict | None:
-    url = PR_URL.format(prid)
-    rec = fetch(url)
-    if rec["status"] != 200 or not rec["body"]:
+    rec = fetch(PR_URL.format(prid))
+    url = rec.get("final_url", "")
+    if rec["status"] != 200 or not is_pib(url) or not rec["body"]:
         return None
     d = parse_release(rec["body"])
     if not d["title"] and not d["body"]:
@@ -55,7 +59,7 @@ def rss_index(mods=(6,), langs=(1,), regs=(3,)) -> list[dict]:
         for lang in langs:
             for reg in regs:
                 rec = fetch(RSS_URL.format(mod=mod, lang=lang, reg=reg))
-                if rec["status"] == 200:
+                if rec["status"] == 200 and is_pib(rec.get("final_url", "")):
                     for it in parse_rss(rec["body"]):
                         items[it["prid"]] = it
     return list(items.values())

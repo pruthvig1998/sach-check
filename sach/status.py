@@ -2,8 +2,7 @@
 global live-check budget is used, and what the counters say. Honest about its limits: provider pause state lives in THIS serverless
 instance's memory (another instance may differ); budget and counters come from the shared store when Upstash is set.
 
-Never shows keys, key suffixes or IP addresses: a Gemini judge's internal name carries the last 4 characters of its key, so judges
-are labelled by position ("gemini #1") here, never by their internal name."""
+The status page labels multiple judges of the same provider by position ("gemini #1"). It exposes provider state and counts."""
 from __future__ import annotations
 import time
 from . import timefmt

@@ -210,7 +210,7 @@ def test_keys_never_appear_in_errors_or_logs(caplog):
 
 # ------------------------------------------------------------------ BraveRetriever
 def _stub_pages(monkeypatch):
-    monkeypatch.setattr(R, "fetch", lambda url: {"status": 200, "fetched_at": TS, "body": "<html><title>T</title><body>text</body></html>"})
+    monkeypatch.setattr(R, "fetch", lambda url: {"status": 200, "final_url": url, "fetched_at": TS, "body": "<html><title>T</title><body>text</body></html>"})
 
 
 def test_brave_retriever_uses_chain_and_reports_ok(monkeypatch):

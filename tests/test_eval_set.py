@@ -258,6 +258,15 @@ def test_full_clean_run_writes_headline_and_archives_old(env):
     s = json.loads((tmp / "data" / "eval_summary.json").read_text())
     assert (s["n"], s["correct"], s["overclaimed_false"], s["abstained"], s["abstained_wrong"]) == (3, 3, 0, 0, 0)
     assert s["commit"] == "abc1234" and s["dirty"] is False and "date" in s and "by_lang" in s and s["overclaimed_true"] == 0
+    assert (s["mode"], s["complete"], s["partial"], s["degraded"], s["system_failures"]) == ("live", True, False, False, 0)
+    artifact = json.loads((tmp / "cache" / "evaluation-live.json").read_text())
+    assert artifact["metrics"]["accuracy"] == {"numerator": 3, "denominator": 3}
+    assert artifact["metrics"]["abstention"] == {"numerator": 1, "denominator": 3}
+    assert artifact["metrics"]["abstained_on_decisive"] == {"numerator": 0, "denominator": 2}
+    assert artifact["metrics_by_provenance"]["synthetic_control"]["accuracy"]["denominator"] == 1
+    assert artifact["rows"][0]["expected_source_id"] == "pib:1"
+    assert all(row["config_hash"] == artifact["config_hash"] and row["code_hash"] == artifact["code_hash"]
+               for row in artifact["rows"])
 
 
 def test_degraded_run_does_not_write_headline(env):
@@ -320,3 +329,112 @@ def test_resume_ignored_when_commit_or_set_changes_and_fresh_start_without_flag(
     mp.setattr(run_eval, "git_info", lambda: ("def5678", False))
     run_eval.main(["--resume"])            # different commit: the checkpoint is not reused
     assert len(calls) == 3
+
+
+def test_resume_requires_matching_code_configuration_and_schema(env):
+    tmp, calls, mp = env
+    app_code = tmp / "sach" / "pipeline.py"
+    app_code.parent.mkdir()
+    app_code.write_text("# uncommitted edit A\n", encoding="utf-8")
+    mp.setattr(run_eval, "git_info", lambda: ("abc1234", True))
+    run_eval.main(["--limit", "1"])
+    calls.clear()
+    app_code.write_text("# uncommitted edit B\n", encoding="utf-8")
+    run_eval.main(["--resume"])
+    assert len(calls) == 3
+    calls.clear()
+    mp.setenv("SACH_NO_MATCH", "1")
+    run_eval.main(["--resume"])
+    assert len(calls) == 3
+    assert (tmp / "docs" / "evaluation-no-match-run.md").exists()
+    calls.clear()
+    checkpoint_path = tmp / "cache" / "eval_progress.json"
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint["key"]["schema_version"] = 0
+    checkpoint_path.write_text(json.dumps(checkpoint), encoding="utf-8")
+    run_eval.main(["--resume"])
+    assert len(calls) == 3
+
+
+def test_row_failures_are_retained_and_unsafe_fallback_predictions_are_counted(env, capsys):
+    tmp, _, mp = env
+    def check(text, ret, llm, log=False):
+        if text == "claim one":
+            raise TimeoutError("sensitive exception detail")
+        if text == "दावा दो":
+            return {"verdict": "FALSE", "claims": [], "degraded": True}
+        return {"verdict": "UNVERIFIED", "claims": []}
+
+    mp.setattr(run_eval, "check_forward", check)
+    assert run_eval.main(["--workers", "2"]) == 0
+    raw = (tmp / "cache" / "evaluation-live.json").read_text()
+    artifact = json.loads(raw)
+    assert "sensitive exception detail" not in raw + capsys.readouterr().out
+    assert "claim one" not in raw
+    assert artifact["complete"] and artifact["degraded"]
+    assert [row["status"] for row in artifact["rows"]] == ["error", "degraded", "completed"]
+    assert artifact["rows"][0]["error_category"] == "check_timeout"
+    assert artifact["rows"][1]["overclaim"] == "FALSE"
+    assert [row["abstained"] for row in artifact["rows"]] == [False, False, True]
+    assert artifact["metrics"]["system_failure"] == {"numerator": 2, "denominator": 3}
+    assert artifact["metrics"]["overclaimed_false"] == {"numerator": 1, "denominator": 3}
+    assert artifact["metrics"]["accuracy"] == {"numerator": 1, "denominator": 3}
+    report = (tmp / "docs" / "evaluation-fallback-run.md").read_text()
+    assert "| hi | 1 | 0 | 0 | 1 | 0 | 1 |" in report
+    assert not (tmp / "data" / "eval_summary.json").exists()
+
+
+def test_artifact_redacts_model_and_evidence_credentials(env):
+    tmp, _, mp = env
+    token = "API_TOKEN_VALUE"
+    mp.setenv("GEMINI_API_KEY", token)
+    llm = FakeLLM()
+    llm.name = "gemini-" + token
+    llm.models = ["gemini-flash-model", token]
+    mp.setattr(run_eval, "get_llm", lambda: llm)
+    mp.setattr(run_eval, "check_forward", lambda *args, **kwargs: {
+        "verdict": "TRUE", "claims": [{"reason_code": "official_confirmation", "citations": [
+            {"url": "https://example.com/path?key=" + token},
+        ]}],
+    })
+    assert run_eval.main([]) == 0
+    raw = (tmp / "cache" / "evaluation-live.json").read_text()
+    artifact = json.loads(raw)
+    assert token not in raw and "https://example.com" not in raw
+    assert artifact["config"]["judges"] == ["gemini"]
+    assert artifact["config"]["judge_models"] == [["gemini-flash-model", "[redacted]"]]
+    assert artifact["rows"][0]["evidence_ids"][0].startswith("url-sha256:")
+    assert artifact["rows"][0]["source_availability"]["page_availability"] == "unknown"
+
+
+def test_offline_fixture_uses_real_pipeline_with_no_live_providers(env):
+    tmp, _, mp = env
+    mp.setattr(run_eval, "check_forward", run_eval.pipeline.check_forward)
+    mp.setattr(run_eval, "get_llm", lambda: pytest.fail("offline fixture must not construct a live judge"))
+    mp.setattr(run_eval, "default_retrievers", lambda: pytest.fail("offline fixture must not construct live retrievers"))
+    mp.setattr(run_eval.match, "run_match", lambda *args, **kwargs: pytest.fail("offline fixture must bypass matching"))
+    assert run_eval.main(["--offline"]) == 0
+    artifact = json.loads((tmp / "cache" / "evaluation-offline-fixture.json").read_text())
+    assert artifact["mode"] == "offline_fixture" and artifact["complete"] and not artifact["degraded"]
+    assert {row["provenance"] for row in artifact["rows"]} == {"synthetic_fixture"}
+    assert {row["source_availability"]["search"] for row in artifact["rows"]} == {"offline_fixture"}
+    assert artifact["metrics"]["accuracy"] == {"numerator": 3, "denominator": 3}
+    assert artifact["metrics"]["latency_ms"]["n"] == 3
+    assert artifact["metrics"]["latency_ms"]["p95"] >= artifact["metrics"]["latency_ms"]["p50"] >= 0
+    assert not (tmp / "cache" / "eval_progress.json").exists()
+    assert not (tmp / "docs" / "evaluation.md").exists()
+    assert not (tmp / "data" / "eval_summary.json").exists()
+
+
+def test_live_run_with_search_off_cannot_publish_headline(env):
+    tmp, _, mp = env
+    mp.setattr(run_eval, "check_forward", lambda *args, **kwargs: {
+        "verdict": "UNVERIFIED", "claims": [], "search_status": "off", "layer": "live",
+    })
+    assert run_eval.main([]) == 0
+    artifact = json.loads((tmp / "cache" / "evaluation-live.json").read_text())
+    assert artifact["degraded"]
+    assert {row["error_category"] for row in artifact["rows"]} == {"search_off"}
+    assert not any(row["abstained"] for row in artifact["rows"])
+    assert (tmp / "docs" / "evaluation-fallback-run.md").exists()
+    assert not (tmp / "data" / "eval_summary.json").exists()

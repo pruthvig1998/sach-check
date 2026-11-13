@@ -6,6 +6,7 @@ from . import store
 
 TTL_DECISIVE_S = int(os.environ.get("SACH_CACHE_TTL_DECISIVE_S", 7 * 24 * 3600))   # TRUE / FALSE / MISLEADING
 TTL_UNVERIFIED_S = int(os.environ.get("SACH_CACHE_TTL_UNVERIFIED_S", 6 * 3600))    # an official source may appear later
+_VERDICT_POLICY = 1  # requires final source URLs, fetched citations and independent model confirmation
 
 def enabled(use_cache: bool = True, log: bool = True) -> bool:
     return bool(use_cache) and bool(log) and os.environ.get("SACH_NO_CACHE") != "1"
@@ -40,15 +41,17 @@ def lookup(text: str, reply_lang: str | None):
         v = store.get_store().get(key(text, reply_lang))
         if not (isinstance(v, dict) and v.get("verdict") and "claims" in v):
             return None
+        if v.get("layer") != "match" and v.get("_verdict_policy") != _VERDICT_POLICY:
+            return None
         if _poisoned(v):
             return None
-        return v
+        return {k: value for k, value in v.items() if k != "_verdict_policy"}
     except Exception:
         return None
 
 def save(text: str, reply_lang: str | None, out: dict) -> None:
     try:
         if storable(out):
-            store.get_store().set(key(text, reply_lang), out, ttl_s=ttl_for(out))
+            store.get_store().set(key(text, reply_lang), {**out, "_verdict_policy": _VERDICT_POLICY}, ttl_s=ttl_for(out))
     except Exception:
         pass

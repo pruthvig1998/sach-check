@@ -360,19 +360,41 @@ def _int(v):
 
 
 def eval_display(ev: dict | None = None) -> dict | None:
-    """What the home page may show about the evaluation, read from data/eval_summary.json at request time (never typed in).
-    None means "Evaluation pending": the file is missing, marks itself degraded, or is the older format (no commit/date, or
-    missing counts). Otherwise {n, correct, overclaims, abstained, commit (short hash), date}."""
+    """Return a headline only for a complete, usable evaluation summary.
+
+    Optional run-status fields are honored when present for compatibility with older
+    complete live summaries. Missing measured counts, including overclaimed_true,
+    make the summary ineligible rather than silently turning a missing count into 0.
+    """
     ev = eval_summary() if ev is None else ev
-    if not isinstance(ev, dict) or not ev or ev.get("degraded") or str(ev.get("mode", "")).lower() in ("fallback", "degraded"):
+    if not isinstance(ev, dict) or not ev:
         return None
-    n, correct, of = _int(ev.get("n")), _int(ev.get("correct")), _int(ev.get("overclaimed_false"))
+    mode = str(ev.get("mode", "")).strip().lower()
+    run_mode = str(ev.get("run_mode", "")).strip().lower()
+    if (ev.get("degraded") is True or ev.get("partial") is True or ev.get("complete") is False
+            or ev.get("no_match") is True or _int(ev.get("system_failures")) not in (None, 0)
+            or ("run_mode" in ev and run_mode != "live")
+            or any(word in mode for word in ("fallback", "degraded", "offline", "fixture", "partial"))):
+        return None
+    # If status flags are present, malformed values are not proof of a full run.
+    if ("degraded" in ev and ev.get("degraded") is not False
+            or "partial" in ev and ev.get("partial") is not False
+            or "complete" in ev and ev.get("complete") is not True
+            or "no_match" in ev and ev.get("no_match") is not False
+            or "system_failures" in ev and _int(ev.get("system_failures")) != 0):
+        return None
+    n = _int(ev.get("n"))
+    correct, of = _int(ev.get("correct")), _int(ev.get("overclaimed_false"))
+    ot, abstained = _int(ev.get("overclaimed_true")), _int(ev.get("abstained"))
     commit, date = ev.get("commit"), ev.get("date")
-    if not n or correct is None or of is None or not isinstance(commit, str) or not commit.strip() or not isinstance(date, str) or not date.strip():
+    if (not n or any(x is None or x > n for x in (correct, of, ot, abstained))
+            or (correct is not None and of is not None and ot is not None and abstained is not None
+                and correct + of + ot + abstained > n)
+            or not isinstance(commit, str) or not commit.strip()
+            or not isinstance(date, str) or not date.strip()):
         return None
-    ot = _int(ev.get("overclaimed_true"))
-    return {"n": n, "correct": correct, "overclaims": of + (ot or 0), "overclaimed_false": of, "overclaimed_true": ot,
-            "abstained": _int(ev.get("abstained")), "commit": commit.strip()[:7], "date": date.strip()[:10]}
+    return {"n": n, "correct": correct, "overclaims": of + ot, "overclaimed_false": of, "overclaimed_true": ot,
+            "abstained": abstained, "commit": commit.strip()[:7], "date": date.strip()[:10]}
 
 
 def eval_stats_html(d: dict | None) -> str:
@@ -613,8 +635,8 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
     unv, oldnote, extract = honesty.unverified_panel(res), honesty.old_debunk_notice(res), honesty.extraction_html(res)
     notice = ""
     if res.get("degraded"):
-        notice = ('<div class="honest" style="margin-top:18px" role="status"><b>Limited mode.</b> Our AI checker is unavailable or at capacity right now, '
-                  'so Sach only reports a verdict when a PIB debunk clearly matches. Most results will say “unverified”; try again later for a fuller check.</div>')
+        notice = ('<div class="honest" style="margin-top:18px" role="status"><b>Limited mode.</b> Part of Sach’s AI check was unavailable or at capacity, '
+                  'so some source comparisons may be missing. Check the cited sources and treat “unverified” as uncertainty, not as proof a claim is false. Try again later for a fuller check.</div>')
     if res.get("search_status") in ("down", "partial"):
         notice += ('<div class="honest" style="margin-top:18px" role="status"><b>Web search was unavailable.</b> Live web search was unavailable for this check, '
                    'so Sach could only use its built-in list of PIB debunks. An UNVERIFIED result may change later.</div>')
@@ -767,7 +789,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <section id="evidence"><div class="wrap"><h2>Does it actually work?</h2><p class="sub">We tested it on real PIB debunks, real government announcements, and invented claims that should be left unverified. The misses are published too.</p>
 {stats}<div class="honest"><b>Read this before trusting the numbers</b><ul>
 <li>It is a small set{f" ({ev['n']} claims)" if ev else ""}. Treat any number as indicative, not as a guarantee.</li>
-<li>When the AI checker is unavailable the site says so (“Limited mode”) and reports only clear PIB debunks.</li>
+<li>When part of the AI check is unavailable the site says so (“Limited mode”); some source comparisons may be missing.</li>
 <li>Many FALSE items are paraphrases of PIB debunk titles, so recall there is optimistic.</li>
 <li>Results move by a claim or two between runs, because live search returns different pages.</li>
 <li>Hindi and Telugu verdict wording is AI-written and not yet reviewed by native speakers.</li></ul>

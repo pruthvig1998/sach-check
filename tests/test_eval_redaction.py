@@ -134,7 +134,7 @@ def test_a_lone_surrogate_in_an_error_is_utf8_encodable_and_the_run_survives(mon
             {"claim": "fine", "label": "FALSE", "lang": "en", "seeded": False}]
     ck = {"key": {}, "results": {}, "llm_failures": 0, "search_failures": 0, "no_llm": False}
     out = ev.run(rows, [], _Llm(), ck, out=lambda *_: None)
-    assert len(out) == 2 and ck["results"]["boom"]["got"] == "ERROR"
+    assert len(out) == 2 and ck["results"]["boom"]["status"] == "error" and ck["results"]["boom"]["got"] is None
     saved = json.loads((tmp_path / "ck.json").read_text(encoding="utf-8"))      # the checkpoint was written
     assert saved["results"]["boom"]["error_msg"].encode("utf-8")
 
