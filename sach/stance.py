@@ -113,7 +113,7 @@ kharif rabi monsoon summer winter""".split()}
 def critical_words(claim: str) -> set:
     """Qualifier words, plus proper nouns / names (capitalised words inside the sentence: places, seasons, schemes)."""
     toks = tokens(claim)
-    caps = {_stem(w.lower()) for w in re.findall(r"(?<=[a-z0-9,] )[A-Z][a-z]{2,}", claim)}
+    caps = {_stem(w.lower()) for w in re.findall(r"(?<=[A-Za-z0-9,] )[A-Z][a-z]{2,}", claim)}   # also after an acronym: 'PM Kisan'
     return (toks & _QUALIFIERS) | (caps - _GENERIC)     # generic officialese ('Union', 'Cabinet') may be dropped in a short quote
 
 _META = re.compile(r"\b(fake|false|hoax|rumou?rs?|misinformation|fact[- ]?check\w*|scam|fraud\w*|misleading)\b", re.I)
@@ -151,6 +151,48 @@ _REPORTED = re.compile(r"\b(media report|news report|reports? (said|claim|sugges
 def _norm(t: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[\"'\u201c\u201d\u2018\u2019.\u2026]", "", t or "")).strip().lower()
 
+# Stance-scope checks (added with STANCEHARDEN). Each one only ever turns a stance into 'none'; none of them can create a stance.
+_NEG_QUOTE = re.compile(r"\b(not approved|has not|have not|never|cancell?ed|withdrawn|rejected|denied|no longer|not applicable|yet to)\b", re.I)
+_DENY_WORD = re.compile(r"\b(fake|false|misleading|baseless|hoax|fabricated|no such|not true|rumou?rs?)\b|फर्जी|झूठ|भ्रामक|నకిలీ|అబద్ధ|తప్పుడు", re.I)
+_APPROVAL = re.compile(r"\b(approved|approves|sanctioned|notified|announced|launched|is real|is genuine|has been released)\b|मंजूरी|मंजूर|स्वीकृत", re.I)
+_SENTENCE_END = re.compile(r"(?<=[.!?\u0964])\s+|\n")
+_RESTRICT = re.compile(r"\b(only|except|provided that|subject to|limited to|restricted to|excluding|barring|other than|who (?:is an?|are))\b", re.I)
+
+def _contradiction_scope_ok(claim: str, title: str, quote: str) -> bool:
+    """A denial must deny THIS claim: same figures, same scheme names, not negated, not in the same sentence as an approval."""
+    cn, qn = numbers(claim), numbers(quote)
+    if cn and qn and not cn <= qn:
+        return False                                  # 'Rs 2000 is fake' cannot refute 'Rs 5000'; neither can a 2019 denial refute a 2024 claim
+    if not critical_words(claim) <= tokens(f"{title} {quote}"):
+        return False                                  # 'Ayushman scheme ... is fake' cannot refute 'PM Kisan ...'
+    for sent in _SENTENCE_END.split(quote or ""):
+        for m in _DENY_WORD.finditer(sent):
+            if _NEGATION.search(" ".join(sent[:m.start()].split()[-4:])):
+                return False                          # 'is not fake', 'never false', 'no longer misleading'
+            if _APPROVAL.search(sent):
+                return False                          # 'approved ... no such thing': a sentence that both denies and approves
+            if cn and not numbers(sent) <= cn:
+                return False                          # 'Reports of Rs 2000 ... are misleading; the Rs 5000 scheme is real' (figures in the denial)
+            if _denial_names_another_subject(sent, claim, title):
+                return False                          # 'The Ayushman scheme ... is fake' names a subject the claim (and title) do not
+    return True
+
+_NAME_STOP = _GENERIC | {_stem(w) for w in "fact check unit pib news claim message".split()}
+
+def _denial_names_another_subject(sentence: str, claim: str, title: str) -> bool:
+    """Capitalised names inside a denial sentence (mid-sentence, as critical_words reads them) that the claim and title do not contain."""
+    names = {_stem(w.lower()) for w in re.findall(r"(?<=[A-Za-z0-9,] )[A-Z][a-z]{2,}", sentence)}
+    return bool(names - _NAME_STOP - tokens(claim) - tokens(title))
+
+def _unmatched_restriction(claim: str, quote: str) -> bool:
+    """True when the quote limits the claim ('only', 'who is a ...') and the claim does not contain the same limit."""
+    cl = " ".join((claim or "").lower().split())
+    for m in _RESTRICT.finditer(quote or ""):
+        phrase = " ".join(m.group(1).lower().split())
+        if not re.search(r"\b" + re.escape(phrase) + r"\b", cl):
+            return True
+    return False
+
 def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -> str:
     """Accept an LLM stance only if it is backed by a verbatim quote from the page that relates to the claim.
     - quote must appear verbatim in the page (kills hallucinated evidence)
@@ -174,6 +216,12 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -
         return "none"          # 'increased' vs a page that says 'reduce' (and the reverse): neither confirms nor refutes
     if label == "contradicts" and (_NEGATION.search(claim) or _META.search(claim)):
         return "none"          # a negated claim, or one that merely reports a rumour/debunk, can agree with a debunk page: never FALSE
+    if label == "contradicts" and not _contradiction_scope_ok(claim, title, quote):
+        return "none"          # the denial is about other figures / another scheme / is itself negated or mixed with an approval
+    if label in ("confirms", "mixed") and _NEG_QUOTE.search(quote) and not (_NEGATION.search(claim) or _NEG_QUOTE.search(claim)):
+        return "none"          # 'has not approved that ... Rs 5000' is the opposite of a confirmation of a positive claim
+    if label == "confirms" and _unmatched_restriction(claim, quote):
+        return "none"          # 'every woman who is a cricketer' does not confirm 'every woman'
     # A denial ("This is fake; no such proposal exists.") gets its subject from the page title, so for CONTRADICTS the title
     # and quote together must relate to the claim. Confirmations / partial matches must be matched by the quote itself.
     if overlap(claim, f"{title} {quote}" if label == "contradicts" else quote) < 0.4:
