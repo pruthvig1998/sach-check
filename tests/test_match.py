@@ -421,3 +421,25 @@ def test_run_eval_no_match_sets_env_and_writes_separate_file(monkeypatch, tmp_pa
     assert ev.main(["--no-match"]) == 0
     assert seen["off"] == "1" and (tmp_path / "evaluation-no-match-run.md").exists() and not (tmp_path / "evaluation.md").exists()
     monkeypatch.delenv("SACH_NO_MATCH", raising=False)
+
+
+# --- PIB headlines rarely carry numbers: the claim's numbers must then be in the release text itself
+from sach import match as _M
+
+_REL = ("Ministry of Personnel No reduction in retirement age of Central Government employees, PIB Fact Check busts fake news. "
+        "A message claims the Centre will reduce the retirement age of its employees to 50 years. This is fake.")
+
+def test_number_in_release_text_lets_a_numberless_headline_match():
+    res = _M.check_pair("Central Government will reduce the retirement age of employees to 50 years.",
+                        "reduction in retirement age of Central Government employees", _REL)
+    assert res["ok"] and res["checks"]["numbers_equal"]
+
+def test_a_different_number_still_never_matches():
+    res = _M.check_pair("Central Government will reduce the retirement age of employees to 58 years.",
+                        "reduction in retirement age of Central Government employees", _REL)
+    assert not res["ok"] and not res["checks"]["numbers_equal"]
+
+def test_without_release_text_a_numbered_claim_does_not_match_a_numberless_headline():
+    res = _M.check_pair("Central Government will reduce the retirement age of employees to 50 years.",
+                        "reduction in retirement age of Central Government employees")
+    assert not res["checks"]["numbers_equal"]

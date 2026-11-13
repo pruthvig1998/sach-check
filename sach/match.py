@@ -92,7 +92,7 @@ def _proper(t: str) -> set:
     """Capitalised words anywhere (names, places, schemes, ALL-CAPS acronyms), as stems."""
     return {_stem(w.lower()) for w in re.findall(r"\b[A-Z][A-Za-z]{2,}\b", t)} - _GENERIC - _NOISE - {_stem(w) for w in _STOP}
 
-def check_pair(claim: str, reviewed: str) -> dict:
+def check_pair(claim: str, reviewed: str, page_text: str = "") -> dict:
     """Every check that must hold for `reviewed` (the claim a fact-checker reviewed) to be the same claim as `claim`. Pure, English-first.
     Returns {"ok": bool, "checks": {name: bool}, "similarity": {...numbers}}."""
     dc, dr = distinctive(claim), distinctive(reviewed)
@@ -105,7 +105,10 @@ def check_pair(claim: str, reviewed: str) -> dict:
         "coverage_claim_in_reviewed": cov_c >= COVERAGE_MIN,
         "coverage_reviewed_in_claim": cov_r >= COVERAGE_MIN,
         "subject_overlap": jac >= JACCARD_MIN,
-        "numbers_equal": numbers(claim) == numbers(reviewed),
+        # Equal number sets. A PIB headline usually carries no numbers ("No reduction in retirement age"): then every number in the
+        # claim must appear in the PIB release text itself, so "to 50" matches a debunk of "to 50" but "to 58" does not.
+        "numbers_equal": numbers(claim) == numbers(reviewed) or (not numbers(reviewed) and bool(page_text)
+                                                                 and bool(numbers(claim)) and numbers(claim) <= numbers(page_text)),
         "number_words_equal": _numwords(claim) == _numwords(reviewed),
         "no_direction_conflict": not direction_conflict(claim, reviewed),
         "negation_agrees": bool(_NEGATION.search(claim)) == bool(_NEGATION.search(reviewed)),
@@ -156,7 +159,8 @@ def load_pib_records() -> list[dict]:
         if prid in seen or not d or not _STRICT.search(title) or not prid.isdigit():
             continue
         seen.add(prid)
-        rows.append({"title": title, "review_date": d, "url": f"https://pib.gov.in/PressReleasePage.aspx?PRID={prid}", "prid": prid})
+        rows.append({"title": title, "review_date": d, "url": f"https://pib.gov.in/PressReleasePage.aspx?PRID={prid}", "prid": prid,
+                     "text": str(r.get("excerpt") or "")})
     return rows
 
 # ------------------------------------------------------------------------------------------------ candidates
@@ -182,7 +186,7 @@ def _pib_candidates(claim_texts: list[str], records: list[dict]) -> list[dict]:
         reviewed = pib_claim_from_title(r["title"])
         best = None
         for ct in claim_texts:
-            res = check_pair(ct, reviewed)
+            res = check_pair(ct, reviewed, r.get("text", ""))
             if res["ok"] and (best is None or res["similarity"]["jaccard"] > best[1]["similarity"]["jaccard"]):
                 best = (ct, res)
         if best:
