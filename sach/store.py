@@ -77,6 +77,9 @@ class FileStore:
         except Exception:
             return 0
 
+    def expire(self, name: str, ttl_s: int) -> None:
+        """Counters in the local file never expire (only used in development / single instance); nothing to do."""
+
     def counters(self, names) -> dict:
         try:
             with _lock:
@@ -151,6 +154,10 @@ class UpstashStore:
     def incr(self, name: str, by: int = 1) -> int:
         r = self._cmd("INCRBY", PREFIX + "c:" + name, int(by))
         return r if isinstance(r, int) else 0
+
+    def expire(self, name: str, ttl_s: int) -> None:
+        """Let a counter (e.g. a per-minute rate-limit key) delete itself, so they do not pile up in the free 250 MB database."""
+        self._cmd("EXPIRE", PREFIX + "c:" + name, int(ttl_s))
 
     def counters(self, names) -> dict:
         names = list(names)

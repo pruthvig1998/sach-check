@@ -13,6 +13,7 @@ import hmac, json, os, re, threading, time
 from urllib.request import Request, urlopen
 from . import store as _store
 from . import pipeline as _pipeline
+from . import limits as _limits
 from .site import MAX_CHARS, REPLY_LANGS
 from .lang import NAMES, SUPPORTED
 
@@ -298,9 +299,13 @@ def handle_update(update: dict, retrievers, llm, send=None, bot_id=None, usernam
             if r == "warn":
                 say(SLOW_DOWN)
             return {"ok": True, "action": "rate-limited"}
-        send("sendChatAction", {"chat_id": chat_id, "action": "typing"})
         lang = _lang_get(chat_id)
+        adm = _limits.admit(claim, lang)             # same global live-check budget as the website; cache/match answers are free
+        if adm.busy:
+            say(_limits.busy_text(adm.reason)); return {"ok": True, "action": "busy"}
+        send("sendChatAction", {"chat_id": chat_id, "action": "typing"})
         res = check_forward(claim, retrievers, llm, reply_lang=lang)
+        _limits.refund(adm, res)
         say(format_reply(res))
         return {"ok": True, "action": "checked", "verdict": res.get("verdict")}
     except Exception as e:                                     # never reach the HTTP layer; Telegram would retry forever

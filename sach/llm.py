@@ -45,10 +45,11 @@ def parse_reply(raw: str):
     label, _, quote = (raw or "").partition("|")
     return parse_label(label), quote.strip()
 
-def _user(claim, title, text):
-    return f"CLAIM: {claim}\n\nPAGE TITLE: {title}\nPAGE TEXT: {text[:6000]}"
+def _user(claim, title, text, tier=""):
+    from .excerpt import excerpt      # token diet: the relevant sentences, not the whole page (validation still uses the full page)
+    return f"CLAIM: {claim}\n\nPAGE TITLE: {title}\nPAGE TEXT: {excerpt(claim, title, text, tier)}"
 
-DEFAULT_JUDGE_ORDER = "groq,gemini,openrouter,mistral,claude"   # override with SACH_JUDGE_ORDER
+DEFAULT_JUDGE_ORDER = "groq,gemini,openrouter,mistral,cloudflare,claude"   # override with SACH_JUDGE_ORDER
 DEFAULT_GEMINI_MODELS = "gemini-3.1-flash-lite,gemini-3.8-flash,gemini-flash-latest"   # 3.5-flash-lite dropped: it failed the stance probes repeatedly
 
 
@@ -83,8 +84,8 @@ class _Judge:
     def _models_now(self):
         return self._usable_models() or list(self.models)
 
-    def _label(self, model, claim, title, text):
-        st, q = parse_reply(self._raw(model, PROMPT, _user(claim, title, text), 200))
+    def _label(self, model, claim, title, text, tier=""):
+        st, q = parse_reply(self._raw(model, PROMPT, _user(claim, title, text, tier), 200))
         return validate_stance(st, q, claim, title, text)
 
     def stance(self, claim, title, text, tier=""):
@@ -94,7 +95,7 @@ class _Judge:
         first, used, last = None, None, None
         for m in self._models_now():
             try:
-                first, used = self._label(m, claim, title, text), m
+                first, used = self._label(m, claim, title, text, tier), m
                 break
             except Exception as e:      # 404/429/503/timeout/odd payload: try the next model
                 last = e
@@ -108,7 +109,7 @@ class _Judge:
             return "none"
         for m in [m for m in self._models_now() if m != used] or [used]:
             try:
-                return first if self._label(m, claim, title, text) == first else "none"
+                return first if self._label(m, claim, title, text, tier) == first else "none"
             except Exception:
                 continue
         return first if heuristic_stance(claim, title, text, tier) == first else "none"
@@ -205,7 +206,7 @@ class ClaudeJudge:
     def stance(self, claim, title, text, tier=""):
         try:
             r = self.client.messages.create(model=self.model, max_tokens=200, system=PROMPT,
-                                            messages=[{"role": "user", "content": _user(claim, title, text)}])
+                                            messages=[{"role": "user", "content": _user(claim, title, text, tier)}])
             st, q = parse_reply(r.content[0].text)
             st = validate_stance(st, q, claim, title, text)
             return st if st == "none" or heuristic_stance(claim, title, text, tier) == st else "none"
@@ -297,13 +298,31 @@ PROVIDERS = (   # name, env key, base url, default models (override with SACH_<N
     ("groq", "GROQ_API_KEY", "https://api.groq.com/openai/v1", "openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b"),
     ("openrouter", "OPENROUTER_API_KEY", "https://openrouter.ai/api/v1", "google/gemma-4-31b-it:free,google/gemma-4-26b-a4b-it:free"),
     ("mistral", "MISTRAL_API_KEY", "https://api.mistral.ai/v1", "mistral-small-latest"),
+    # Cloudflare Workers AI: free allocation per day (see docs/scaling.md for the source). The account id is part of the URL.
+    ("cloudflare", "CLOUDFLARE_API_TOKEN", "https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1", "@cf/meta/llama-3.1-8b-instruct"),
 )
+
+def _provider_base(base: str):
+    """Fill a {ENV_NAME} placeholder in a provider's base URL from the environment; None if it is missing or not a plain id."""
+    import re
+    def sub(m):
+        v = os.environ.get(m.group(1), "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", v):
+            raise KeyError(m.group(1))
+        return v
+    try:
+        return re.sub(r"\{([A-Z0-9_]+)\}", sub, base)
+    except KeyError:
+        return None
 
 def build_judges():
     judges = []
     for key in dict.fromkeys(_env_list("GEMINI_API_KEY", "GEMINI_API_KEYS", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3")):
         judges.append(GeminiJudge(key=key))
     for name, env, base, models in PROVIDERS:
+        base = _provider_base(base)
+        if base is None:
+            continue                       # needs another setting (e.g. an account id) that is not set: provider stays off
         for key in _env_list(env):
             judges.append(OpenAICompatJudge(name, base, key, os.environ.get(f"SACH_{name.upper()}_MODELS", models)))
     if os.environ.get("ANTHROPIC_API_KEY"):
