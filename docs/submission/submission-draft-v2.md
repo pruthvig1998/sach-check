@@ -50,11 +50,15 @@ attributed to fake forwards). PIB Fact Check reports 2,913 fact checks to April 
 ## Deployment & impact data
 - Live at https://sachcheck.in; first commit 12 Nov 2026 [confirm the first public deploy date from Vercel]. No accounts, no ads.
   It runs mostly on free tiers plus Google Cloud trial credit for the AI judge and search; do not call it zero-cost.
-- Tests: [N] automated tests pass on commit [hash] (command in the README). This measures software regressions, not fact-check accuracy.
+- Tests: 5,125 automated tests pass on commit e81b1cc (command in the README). This measures software regressions, not fact-check accuracy.
 - Evaluation: a published 79-claim set (data/eval_set.json: 34 PIB-debunked FALSE, 34 officially announced TRUE, 11 invented
-  UNVERIFIED controls, English plus 15 Indian languages and code-mixed). [EVAL NUMBER: only from a non-degraded run of the final
-  code, from docs/evaluation.md, with abstentions, overclaims and failures listed separately.]
-- Adversarial testing: a 53-case red-team set (data/red_team.json); results in docs/red-team.md [use the final run's numbers].
+  UNVERIFIED controls, English plus 15 Indian languages and code-mixed). On the final code (commit e81b1cc) we have
+  not obtained a fully clean run: three complete runs were each partly degraded by search or AI-judge failures. Their exact-match
+  results were 21/79, 32/79 and 29/79, with 0 overclaimed FALSE and 0 overclaimed TRUE in every run that finished; the system
+  mostly abstains (UNVERIFIED on about 63% of the 68 claims labelled TRUE or FALSE) instead of guessing. Degraded runs are saved
+  in docs/evaluation-fallback-run.md and are not presented as the headline. An earlier 31-claim run on older code scored 26/31
+  (docs/evaluation.md, marked as measured on earlier code).
+- Adversarial testing: a 53-case red-team set (data/red_team.json); final run on e81b1cc: 53 cases, 0 overclaims, 0 unexpected (docs/red-team.md).
 - Public feeds: /impact and /claimreview.json; counters count checks including repeats and some test traffic, not people.
 - Real users: no pilot has run and no user numbers are claimed. [If a pilot runs: report only collected responses with
   denominators and the selection-bias note.] Known limits are listed in the README.
