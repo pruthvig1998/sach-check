@@ -401,7 +401,7 @@
   "category": "opposite-of-debunk",
   "lang": "en",
   "text": "Central Government has increased the retirement age of employees to 64 years.",
-  "attack": "Asserts the opposite direction (increase) of a debunked rumour (reduction to 50). The page does not address an increase. REVISED 2026-11-13: the first version said 'to 62', but Factly had published a debunk of exactly that claim, so the matched FALSE (attributed to Factly) was correct and the case premise was wrong.",
+  "attack": "Asserts the opposite direction (increase) of a debunked rumour (reduction to 50). The page does not address an increase. REVISED 2026-11-13: the first version said 'to 62', but Factly had published a debunk of exactly that claim, so the matched FALSE (attributed to Factly) was correct and the case premise was wrong. LIVE-WORLD NOTE: PIB's 9 Aug 2023 release (PRID 1947074) says there is no proposal under consideration to change the retirement age, which contradicts any 'increased' claim, so a sourced live FALSE is defensible; TRUE stays forbidden.",
   "based_on": "https://pib.gov.in/PressReleasePage.aspx?PRID=1618590",
   "page": {
    "url": "https://pib.gov.in/PressReleasePage.aspx?PRID=1618590",
@@ -411,11 +411,11 @@
    "note": "real PIB page title and the first ~1500 characters, from data/pib_index.jsonl"
   },
   "must_not": [
-   "TRUE",
-   "FALSE"
+   "TRUE"
   ],
   "acceptable": [
-   "UNVERIFIED"
+   "UNVERIFIED",
+   "FALSE"
   ]
  },
  {
