@@ -1,11 +1,12 @@
 """LLM stance judges with automatic failover. No judge is trusted alone: decisive stances are validated against the page
 (verbatim quote, numbers, subject words) and need a second opinion; any failure falls back to stance.degraded_stance().
 
-Order of preference (each only if its key is set): Gemini keys (free tier, rotate through several) -> Groq -> OpenRouter ->
+Order of preference (each only if its key is set; Vertex AI first when GOOGLE_SA_JSON is set, it is paid by credit and has real quota): Gemini keys (free tier, rotate through several) -> Groq -> OpenRouter ->
 Mistral -> Anthropic. When one is rate-limited or down, the next answers; a quota-exhausted key is skipped for COOLDOWN_S."""
 from __future__ import annotations
 import json, os, time, urllib.error, urllib.request
 from .stance import validate_stance, heuristic_stance
+from . import vertex
 
 PROMPT = ("You judge ONE source page against ONE claim from a viral forward. Reply on ONE line as:  LABEL | quote\n"
           "where LABEL is exactly one of the words below and quote is a sentence COPIED VERBATIM from the page (max 30 words) that justifies it. For NEITHER write no quote.\n"
@@ -168,6 +169,34 @@ class GeminiJudge(_Judge):
         raise last or RuntimeError(f"{self.name}: no model answered")
 
 
+class VertexJudge(GeminiJudge):
+    """Gemini on Google Cloud Vertex AI (global location), paid from the owner's credit. Same request/response shape, parsing, model
+    failover and OCR as GeminiJudge: only the transport differs (OAuth bearer token from a service account, sach/vertex.py).
+    401/403 benches the provider for 10 minutes; a 429 pauses that model; the daily call cap (SACH_VERTEX_MAX_PER_DAY) pauses it until
+    00:00 UTC. The credential, token and project id never appear in the name, errors or logs."""
+    name = "vertex"
+
+    def __init__(self, client, models=None, timeout=15, st=None):
+        self.client, self.timeout, self._st = client, timeout, st
+        self.models = [m.strip() for m in (models or ",".join(vertex.models())).split(",") if m.strip()]
+
+    def _post(self, model, body):
+        vertex.reserve_call(self._st)                      # raises VertexCapReached beyond the daily cap
+        return self.client.generate(model, body, self.timeout)
+
+    def _note_failure(self, err, model=None):
+        code = getattr(err, "code", None)
+        if isinstance(err, vertex.VertexCapReached):
+            self.exhausted_until = time.time() + vertex.seconds_to_utc_midnight(time.time())
+        elif code in (401, 403):
+            self.exhausted_until = time.time() + vertex.AUTH_PAUSE_S
+        else:
+            super()._note_failure(err, model)
+
+    def usage(self, st=None, now=None):
+        return vertex.usage(st or self._st, now)
+
+
 class OpenAICompatJudge(_Judge):
     """Any OpenAI-compatible chat endpoint: Groq, OpenRouter, Mistral (free tiers / free models)."""
     def __init__(self, name, base_url, key, models, timeout=15):
@@ -315,8 +344,19 @@ def _provider_base(base: str):
     except KeyError:
         return None
 
+def _vertex_judge():
+    """The Vertex AI judge, or None when GOOGLE_SA_JSON is unset or unusable (off, no error, nothing about the value is logged)."""
+    try:
+        sa = vertex.ServiceAccount.from_env()
+        return VertexJudge(vertex.VertexClient(sa)) if sa else None
+    except Exception:
+        return None
+
 def build_judges():
     judges = []
+    vj = _vertex_judge()
+    if vj:
+        judges.append(vj)
     for key in dict.fromkeys(_env_list("GEMINI_API_KEY", "GEMINI_API_KEYS", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3")):
         judges.append(GeminiJudge(key=key))
     for name, env, base, models in PROVIDERS:
@@ -331,7 +371,8 @@ def build_judges():
         except Exception:
             pass
     # Fastest reliable provider first: a slow first judge eats the 30 s judging window and sources time out as "none".
-    order = [x.strip().lower() for x in os.environ.get("SACH_JUDGE_ORDER", DEFAULT_JUDGE_ORDER).split(",") if x.strip()]
+    default = ("vertex," + DEFAULT_JUDGE_ORDER) if vj else DEFAULT_JUDGE_ORDER          # paid by credit, real quota: first, unless overridden
+    order = [x.strip().lower() for x in os.environ.get("SACH_JUDGE_ORDER", default).split(",") if x.strip()]
     rank = lambda j: next((i for i, p in enumerate(order) if getattr(j, "name", "").lower().startswith(p)), len(order))
     return sorted(judges, key=rank)          # stable: keys of the same provider keep their order
 
