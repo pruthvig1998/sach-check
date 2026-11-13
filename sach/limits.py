@@ -170,7 +170,7 @@ def refund(adm: Admission, res=None, st=None) -> None:
     try:
         if adm is None or adm.kind != "live" or not isinstance(res, dict):
             return
-        if not (res.get("cached") or res.get("matched")):
+        if not (res.get("cached") or res.get("matched") or res.get("layer") == "match"):   # repeats and published fact-checks cost no AI/search
             return
         st = st or store.get_store()
         _give_back(st, *adm.keys)

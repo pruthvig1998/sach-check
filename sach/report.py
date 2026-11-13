@@ -54,7 +54,8 @@ def _clip(text: str, limit: int) -> str:
 
 
 def false_claims(result: dict) -> list:
-    return [c for c in (result.get("claims") or []) if c.get("verdict") == "FALSE"]
+    # a matched claim is a fact-checker's verdict, not Sach's: it is never reported to PIB as "Sach's verdict"
+    return [c for c in (result.get("claims") or []) if c.get("verdict") == "FALSE" and c.get("layer", "live") != "match"]
 
 
 def _sources(claims: list) -> list:
@@ -134,6 +135,15 @@ def card_data(res: dict) -> dict:
     claims = res.get("claims") or []
     cites = [x for c in claims for x in (c.get("citations") or [])]
     lead = ([x for x in cites if x.get("tier") in AUTHORITATIVE] or cites or [None])[0]
+    ms = [c for c in claims if c.get("layer") == "match" and c.get("match")]
+    if ms:       # a matched verdict is THEIR verdict: the image names the checker, the review date and their rating, never Sach's label
+        c0 = next((c for c in ms if c["verdict"] == v), ms[0])
+        m = c0["match"]
+        word = str(m.get("rating_text", ""))
+        return {"verdict": c0["verdict"], "word": word, "word_en": word, "lang": "en",
+                "why": f'Checked by {m["checker"]} on {m["review_date"]}: rated "{word}". Sach did not run its own check.',
+                "claim": _clean(c0["claim"]["text"]), "source": _clean(m["checker"]) + " fact-check", "date": str(m["review_date"])[:10],
+                "match": {"checker": m["checker"], "review_url": m["review_url"], "review_date": m["review_date"], "rating_text": word}}
     return {"verdict": v, "word": labels.get(v, v), "word_en": LABEL["en"].get(v, v), "lang": text_lang(lang),
             "why": lines[1] if len(lines) > 1 else "",
             "claim": _clean(claims[0]["claim"]["text"]) if claims else "",

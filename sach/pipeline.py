@@ -6,7 +6,7 @@ from .card import render_card
 from .extract import clean_text, extract_claims
 from .i18n import NOCLAIM, NOCLAIM_LABEL, tr
 from .lang import SUPPORTED, detect_language
-from . import cache
+from . import cache, match as _match
 from .models import Claim, ClaimVerdict, UNVERIFIED, build_trace, overall_rule
 from .retrieve import canonical_key
 from .search import combine_status, DOWN
@@ -35,10 +35,12 @@ def _search_one(r, q):
     fn = getattr(r, "search_with_status", None)
     return fn(q) if fn else (r.search(q), None)
 
-def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float) -> ClaimVerdict:
+def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, english: str = "") -> ClaimVerdict:
     left = lambda cap: max(0.3, min(cap, deadline - time.monotonic()))
     q = claim.text                                      # text used for searching + judging
-    if lang != "en" and llm is not None and hasattr(llm, "translate"):
+    if english:
+        q = english                                     # already translated by the match layer: do not pay for it twice
+    elif lang != "en" and llm is not None and hasattr(llm, "translate"):
         q = _run_with_deadline(lambda: llm.translate(claim.text), left(15), "") or claim.text   # PIB pages are mostly English
     evidence = []
     rex = ThreadPoolExecutor(max_workers=max(1, len(retrievers)))      # PIB and web search in parallel, not one after the other
@@ -74,22 +76,25 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float) -> C
     v = decide(claim, evidence)
     v.english = q if q != claim.text else ""
     v.trace = build_trace(q, evidence, v.reason_code)      # every judged source, cited or not
+    v.trace["layer"] = "LIVE"
     v.search_status, v.search_provider = combine_status(sstat), ",".join(dict.fromkeys(sprov))   # not in to_dict(): read by check_forward
     return v
 
 def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | None = None,
-                  use_cache: bool = True) -> dict:
+                  use_cache: bool = True, force_live: bool = False, matcher=None) -> dict:
     """reply_lang: any code in lang.SUPPORTED to force the reply language; None/'auto' matches the forward.
     The INPUT language always drives translation and search; only the reply changes."""
     text = clean_text(text)
     rl = reply_lang if reply_lang in SUPPORTED else None
     use = cache.enabled(use_cache, log)
-    if use:
+    if use and not force_live:       # "run Sach's own check anyway" must not be answered by a cached match
         hit = cache.lookup(text, rl)
         if hit is not None:
             out = dict(hit)
             out["first_checked_at"] = hit.get("first_checked_at") or hit.get("checked_at")
             out["cached"], out["served_at"] = True, ledger.now()
+            ot = dict(hit.get("trace") or {})
+            out["trace"] = {**ot, "layer": "CACHE", "original_layer": ot.get("original_layer") if ot.get("layer") == "CACHE" else ot.get("layer", "LIVE")}
             ledger.record_check(out, cached=True)
             return out
     lang = detect_language(text)                                   # input language
@@ -100,42 +105,74 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
                "checked_at": ledger.now(), "card": f"{tr(NOCLAIM_LABEL, out_lang)}\n{tr(NOCLAIM, out_lang)}"}
         if out_lang != "en":
             out["card_en"] = f"{NOCLAIM_LABEL['en']}\n{NOCLAIM['en']}"
-        out["trace"] = {"claims_extracted": 0, "overall_rule": overall_rule([]), "degraded": False}
+        out["trace"] = {"layer": "LIVE", "claims_extracted": 0, "overall_rule": overall_rule([]), "degraded": False}
+        out["layer"] = "live"
         out["search_status"], out["search_provider"] = "ok", ""      # nothing was searched, so nothing failed
         if log:
             ledger.record_check(out, cached=False)
         return out
     fails_before = getattr(llm, "failures", 0)
     deadline = time.monotonic() + BUDGET_S
-    ex = ThreadPoolExecutor(max_workers=PARALLEL_CLAIMS)
-    futs = [ex.submit(_check_claim, c, lang, retrievers, llm, deadline) for c in claims]
-    results: list[ClaimVerdict] = []
-    for c, f in zip(claims, futs):
+    # MATCH layer: an existing published verdict from PIB or a verified fact-checker, attributed. No live retrieval or LLM for these claims.
+    matches = [(None, "")] * len(claims)
+    if not force_live and _match.enabled():
         try:
-            results.append(f.result(timeout=max(0.3, deadline - time.monotonic() + 3)))
+            matches = _match.run_match(claims, lang, llm, matcher)
         except Exception:
-            results.append(ClaimVerdict(c, UNVERIFIED, "timed_out", [], trace=build_trace(c.text, [], "timed_out")))   # ran out of time: say so, never guess
+            matches = [(None, "")] * len(claims)
+    now_iso = ledger.now()
+    results: list = [None] * len(claims)
+    todo = []
+    for i, (c, (m, eng)) in enumerate(zip(claims, matches)):
+        if m:
+            results[i] = _match.verdict_from_match(c, m, eng, now_iso)
+        else:
+            todo.append(i)
+    ex = ThreadPoolExecutor(max_workers=PARALLEL_CLAIMS)
+    futs = {i: ex.submit(_check_claim, claims[i], lang, retrievers, llm, deadline, matches[i][1]) for i in todo}
+    for i, f in futs.items():
+        try:
+            results[i] = f.result(timeout=max(0.3, deadline - time.monotonic() + 3))
+        except Exception:
+            c = claims[i]
+            results[i] = ClaimVerdict(c, UNVERIFIED, "timed_out", [], trace=build_trace(c.text, [], "timed_out"))   # ran out of time: say so, never guess
     ex.shutdown(wait=False)
+    live = [v for v in results if v.layer != "match"]
     overall = aggregate(results)
-    # card cites the evidence behind the verdict that drove the overall result
-    driver = next((v for v in results if v.verdict == overall), None)
+    # card cites the evidence behind the verdict that drove the overall result (Sach's own live claims only; matches carry their own attribution)
+    pool = live if live else results
+    driver = next((v for v in pool if v.verdict == aggregate(pool)), None)
     cites = driver.citations if driver else []
-    out = {"language": out_lang, "input_language": lang, "verdict": overall, "card": render_card(overall, out_lang, cites),
-           "claims": [v.to_dict() for v in results], "checked_at": ledger.now()}
-    if out_lang != "en":
-        out["card_en"] = render_card(overall, "en", cites)       # same verdict and citations, in English
-    out["search_status"] = combine_status([getattr(v, "search_status", None) for v in results])   # ok | partial | down | off
-    out["search_provider"] = ",".join(dict.fromkeys(p for v in results for p in getattr(v, "search_provider", "").split(",") if p))
-    out["degraded"] = llm is None or getattr(llm, "failures", 0) > fails_before   # AI judge missing/at capacity: clear PIB debunks only
-    out["trace"] = {"claims_extracted": len(claims), "overall_rule": overall_rule(results), "degraded": out["degraded"]}
+    if len(live) == len(results):
+        layer = "live"
+        card, card_en = render_card(overall, out_lang, cites), (render_card(overall, "en", cites) if out_lang != "en" else "")
+    else:
+        layer = "match" if not live else "mixed"
+        lcard = lambda lg: render_card(aggregate(live), lg, cites) if live else ""
+        card = _match.render_match_card(results, overall, out_lang, lcard(out_lang))
+        card_en = _match.render_match_card(results, overall, "en", lcard("en")) if out_lang != "en" else ""
+    out = {"language": out_lang, "input_language": lang, "verdict": overall, "layer": layer, "card": card,
+           "claims": [v.to_dict() for v in results], "checked_at": now_iso}
+    if layer != "live":
+        out["match"] = _match.top_match(results, overall)
+    if card_en:
+        out["card_en"] = card_en                                   # same verdict and citations, in English
+    out["search_status"] = combine_status([getattr(v, "search_status", None) for v in live]) if live else "ok"   # ok | partial | down | off
+    out["search_provider"] = ",".join(dict.fromkeys(p for v in live for p in getattr(v, "search_provider", "").split(",") if p))
+    out["degraded"] = bool(live) and (llm is None or getattr(llm, "failures", 0) > fails_before)   # AI judge missing/at capacity: clear PIB debunks only
+    tlayer = {"live": "LIVE", "match": "MATCH", "mixed": "MATCH+LIVE"}[layer]
+    if layer == "live" and overall == UNVERIFIED and not any(v.reason_code == "timed_out" for v in results):
+        tlayer = "ESCALATED"                                       # UNVERIFIED live result: the card offers human fact-checkers
+    out["trace"] = {"layer": tlayer, "claims_extracted": len(claims), "degraded": out["degraded"],
+                    "overall_rule": overall_rule(results) if layer == "live" else _match.overall_match_rule(results, overall)}
     if log:
         for v in results:
             if v.reason_code == "timed_out":
                 continue                                # don't pollute the public ledger with unfinished checks
             ledger.append({"claim": v.claim.text, "domain": v.claim.domain, "verdict": v.verdict,
                            "reason_code": v.reason_code, "citations": v.citations,
-                           "language": lang, "checked_at": out["checked_at"]})
+                           "language": lang, "checked_at": out["checked_at"], **_match.ledger_fields(v)})
         ledger.record_check(out, cached=False)
-        if use:
+        if use and not force_live:       # a forced live run never overwrites the cached match for the same text
             cache.save(text, rl, out)
     return out

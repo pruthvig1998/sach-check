@@ -11,7 +11,7 @@ def path():
 _SEED = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "ledger_seed.json")
 
 COUNTERS = ("checks_total", "cache_hits", "no_claims", "verdict:TRUE", "verdict:FALSE", "verdict:MISLEADING", "verdict:UNVERIFIED",
-            ) + tuple("lang:" + c for c in SUPPORTED)
+            "layer:match", "layer:live", "layer:mixed", "layer:cache") + tuple("lang:" + c for c in SUPPORTED)
 
 def _row_key(r):
     return (r.get("claim"), r.get("checked_at")) if isinstance(r, dict) else None
@@ -55,6 +55,7 @@ def record_check(out: dict, cached: bool = False) -> None:
         s.incr("checks_total")
         if cached:
             s.incr("cache_hits")
+        s.incr("layer:cache" if cached else "layer:" + str(out.get("layer") or "live"))   # which layer answered: match | live | mixed | cache
         if out.get("no_claims"):
             s.incr("no_claims")
         else:

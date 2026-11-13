@@ -172,6 +172,10 @@ def format_reply(res: dict) -> str:
                 seen.add(u); more.append(f"- {x.get('source', 'Source')}: {u}")
     if more:
         parts.append("More sources:\n" + "\n".join(more))
+    from . import match as _m, siteurl as _su
+    esc_text = _m.escalation_lines(res, _su.site_url())       # UNVERIFIED: plain-text tipline links (matched replies already carry attribution in the card)
+    if esc_text:
+        parts.append(esc_text)
     if res.get("degraded"):
         parts.append("Note: my AI checker is busy, so I only report a verdict when an official debunk clearly matches.")
     return "\n\n".join(p for p in parts if p)
