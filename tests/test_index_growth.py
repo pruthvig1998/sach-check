@@ -1,10 +1,10 @@
-"""INDEXGROW: the 8 PIB releases added by scripts/add_pib_debunks.py (each fetched live from pib.gov.in on 2026-11-13).
+"""INDEXGROW: the 7 PIB releases added by scripts/add_pib_debunks.py (each fetched live from pib.gov.in on 2026-11-13).
 Offline: reads only data/pib_index.jsonl. Paraphrases must hit the PIB record; near-misses must NOT match anything (a false match is the worst bug)."""
 import json, os, re
 import pytest
 from sach import match, index
 
-NEW_PRIDS = {"1980375", "2085532", "1563836", "2163332", "2104089", "2009349", "1781247", "1513134"}
+NEW_PRIDS = {"1980375", "2085532", "1563836", "2163332", "2104089", "1781247", "1513134"}
 ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 def _rows():
@@ -39,10 +39,6 @@ PARAPHRASES = [
     ("Ministry of Labour & Employment Cautions Citizens Against PMVBRY Portals", {"2163332"}),
     ("Recruitment drive by National Rural Development and Recreation Mission NRDRM in the name of Ministry of Rural Development",
      {"2104089", "2118851"}),   # 2118851 is the earlier PIB release on the same fake NRDRM drive
-    ("Recruitment notification for 4208 post of Constable and 452 Sub-inspectors in RPF on website of RTUEXAM.NET", {"2009349"}),
-    ("RPF recruitment notification for 4208 posts of Constable and 452 Sub-inspectors on RTUEXAM.NET website", {"2009349"}),
-    ("4208 Constable and 452 Sub-inspector posts in RPF recruitment notification on RTUEXAM.NET", {"2009349"}),
-    ("RPF recruitment 4208 Constable and 452 Sub-Inspector posts, apply on RTUEXAM.NET", {"2009349"}),
     ("Recruitments by unknown person in the name of AICTE", {"1781247"}),
     ("Recruitment by an unknown person in the name of AICTE", {"1781247"}),
     ("AICTE recruitments by unknown persons", {"1781247"}),
@@ -56,10 +52,6 @@ MULTILINGUAL = [
     ("AICTE పేరుతో తెలియని వ్యక్తి ద్వారా నియామకాలు", "Recruitments by unknown person in the name of AICTE", {"1781247"}),
     ("AICTE பெயரில் அறியப்படாத நபரால் ஆட்சேர்ப்புகள்", "Recruitments by unknown person in the name of AICTE", {"1781247"}),
     ("AICTE-র নামে অজানা ব্যক্তির দ্বারা নিয়োগ", "Recruitment by an unknown person in the name of AICTE", {"1781247"}),
-    ("RTUEXAM.NET वेबसाइट पर आरपीएफ में कांस्टेबल के 4208 पद और उप-निरीक्षक के 452 पदों की भर्ती अधिसूचना",
-     "Recruitment notification for 4208 posts of Constable and 452 Sub-inspectors in RPF on website of RTUEXAM.NET", {"2009349"}),
-    ("RTUEXAM.NET వెబ్‌సైట్‌లో RPFలో 4208 కానిస్టేబుల్ మరియు 452 సబ్-ఇన్‌స్పెక్టర్ పోస్టుల నియామక ప్రకటన",
-     "RPF recruitment notification for 4208 posts of Constable and 452 Sub-inspectors on RTUEXAM.NET website", {"2009349"}),
     ("भारतीय खाद्य निगम में निदेशक (M&CP) की नियुक्ति के लिए नियुक्ति पत्र",
      "Appointment letter for the appointment of Director M&CP in Food Corporation of India", {"1563836"}),
     ("இந்திய விமான நிலைய ஆணையம் ஆட்சேர்ப்புகள் குறித்து எச்சரிக்கிறது", "Airport Authority of India cautions about recruitments", {"1980375"}),
@@ -121,3 +113,12 @@ def test_multilingual_matches_pib(matcher, original, english, ids):
 @pytest.mark.parametrize("claim", NEAR_MISSES)
 def test_near_miss_is_not_matched(matcher, claim):
     assert matcher.match(claim) is None
+
+
+EXCLUDED = {"2009349": "Feb 2024 clarification about a FAKE notice for 4,208 RPF Constable / 452 SI posts on RTUEXAM.NET. The real recruitment for the same posts was announced "
+                       "later, so this release reads as a contradiction of a TRUE claim (the eval set's RPF claim): a stale-debunk overclaim. Never index it."}
+
+
+def test_a_time_bound_debunk_that_contradicts_a_later_true_announcement_stays_out():
+    prids = {str(r.get("prid")) for r in _rows()}
+    assert not (prids & set(EXCLUDED)), [p for p in EXCLUDED if p in prids]
