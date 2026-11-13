@@ -10,7 +10,7 @@ from . import gtranslate, ledger, limits, store, vertex, gateway
 
 _AI = [("vertex", "GOOGLE_SA_JSON"), ("groq", "GROQ_API_KEY"), ("gateway", "AI_GATEWAY_API_KEY"), ("gemini", "GEMINI_API_KEY"), ("openrouter", "OPENROUTER_API_KEY"), ("mistral", "MISTRAL_API_KEY"),
        ("cloudflare", "CLOUDFLARE_API_TOKEN"), ("claude", "ANTHROPIC_API_KEY")]
-_SEARCH = [("grounded", "GOOGLE_SA_JSON"), ("brave", "BRAVE_API_KEY"), ("tavily", "TAVILY_API_KEY")]
+_SEARCH = [("grounded", "GOOGLE_SA_JSON"), ("serper", "SERPER_API_KEY"), ("brave", "BRAVE_API_KEY"), ("tavily", "TAVILY_API_KEY")]
 
 
 def _family(name: str) -> str:

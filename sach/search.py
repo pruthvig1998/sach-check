@@ -120,6 +120,26 @@ class TavilySearch:
                                            or (urllib.parse.urlparse(u).hostname or "").lower().endswith("." + d) for d in domains)]
         return urls
 
+# ---------------------------------------------------------------- Serper (Google results; honours site: operators)
+SERPER_ENDPOINT = "https://google.serper.dev/search"
+
+class SerperSearch:
+    """POST https://google.serper.dev/search, header `X-API-KEY: <key>`, JSON body {"q", "num"}; response {"organic": [{"link", ...}]}.
+    Google results through a paid-per-query API with a free signup allowance; the query keeps its `site:` operators because Google honours
+    them (unlike grounded search), so PIB-targeted queries work as written. Only used when SERPER_API_KEY is set. Pricing and allowance are
+    the provider's and are not verified here."""
+    name = "serper"
+    def __init__(self, key: str, opener=None, timeout: float = 12):
+        self.key, self._opener, self.timeout = key, opener, timeout
+
+    def search(self, query: str, count: int = 8) -> list[str]:
+        body = {"q": query, "num": max(1, min(int(count), 20))}
+        req = urllib.request.Request(SERPER_ENDPOINT, data=json.dumps(body).encode("utf-8"), method="POST",
+                                     headers={"X-API-KEY": self.key, "Content-Type": "application/json", "Accept": "application/json", "User-Agent": UA})
+        with (self._opener or urllib.request.urlopen)(req, timeout=self.timeout) as r:
+            data = json.loads(r.read().decode("utf-8", "replace"))
+        return [x["link"] for x in (data.get("organic") or []) if isinstance(x, dict) and isinstance(x.get("link"), str)]
+
 # ---------------------------------------------------------------- Grounded (Gemini on Vertex + Google Search)
 REDIRECT_HOST = "vertexaisearch.cloud.google.com"
 _REDIRECT_PREFIX = "/grounding-api-redirect/"
@@ -234,9 +254,11 @@ class GroundedSearch:
         u = "https://" + t + "/"
         return not (is_official(u) or is_factchecker(u) or any(t == d or t.endswith("." + d) for d in FACTCHECKER_PATHS))
 
-    def search(self, query: str, count: int = 8) -> list[str]:
-        if not grounded_accepts(query):
+    def search(self, query: str, count: int = 8, restricted: bool = False) -> list[str]:
+        if not restricted and not grounded_accepts(query):
             return []                                        # never a site:/inurl: query (the chain also skips it); no call, no count
+        if restricted and (not query_sites(query) or any(o.lower().startswith("inurl") for o in _OPERATOR.findall(query))):
+            return []                                        # last resort only for plain site: queries (the chain filters the answer to those sites)
         text = TavilySearch._split(query)[0] or query
         now = self._clock()
         with self._lock:
@@ -361,9 +383,11 @@ class SearchChain:
                 grounded = GroundedSearch(vertex.VertexClient(sa)) if sa else None
             except ValueError:
                 grounded = None                                   # unusable credential: off, never an error here
-        keys = {"grounded": grounded, "brave": brave_key or os.environ.get("BRAVE_API_KEY"), "tavily": tavily_key or os.environ.get("TAVILY_API_KEY")}
-        make = {"grounded": lambda g: g, "brave": lambda k: BraveSearch(k, opener=opener), "tavily": lambda k: TavilySearch(k, opener=opener)}
-        wanted = [n.strip().lower() for n in (order if order is not None else os.environ.get("SACH_SEARCH_ORDER", "grounded,brave,tavily")).split(",")]
+        keys = {"grounded": grounded, "serper": os.environ.get("SERPER_API_KEY"), "brave": brave_key or os.environ.get("BRAVE_API_KEY"),
+                "tavily": tavily_key or os.environ.get("TAVILY_API_KEY")}
+        make = {"grounded": lambda g: g, "serper": lambda k: SerperSearch(k, opener=opener),
+                "brave": lambda k: BraveSearch(k, opener=opener), "tavily": lambda k: TavilySearch(k, opener=opener)}
+        wanted = [n.strip().lower() for n in (order if order is not None else os.environ.get("SACH_SEARCH_ORDER", "grounded,serper,brave,tavily")).split(",")]
         names = [n for n in dict.fromkeys(wanted) if n in make] + [n for n in make if n not in wanted]
         return cls([make[n](keys[n]) for n in names if keys[n]])
 
@@ -422,6 +446,29 @@ class SearchChain:
             if run is not None:
                 run.record(True, p.name)
             return urls
+        if (others_failed and query_sites(query) and not grounded_accepts(query)
+                and not any(o.lower().startswith("inurl") for o in _OPERATOR.findall(query))):
+            # LAST RESORT: every provider that was asked failed or is paused (for example out of credits), and grounded skipped this
+            # site-restricted query by policy. Grounded cannot honour site:, but with nothing else answering an answer filtered to the
+            # query's own site(s) beats none. It never runs when another provider answered (even with an empty list): no shadowing.
+            g = next((p for p in self.providers if p.name == "grounded"), None)
+            if g is not None and self.paused_until("grounded") <= self._clock():
+                try:
+                    urls = site_filter(query, g.search(query, count, restricted=True))
+                except Exception as e:
+                    urls = []
+                    pause = getattr(e, "pause_s", None)
+                    code = getattr(e, "code", None)
+                    if pause:
+                        self._pause("grounded", float(pause))
+                    elif code in (401, 402, 403):
+                        self._pause("grounded", getattr(g, "auth_pause_s", PAUSE_AUTH_S))
+                    elif code == 429:
+                        self._pause("grounded", retry_after_s(e))
+                if urls:
+                    if run is not None:
+                        run.record(True, "grounded")
+                    return urls
         if empty_from is not None and not others_failed:
             if run is not None:
                 run.record(True, empty_from)                 # the empty grounded answer stands only when nothing else failed
