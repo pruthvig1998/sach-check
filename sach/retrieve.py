@@ -174,8 +174,8 @@ class BraveRetriever:
 
 def default_retrievers():
     r = [PibRetriever()]
-    if os.environ.get("BRAVE_API_KEY") or os.environ.get("TAVILY_API_KEY"):
-        r.append(BraveRetriever())              # web search: Brave, then Tavily (sach/search.py)
+    if os.environ.get("BRAVE_API_KEY") or os.environ.get("TAVILY_API_KEY") or (os.environ.get("GOOGLE_SA_JSON") or "").strip():
+        r.append(BraveRetriever())              # web search: Grounded (Vertex), Brave, then Tavily (sach/search.py)
     if os.environ.get("GOOGLE_FACTCHECK_API_KEY"):
         from .factcheck_api import FactCheckToolsRetriever
         r.append(FactCheckToolsRetriever())     # secondary tier only; one HTTPS call, 6 s cap

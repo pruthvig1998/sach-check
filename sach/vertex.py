@@ -324,10 +324,7 @@ def seconds_to_utc_midnight(now: float) -> float:
 def models() -> list:
     return [m.strip() for m in os.environ.get("SACH_VERTEX_MODELS", DEFAULT_MODELS).split(",") if m.strip()]
 
-def reserve_call(st=None, now=None) -> None:
-    """Count one billed call against today's cap. Raises VertexCapReached when the cap is used up (the attempt is given back, a
-    'skipped' counter is bumped). Never raises anything else: a broken store only makes the cap per-instance."""
-    cap = max_per_day()
+def _reserve(prefix: str, cap: int, st=None, now=None, what: str = "vertex") -> None:
     if cap <= 0:
         return
     now = time.time() if now is None else now
@@ -335,7 +332,7 @@ def reserve_call(st=None, now=None) -> None:
         st = st or store.get_store()
     except Exception:
         st = None
-    key = _day_key(now)
+    key = "%s:d:%d" % (prefix, int(now // 86400))
     n, _ = limits._incr(st, key, 2 * 86400) if st is not None else (limits._mem_incr(key), False)
     if n > cap:
         try:
@@ -343,18 +340,22 @@ def reserve_call(st=None, now=None) -> None:
                 st.incr(key, -1)
             else:
                 limits._mem_incr(key, -1)
-            limits._incr(st, "vx:skipped:%d" % int(now // 86400), 2 * 86400) if st is not None else None
+            limits._incr(st, "%s:skipped:%d" % (prefix, int(now // 86400)), 2 * 86400) if st is not None else None
         except Exception:
             pass
-        raise VertexCapReached("vertex: daily call cap reached (resumes 00:00 UTC)")
+        raise VertexCapReached("%s: daily call cap reached (resumes 00:00 UTC)" % what)
 
-def usage(st=None, now=None) -> dict:
-    """For the status page: counts only, never any credential material."""
+def reserve_call(st=None, now=None) -> None:
+    """Count one billed call against today's cap. Raises VertexCapReached when the cap is used up (the attempt is given back, a
+    'skipped' counter is bumped). Never raises anything else: a broken store only makes the cap per-instance."""
+    _reserve("vx", max_per_day(), st, now)
+
+def _usage(prefix: str, cap: int, st=None, now=None) -> dict:
     now = time.time() if now is None else now
-    out = {"calls_today": 0, "max_per_day": max_per_day(), "skipped_over_cap_today": 0}
+    out = {"calls_today": 0, "max_per_day": cap, "skipped_over_cap_today": 0}
     try:
         st = st or store.get_store()
-        kd, ks = _day_key(now), "vx:skipped:%d" % int(now // 86400)
+        kd, ks = "%s:d:%d" % (prefix, int(now // 86400)), "%s:skipped:%d" % (prefix, int(now // 86400))
         c = st.counters([kd, ks]) if getattr(st, "remote", False) else {}
         with limits._mem_lock:
             mem = dict(limits._mem)
@@ -363,3 +364,47 @@ def usage(st=None, now=None) -> dict:
     except Exception:
         pass
     return out
+
+def usage(st=None, now=None) -> dict:
+    """For the status page: counts only, never any credential material."""
+    return _usage("vx", max_per_day(), st, now)
+
+
+# ---------------------------------------------------------------- Grounding with Google Search (used by sach/search.py)
+GROUNDED_DEFAULT_MODEL = "gemini-3.1-flash-lite"
+GROUNDED_DEFAULT_MAX_PER_DAY = 400
+
+def grounded_model() -> str:
+    m = (os.environ.get("SACH_GROUNDED_MODEL") or "").strip()
+    return m if _MODEL_RE.fullmatch(m) else GROUNDED_DEFAULT_MODEL
+
+def grounded_max_per_day() -> int:
+    return limits._env_int("SACH_GROUNDED_MAX_PER_DAY", GROUNDED_DEFAULT_MAX_PER_DAY)
+
+def reserve_grounded(st=None, now=None) -> None:
+    """One grounded prompt against SACH_GROUNDED_MAX_PER_DAY (separate counter from the judge cap). Raises VertexCapReached."""
+    _reserve("gr", grounded_max_per_day(), st, now, what="grounded search")
+
+def grounded_usage(st=None, now=None) -> dict:
+    return _usage("gr", grounded_max_per_day(), st, now)
+
+def grounded_body(text: str) -> dict:
+    return {"contents": [{"role": "user", "parts": [{"text":
+            "Find official Indian government sources (pib.gov.in, gov.in, nic.in) that confirm or deny this claim. Claim: " + text}]}],
+            "tools": [{"google_search": {}}]}
+
+def grounded_chunks(reply) -> list:
+    """-> [(title, uri)] from candidates[0].groundingMetadata.groundingChunks[].web. The model's prose is ignored."""
+    out = []
+    try:
+        for ch in reply["candidates"][0]["groundingMetadata"]["groundingChunks"]:
+            w = ch.get("web") if isinstance(ch, dict) else None
+            if isinstance(w, dict) and isinstance(w.get("uri"), str):
+                out.append((w.get("title") if isinstance(w.get("title"), str) else "", w["uri"]))
+    except (KeyError, IndexError, TypeError, AttributeError):
+        pass
+    return out
+
+def generate_grounded(client: "VertexClient", model: str, text: str, timeout: float = 12) -> list:
+    """One grounded prompt (billed once however many searches the model runs) -> [(title, redirect_uri)]."""
+    return grounded_chunks(client.generate(model, grounded_body(text), timeout=timeout))

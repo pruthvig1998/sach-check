@@ -12,7 +12,8 @@ def _isolate(tmp_path, monkeypatch):
     # A developer's real .env (loaded by `import sach`) must never reach the network from the test suite: tests inject fakes where they need one.
     for k in ("GOOGLE_TRANSLATE_API_KEY", "GOOGLE_FACTCHECK_API_KEY", "TAVILY_API_KEY", "BRAVE_API_KEY",
               "GOOGLE_SA_JSON", "SACH_VERTEX_MODELS", "SACH_VERTEX_MAX_PER_DAY",
-              "AI_GATEWAY_API_KEY", "SACH_GATEWAY_MODELS", "SACH_GATEWAY_MAX_PER_DAY"):
+              "AI_GATEWAY_API_KEY", "SACH_GATEWAY_MODELS", "SACH_GATEWAY_MAX_PER_DAY",
+              "SACH_GROUNDED_MODEL", "SACH_GROUNDED_MAX_PER_DAY", "SACH_SEARCH_ORDER"):
         monkeypatch.delenv(k, raising=False)
     # The link checker's optional hostname lookups (RDAP, Safe Browsing, short-link expansion) never run in tests unless a test injects a fake opener.
     monkeypatch.setenv("SACH_LINKCHECK_NO_NETWORK", "1")

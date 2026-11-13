@@ -1,6 +1,7 @@
 """Live web search providers with failover, and an honest per-check status.
 
-Providers (each only if its key is set): Brave Search (BRAVE_API_KEY), then Tavily (TAVILY_API_KEY). Order can be changed
+Providers (each only if its key is set): Grounded (Gemini on Vertex with Google Search, needs GOOGLE_SA_JSON; first when set), Brave Search
+(BRAVE_API_KEY), then Tavily (TAVILY_API_KEY). Grounded is a "fallback" provider: when it finds no official URL the chain asks the next. Order can be changed
 with SACH_SEARCH_ORDER=tavily,brave (listed providers first, in that order; configured providers not listed follow).
 
 Failover rules (same idea as sach/llm.py, but per provider):
@@ -17,8 +18,10 @@ Status of one check (a SearchRun, one per retriever call so parallel claims neve
   off      no provider has a key: a deliberate configuration, not a failure
 """
 from __future__ import annotations
-import json, os, threading, time as _time, urllib.error, urllib.parse, urllib.request
-from .fetch import UA
+import ipaddress, json, os, re, threading, time as _time, urllib.error, urllib.parse, urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from .fetch import UA, is_official, is_factchecker, FACTCHECKER_PATHS
+from . import vertex
 
 PAUSE_AUTH_S = 6 * 3600            # out of credits / bad key: do not retry for 6 hours
 OK, PARTIAL, DOWN, OFF = "ok", "partial", "down", "off"
@@ -117,6 +120,136 @@ class TavilySearch:
                                            or (urllib.parse.urlparse(u).hostname or "").lower().endswith("." + d) for d in domains)]
         return urls
 
+# ---------------------------------------------------------------- Grounded (Gemini on Vertex + Google Search)
+REDIRECT_HOST = "vertexaisearch.cloud.google.com"
+_REDIRECT_PREFIX = "/grounding-api-redirect/"
+_REDIRECT_CODES = (301, 302, 303, 307, 308)
+MAX_REDIRECTS_RESOLVED = 12
+RESOLVE_WORKERS = 6
+RESOLVE_TIMEOUT_S = 3.0
+GROUNDED_CACHE_S = 300
+_BAD_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home", ".corp", ".test", ".invalid", ".example")
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None                         # never follow: the Location header is read from the 3xx itself
+
+def _no_follow_open(req, timeout=None):
+    return urllib.request.build_opener(_NoRedirect()).open(req, timeout=timeout)
+
+class SearchPaused(Exception):
+    """Raised by a provider that must be benched for `pause_s` seconds (e.g. its daily cap is used up)."""
+    def __init__(self, msg, pause_s):
+        super().__init__(msg)
+        self.pause_s = pause_s
+
+def public_https_url(url) -> str:
+    """The URL if it is https, has no userinfo and a public hostname (no IP literal that is not global, no single-label or
+    internal-looking name); else ''."""
+    url = (url or "").strip()
+    try:
+        u = urllib.parse.urlparse(url)
+        host = (u.hostname or "").lower().rstrip(".")
+        u.port
+    except ValueError:
+        return ""
+    if u.scheme != "https" or not host or "@" in u.netloc or "\\" in url or any(c.isspace() or ord(c) < 32 for c in url):
+        return ""
+    try:
+        return url if ipaddress.ip_address(host).is_global else ""
+    except ValueError:
+        pass
+    if "." not in host or host.endswith(_BAD_SUFFIXES) or not re.fullmatch(r"[a-z0-9.\-]+", host):
+        return ""
+    return url
+
+def resolve_redirect(uri: str, opener=None, timeout: float = RESOLVE_TIMEOUT_S) -> str:
+    """One Google grounding redirect -> the real page URL, or '' on any failure. Only https://vertexaisearch.cloud.google.com/grounding-api-redirect/...
+    is ever requested; redirects are not followed; the Location must be a public https URL."""
+    try:
+        u = urllib.parse.urlparse(uri)
+        if u.scheme != "https" or (u.hostname or "").lower() != REDIRECT_HOST or u.username or u.port not in (None, 443) \
+                or not u.path.startswith(_REDIRECT_PREFIX):
+            return ""
+        req = urllib.request.Request(uri, headers={"User-Agent": UA, "Accept": "*/*"})
+        try:
+            r = (opener or _no_follow_open)(req, timeout=timeout)
+        except urllib.error.HTTPError as e:         # the normal case: a 302 raised because redirects are not followed
+            if e.code not in _REDIRECT_CODES:
+                return ""
+            loc = e.headers.get("Location") if e.headers is not None else None
+            try:
+                e.close()
+            except Exception:
+                pass
+        else:
+            try:
+                code = getattr(r, "status", None) or r.getcode()
+                loc = r.headers.get("Location") if code in _REDIRECT_CODES else None
+            finally:
+                try:
+                    r.close()
+                except Exception:
+                    pass
+        if not isinstance(loc, str) or not loc.strip():
+            return ""
+        return public_https_url(urllib.parse.urljoin(uri, loc.strip()))
+    except Exception:
+        return ""
+
+def _trusted(url: str) -> bool:
+    return is_official(url) or is_factchecker(url)
+
+class GroundedSearch:
+    """Gemini on Vertex AI with Grounding with Google Search, used ONLY to find candidate pages. One grounded prompt per distinct
+    search text (cached 5 minutes); the model's prose is ignored; each groundingChunks[].web.uri is a Google redirect that is
+    resolved safely, and only URLs the host trust list accepts as official or fact-checker are returned. Same result shape as
+    TavilySearch (a list of URL strings). `fallthrough_empty`: no URL means the chain asks the next provider."""
+    name = "grounded"
+    auth_pause_s = vertex.AUTH_PAUSE_S
+    fallthrough_empty = True
+
+    def __init__(self, client, model: str | None = None, opener=None, timeout: float = 12, st=None, clock=_time.time):
+        self.client, self.model, self._opener, self.timeout, self._st, self._clock = client, model, opener, timeout, st, clock
+        self._cache, self._lock = {}, threading.Lock()
+
+    def __repr__(self):
+        return "<GroundedSearch redacted>"
+
+    @staticmethod
+    def _skip_title(title: str) -> bool:
+        """Chunk titles are bare domains: skip resolving one that cannot be trusted whatever its path."""
+        t = (title or "").strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}", t):
+            return False
+        u = "https://" + t + "/"
+        return not (is_official(u) or is_factchecker(u) or any(t == d or t.endswith("." + d) for d in FACTCHECKER_PATHS))
+
+    def search(self, query: str, count: int = 8) -> list[str]:
+        text = TavilySearch._split(query)[0] or query
+        now = self._clock()
+        with self._lock:
+            hit = self._cache.get(text)
+            if hit and now - hit[0] < GROUNDED_CACHE_S:
+                return list(hit[1])
+        try:
+            vertex.reserve_grounded(self._st, now)
+        except vertex.VertexCapReached:
+            raise SearchPaused("grounded: daily cap reached", vertex.seconds_to_utc_midnight(now)) from None
+        chunks = vertex.generate_grounded(self.client, self.model or vertex.grounded_model(), text, timeout=self.timeout)
+        uris = list(dict.fromkeys(u for t, u in chunks if not self._skip_title(t)))[:MAX_REDIRECTS_RESOLVED]
+        if uris:
+            with ThreadPoolExecutor(max_workers=min(RESOLVE_WORKERS, len(uris))) as ex:
+                real = list(ex.map(lambda x: resolve_redirect(x, self._opener), uris))
+        else:
+            real = []
+        urls = list(dict.fromkeys(u for u in real if u and _trusted(u)))[:max(1, int(count))]
+        with self._lock:
+            if len(self._cache) > 256:
+                self._cache.clear()
+            self._cache[text] = (now, list(urls))
+        return urls
+
 # ---------------------------------------------------------------- chain + status
 class SearchRun:
     """Outcome of one retriever call (one claim): thread-safe, never shared between claims."""
@@ -150,10 +283,17 @@ class SearchChain:
         self._paused, self._lock = {}, threading.Lock()
 
     @classmethod
-    def from_env(cls, brave_key: str | None = None, tavily_key: str | None = None, order: str | None = None, opener=None):
-        keys = {"brave": brave_key or os.environ.get("BRAVE_API_KEY"), "tavily": tavily_key or os.environ.get("TAVILY_API_KEY")}
-        make = {"brave": lambda k: BraveSearch(k, opener=opener), "tavily": lambda k: TavilySearch(k, opener=opener)}
-        wanted = [n.strip().lower() for n in (order if order is not None else os.environ.get("SACH_SEARCH_ORDER", "brave,tavily")).split(",")]
+    def from_env(cls, brave_key: str | None = None, tavily_key: str | None = None, order: str | None = None, opener=None, grounded=None):
+        """`grounded`: a ready GroundedSearch (tests); otherwise one is built when GOOGLE_SA_JSON is set and usable."""
+        if grounded is None:
+            try:
+                sa = vertex.ServiceAccount.from_env()
+                grounded = GroundedSearch(vertex.VertexClient(sa)) if sa else None
+            except ValueError:
+                grounded = None                                   # unusable credential: off, never an error here
+        keys = {"grounded": grounded, "brave": brave_key or os.environ.get("BRAVE_API_KEY"), "tavily": tavily_key or os.environ.get("TAVILY_API_KEY")}
+        make = {"grounded": lambda g: g, "brave": lambda k: BraveSearch(k, opener=opener), "tavily": lambda k: TavilySearch(k, opener=opener)}
+        wanted = [n.strip().lower() for n in (order if order is not None else os.environ.get("SACH_SEARCH_ORDER", "grounded,brave,tavily")).split(",")]
         names = [n for n in dict.fromkeys(wanted) if n in make] + [n for n in make if n not in wanted]
         return cls([make[n](keys[n]) for n in names if keys[n]])
 
@@ -173,23 +313,34 @@ class SearchChain:
             self._paused[name] = max(self._paused.get(name, 0.0), self._clock() + secs)
 
     def search(self, query: str, count: int = 8, run: SearchRun | None = None) -> list[str]:
-        """URLs from the first provider that answers. [] when none does; `run` (if given) records whether one did."""
+        """URLs from the first provider that answers. [] when none does; `run` (if given) records whether one did. A provider with
+        `fallthrough_empty` that answers with no URL hands over to the next one (its empty answer counts only if no other answers)."""
+        empty_from = None
         for p in self.providers:
             if self.paused_until(p.name) > self._clock():
                 continue                                    # paused: skip without a call
             try:
                 urls = p.search(query, count)
-            except urllib.error.HTTPError as e:
-                if e.code in (401, 402, 403, 432, 433):
-                    self._pause(p.name, PAUSE_AUTH_S)       # out of credits / bad key
-                elif e.code == 429:
+            except Exception as e:
+                pause = getattr(e, "pause_s", None)
+                code = getattr(e, "code", None)              # HTTPError and vertex.VertexError both carry the HTTP status
+                if pause:
+                    self._pause(p.name, float(pause))        # e.g. daily cap: until 00:00 UTC
+                elif code in (401, 402, 403, 432, 433):
+                    self._pause(p.name, getattr(p, "auth_pause_s", PAUSE_AUTH_S))   # out of credits / bad key
+                elif code == 429:
                     self._pause(p.name, retry_after_s(e))
-                continue                                    # 5xx, 400 and the rest: next provider, this query only
-            except Exception:
-                continue                                    # timeout / network / bad JSON: next provider, no pause
+                continue                                    # 5xx, 400, timeout, network, bad JSON: next provider, this query only
+            if not urls and getattr(p, "fallthrough_empty", False):
+                empty_from = empty_from or p.name
+                continue
             if run is not None:
                 run.record(True, p.name)
             return urls
+        if empty_from is not None:
+            if run is not None:
+                run.record(True, empty_from)
+            return []
         if run is not None:
             run.record(False, None)
         return []

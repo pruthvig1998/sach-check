@@ -212,3 +212,30 @@ model for the Retry-After seconds (a minute if absent); 5xx and timeouts use the
 **Setup.** (1) Vercel dashboard, AI Gateway, API Keys, create a key named for Sach. (2) Add it to the project's environment variables as `AI_GATEWAY_API_KEY`
 (never commit it, never put it in a tracked `.env`). (3) Optionally set `SACH_GATEWAY_MODELS` (comma list of `creator/model`) and `SACH_GATEWAY_MAX_PER_DAY`.
 (4) Check with `python scripts/check_llm.py` (its probes spend a few calls of the credit). You can also set a budget on the key in the dashboard as a second guard.
+
+## 10. Grounded search (Vertex)
+
+**What.** With `GOOGLE_SA_JSON` set, Sach adds a web-search provider `grounded`: it asks Gemini on Vertex AI (`SACH_GROUNDED_MODEL`, default
+`gemini-3.1-flash-lite`, global location) with the "Grounding with Google Search" tool to find official pages for the claim, and uses **only the source
+URLs** it returns (`groundingMetadata.groundingChunks[].web.uri`). Those are Google redirect links; each is resolved by one request to
+`vertexaisearch.cloud.google.com` (redirects not followed, `Location` read, https and a public hostname required, 3 s timeout, at most 6 in parallel;
+any failure drops that one URL). The result then passes the existing host trust list (`is_official` / `is_factchecker` in `sach/fetch.py`): news sites
+and everything else are dropped, so the trust root is unchanged. The model's prose answer is ignored; verdicts still come from our own quote-verbatim
+judge and hard rules. Code: `GroundedSearch` in `sach/search.py`, `generate_grounded` and the cap in `sach/vertex.py`.
+
+**Order and fallback.** With the credential set and `SACH_SEARCH_ORDER` unset the chain is `grounded,brave,tavily`. If grounded fails or returns no
+official URL, the chain asks the next provider for that query. 401/403 pauses grounded 10 minutes, 429 for its Retry-After, 5xx and timeouts only skip
+it for that query, and the daily cap pauses it until 00:00 UTC. The retriever may issue up to three queries per claim; grounded answers repeated search
+text from a 5-minute in-memory cache, but each distinct text is one billed grounded prompt, so budget about 1 to 3 per live check. The status page has a `grounded` row (configured, ready or paused, calls today of the cap).
+
+**Cost and cap.** One grounded prompt is one charge however many searches the model runs internally. Per the project owner, Gemini 3 has a free
+monthly allowance of grounded prompts (about 5,000 a month, i.e. roughly 160 a day when divided by 30) and overage is billed per 1,000 grounded prompts
+from the trial credit. These figures and the overage price were **not verified here** (the pricing page could not be read by the tool used); check
+https://cloud.google.com/vertex-ai/generative-ai/pricing. `SACH_GROUNDED_MAX_PER_DAY` (default 400, 0 = unlimited) caps grounded prompts per UTC day,
+using the same shared counter as the Vertex cap (memory fallback without a store, separate counter from the judge's). Arithmetic: 400 a day is
+12,000 a month, above ~5,000 free, so a busy month would spend credit at the per-1,000 overage price on about 7,000 prompts; set it to about 160 to stay inside the allowance.
+
+**Setup.** Nothing new: it uses the same `GOOGLE_SA_JSON` service account (role `roles/aiplatform.user` is enough). `python scripts/check_search.py` probes it with one billed prompt.
+
+**Limits.** Google decides which pages it returns; we cannot steer it beyond the prompt. Only official hosts and listed fact-checkers are used, so a claim
+whose evidence is elsewhere gets no grounded result and the chain falls through. The grounded call takes about 3.5 to 5 s.
