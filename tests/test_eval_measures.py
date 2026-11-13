@@ -293,7 +293,7 @@ def test_safe_error_message_redacts_long_runs_and_truncates():
     assert ev.safe_error_message(ValueError("x" * 30 + " " + "y" * 23)) == "[redacted] " + "y" * 23   # 23 is below the 24 threshold
 
 
-def test_run_stores_error_msg_and_the_failed_table_shows_it(monkeypatch):
+def test_run_stores_error_msg_in_checkpoint_and_the_failed_table_shows_only_the_class(monkeypatch):
     ev = _run_eval()
     monkeypatch.setattr(ev, "save_checkpoint", lambda c: None)
     secret = "Q" * 40
@@ -308,7 +308,9 @@ def test_run_stores_error_msg_and_the_failed_table_shows_it(monkeypatch):
     assert got["error"] == "RuntimeError" and got["got"] == "ERROR"
     assert secret not in got["error_msg"] and "[redacted]" in got["error_msg"] and len(got["error_msg"]) <= 160
     text = "\n".join(ev.failed_table(out))
-    assert "Error message" in text and "[redacted]" in text and "rejected" in text
+    # the committed table no longer carries message text: only the exception class name in the Error column
+    assert "Error message" not in text and "rejected" not in text and secret not in text and "[redacted]" not in text
+    assert "| Error |" in text and "RuntimeError" in text
 
 
 # ---------------------------------------------------------------- Why column (defect 4)

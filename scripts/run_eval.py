@@ -255,14 +255,14 @@ def failed_table(res):
     bad = [r for r in res if r.get("got") != r["label"]]
     L = ["", "## Failed, abstained and wrong cases", "",
          f"Every claim whose result is not an exact match: {len(bad)} of {len(res)}. Nothing is left out of this table.", "",
-         "| Claim | Lang | Label | Sach | Layer | Reason codes | Result | Why | ms | Error message |", "|---|---|---|---|---|---|---|---|---|---|"]
+         "| Claim | Lang | Label | Sach | Layer | Reason codes | Result | Why | ms | Error |", "|---|---|---|---|---|---|---|---|---|---|"]
     for r in bad:
         tag = {"abstained": "miss (abstained)", "overclaim_false": "OVERCLAIM (FALSE)", "overclaim_true": "OVERCLAIM (TRUE)",
                "wrong_other": "WRONG", "error": "ERROR"}[outcome(r)]
         ms = r.get("ms")
         why = ", ".join(why_tags(r)) or "-"
         L.append(f"| {_esc(r['claim'])} | {r['lang']} | {r['label']} | {r['got']} | {r.get('layer', 'live')} | "
-                 f"{_esc(', '.join(r.get('reasons') or []) or '-')} | {tag} | {why} | {'-' if ms is None else ms} | {_esc(r.get('error_msg') or '-')} |")
+                 f"{_esc(', '.join(r.get('reasons') or []) or '-')} | {tag} | {why} | {'-' if ms is None else ms} | {_esc(r.get('error') or '-')} |")
     if not bad:
         L.append("| none | | | | | | | | | |")
     return L
@@ -300,12 +300,33 @@ def save_checkpoint(c):
 
 # ---------- running ----------
 # Redaction for error text (no redaction is perfect; the failed table is reviewed before a report is committed):
-#  1. the value after a key/token/password name (key=, api_key=, token:, password=, Authorization: Bearer, x-goog-api-key: ...), any length
-_SECRET_KV = re.compile(r"(?i)(\b(?:(?:x-goog-|x-)?api[_-]?key|apikey|access_token|token|secret|password|passwd|pwd|auth|authorization)"
-                        r"\s*[=:]\s*(?:(?:bearer|basic)\s+)?|\bkey\s*=\s*)[^\s&\"',;]+")
+#  1. the value after a key/token/password name, any length, in plain, quoted, JSON and repr forms:
+#     key=, api_key=, token:, password=, "password": "...", {'api_key': '...'}, token "...", Authorization: Bearer ...
+_KEY_NAMES = r"(?:(?:x-goog-|x-)?api[_-]?key|apikey|access[_-]?token|token|secret|password|passwd|pwd|auth|authorization)"
+_SECRET_KV = re.compile(r"(?i)(\b" + _KEY_NAMES + r"[\"']?\s*(?:[=:]\s*|(?=[\"']))|\bkey[\"']?\s*=\s*)"   # key name, optional quote, '=' or ':' (or a quote)
+                        r"(?:(bearer\s+|basic\s+))?"                                                       # a scheme in an unquoted header value
+                        r"(?:\"([^\"\r\n]*)\"?|'([^'\r\n]*)'?|([^\s&\"',;]+))")                             # quoted value, or bare value up to a separator
 #  2. a Bearer token written without a key name
 _SECRET_BEARER = re.compile(r"(?i)(\bbearer\s+)[^\s&\"',;]+")
-#  3. a run of key-like characters (JWTs, API keys, AWS-style secrets), and URLs (their query strings and long path pieces)
+#  3. a 20-27 character token with a symbol and one case (upper-only or lower-only) written straight after a key name
+_KEY_THEN_TOKEN = re.compile(r"(?i)(\b" + _KEY_NAMES + r"[\"']?\s+)([A-Za-z0-9_\-+/=.%]{20,27})(?![A-Za-z0-9_\-+/=.%])")
+
+
+def _kv_redact(m):
+    head = m.group(1) + (m.group(2) or "")
+    if m.group(3) is not None:
+        return head + '"[redacted]"'
+    if m.group(4) is not None:
+        return head + "'[redacted]'"
+    return head + "[redacted]"
+
+
+def _key_then_token_redact(m):
+    s = m.group(2)
+    if (s.isupper() or s.islower()) and any(c in "_-+/=.%" for c in s):
+        return m.group(1) + "[redacted]"
+    return m.group(0)
+#  4. a run of key-like characters (JWTs, API keys, AWS-style secrets), and URLs (their query strings and long path pieces)
 _RUN = re.compile(r"[A-Za-z0-9_\-+/=.%]{20,}")
 _URL = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s\"'<>]+")
 _PIECE = re.compile(r"[A-Za-z0-9_\-+=%]{20,}")      # one piece of a URL path, between / . ? and similar
@@ -335,7 +356,8 @@ def _redact_token(m):
 
 
 def redact_secrets(text):
-    text = _SECRET_KV.sub(lambda m: m.group(1) + "[redacted]", text)
+    text = _SECRET_KV.sub(_kv_redact, text)
+    text = _KEY_THEN_TOKEN.sub(_key_then_token_redact, text)
     text = _SECRET_BEARER.sub(lambda m: m.group(1) + "[redacted]", text)
     return re.sub(_URL.pattern + "|" + _RUN.pattern, _redact_token, text)
 

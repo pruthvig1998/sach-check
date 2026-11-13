@@ -144,6 +144,64 @@ def test_a_lone_surrogate_in_an_error_is_utf8_encodable_and_the_run_survives(mon
                ensure_ascii=False).encode("utf-8")
 
 
+# ---------------------------------------------------------------- A2: quoted, JSON and repr key forms; symbol tokens after a key
+def test_quoted_json_and_repr_key_forms_are_redacted():
+    ev = _run_eval()
+    cases = [
+        ('{"password": "correcthorsebatterystaple"}', "correcthorsebatterystaple"),
+        ("{'api_key': 'Abcdefghijklmnopqrstuvwx'}", "Abcdefghijklmnopqrstuvwx"),
+        ('token "Zx9Lm2Qp7Rt4Vb8Nc1Wd5Yh6Jk3Gf0Ms"', "Zx9Lm2Qp7Rt4Vb8Nc1Wd5Yh6Jk3Gf0Ms"),
+        ("secret='plainsecretvalue'", "plainsecretvalue"),
+        ("headers={'Authorization': 'Basic dXNlcjpwYXNz'}", "dXNlcjpwYXNz"),
+    ]
+    for text, secret in cases:
+        msg = ev.safe_error_message(Exception(text))
+        assert secret not in msg and "[redacted]" in msg, (text, msg)
+
+
+def test_a_symbol_token_of_20_to_27_characters_directly_after_a_key_name_is_redacted():
+    ev = _run_eval()
+    upper = ev.safe_error_message(Exception("token ABCDEFGHIJKLMNOPQRST-UVWX rejected"))
+    lower = ev.safe_error_message(Exception("api_key abcdefghijklmnopqr-stuvwx rejected"))
+    assert "ABCDEFGHIJKLMNOPQRST" not in upper and "[redacted]" in upper and "rejected" in upper
+    assert "abcdefghijklmnopqr" not in lower and "[redacted]" in lower and "rejected" in lower
+
+
+# ---------------------------------------------------------------- A3: the committed report and summary carry no exception text
+LEAK_SECRETS = [
+    "AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBI3",
+    "sk-ant-api03-Qx7_Lm2Vb9-Zr4Tn8Wk3Pd6Hj1Gf5Ds0Ap_Yt2Mu8Xc4Ri7Eo9Ng3Bl6Ka1Sh-Wv5Ju0Qe2Lo8Ta4Zb",
+    JWT,
+    "correcthorsebatterystaple",
+    "Zq8LmN2pRt5vWx9yBc3dFg7hJk1nPq4s",
+    "9fK2mQ7xLp4Rt8Vn3Zc6Wb1Ys5Gd0Hj",
+]
+
+
+def test_committed_report_and_summary_contain_no_exception_text(monkeypatch, tmp_path):
+    ev = _run_eval()
+    monkeypatch.setattr(ev, "save_checkpoint", lambda c: None)
+    msg = (f'AIza key {LEAK_SECRETS[0]} and sk {LEAK_SECRETS[1]} jwt {LEAK_SECRETS[2]} '
+           f'body {{"password": "{LEAK_SECRETS[3]}"}} key={LEAK_SECRETS[4]} Bearer {LEAK_SECRETS[5]}')
+
+    def check(text, ret, llm, log=False):
+        raise TimeoutError(msg)
+    monkeypatch.setattr(ev, "check_forward", check)
+    rows = [{"claim": "c", "label": "TRUE", "lang": "en", "seeded": False}]
+    ck = {"key": {}, "results": {}, "llm_failures": 0, "search_failures": 0, "no_llm": False}
+    out = ev.run(rows, [], _Llm(), ck, out=lambda *_: None)
+    meta = {"commit": "c", "dirty": False, "date": "2026-11-13", "mode": "m", "retrievers": [], "judges": []}
+    report = ev.build_report(out, meta, False, "", 0, docs=tmp_path)
+    summary = json.dumps(ev.summary_payload(out, meta, "h", [], 0), ensure_ascii=False)
+    shipped = report + "\n" + summary
+    assert "TimeoutError" in report and "| Error |" in report and "Error message" not in report
+    for secret in LEAK_SECRETS:
+        for i in range(len(secret) - 11):
+            window = secret[i:i + 12]
+            assert window not in shipped, window
+    assert "[redacted]" not in shipped and "rejected" not in shipped
+
+
 # ---------------------------------------------------------------- C: the UNVERIFIED label line
 def _row(got, label):
     return {"claim": f"{label} {got}", "label": label, "got": got, "lang": "en", "layer": "live", "seeded": False, "reasons": [], "cites": []}
