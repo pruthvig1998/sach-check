@@ -159,17 +159,28 @@ def split_message(text: str, limit: int = CHUNK) -> list:
     return out or [text[:limit] or "."]
 
 def format_reply(res: dict) -> str:
-    card = str(res.get("card") or "").strip()
+    from .report import display_card as _dc, driver_claim as _drv
+    from .share import _claim_lines
+    from .i18n import text_lang as _tl
+    card = _dc(res).strip()
     parts = [card]
+    if len(res.get("claims") or []) > 1:                  # multi-claim: one line per claim, each with its own result (shared helper with the web share text)
+        lines = _claim_lines(res, _tl(res.get("language", "en")))
+        if lines:
+            parts.append("\n".join(lines))
     if res.get("card_en") and res.get("language") != "en":
-        parts.append("In English:\n" + str(res["card_en"]).strip())
+        parts.append("In English:\n" + _dc(res, "card_en").strip())
     seen = set(re.findall(r"https?://\S+", "\n".join(parts)))
     more = []
-    for c in res.get("claims") or []:
-        for x in (c.get("citations") or [])[:3]:
+    drv = _drv(res)                                       # 'More sources' is the driver claim's own evidence, never another claim's
+    if drv:
+        for x in (drv.get("citations") or [])[:3]:
             u = str(x.get("url") or "")
             if u.startswith(("http://", "https://")) and u not in seen and len(more) < 4:
                 seen.add(u); more.append(f"- {x.get('source', 'Source')}: {u}")
+        m = drv.get("match") if drv.get("layer") == "match" else None
+        if m and str(m.get("review_url") or "").startswith(("http://", "https://")) and m["review_url"] not in seen and len(more) < 4:
+            seen.add(m["review_url"]); more.append(f"- {m.get('checker', 'Fact-checker')}: {m['review_url']}")
     if more:
         parts.append("More sources:\n" + "\n".join(more))
     from . import match as _m, siteurl as _su

@@ -29,6 +29,7 @@ import hashlib, json, re
 from . import cache, ledger, share
 from .lang import BCP47
 from .siteurl import site_url
+from .report import driver_index
 
 DEFAULT_LIMIT = 200
 LINK_LOOKUPS = 50                       # share-permalink lookups per feed (each may be a remote store read)
@@ -142,7 +143,7 @@ def result_review(res: dict, link: str, site: str | None = None) -> dict | None:
         claims = res.get("claims") or []
         if v not in RATING or not claims or is_foreign(res) or any(is_foreign(c) for c in claims):
             return None
-        pick = next((c for c in claims if c.get("verdict") == v), claims[0])
+        pick = claims[driver_index(res)]                # the claim behind the overall verdict (report.driver_index), never claims[0] by default
         text = ((pick.get("claim") or {}).get("text")) or ""
         cites = _cites(pick)
         date = str(res.get("first_checked_at") or res.get("checked_at") or "")

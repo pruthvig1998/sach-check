@@ -147,3 +147,46 @@ def tr(table: dict, lang: str):
 def text_lang(lang: str) -> str:
     """The language the card text is really written in: the chosen language, or 'en' when the card falls back to English."""
     return lang if lang in LABEL and lang not in ENGLISH_ONLY else "en"
+
+
+# ---- incomplete checks: the AI checker or web search was unavailable, so "no official source found" would be untrue. ---------------
+# NOT NATIVE-REVIEWED: hi and te below were written by an AI model. Other languages fall back to English through tr().
+INCOMPLETE_CARD = {  # the why-line of the card when the check was incomplete (replaces the UNVERIFIED sentence in the card text)
+ "en": "Sach could not finish checking this. This is not a finding that nothing exists.",
+ "hi": "Sach यह जाँच पूरी नहीं कर सका। इसका मतलब यह नहीं कि कुछ मौजूद नहीं है।",   # NOT NATIVE-REVIEWED
+ "te": "ఈ తనిఖీని Sach పూర్తి చేయలేకపోయింది. ఏదీ లేదని దీని అర్థం కాదు.",   # NOT NATIVE-REVIEWED
+}
+WHY_NO_SOURCE = {  # the why-line of a card that has no citation to name (a matched or source-less verdict): no source phrase at all
+ "en": {"FALSE": "This claim is false.",
+        "TRUE": "This claim is confirmed.",
+        "MISLEADING": "Part of it is real, but the numbers, dates or framing in the forward are distorted."},
+ "hi": {"FALSE": "यह दावा झूठ है।",                                   # NOT NATIVE-REVIEWED
+        "TRUE": "इस दावे की पुष्टि हुई है।",                           # NOT NATIVE-REVIEWED
+        "MISLEADING": "इसका कुछ हिस्सा सही है, पर संख्या, तारीख या बात का ढंग गलत पेश किया गया है।"},   # NOT NATIVE-REVIEWED
+ "te": {"FALSE": "ఈ దావా అబద్ధం.",                                     # NOT NATIVE-REVIEWED
+        "TRUE": "ఈ దావా ధృవీకరించబడింది.",                              # NOT NATIVE-REVIEWED
+        "MISLEADING": "ఇందులో కొంత నిజం ఉంది, కానీ సంఖ్యలు, తేదీలు లేదా చెప్పిన తీరు వక్రీకరించబడింది."},   # NOT NATIVE-REVIEWED
+}
+INCOMPLETE_NOTICE = {  # the notice shown above the card on the result page
+ "en": "Sach could not finish checking this (the AI checker or web search was unavailable). This is not a finding that nothing exists. "
+       "Try again later or ask a human fact-checker.",
+ "hi": "Sach यह जाँच पूरी नहीं कर सका (AI जाँचकर्ता या वेब खोज उपलब्ध नहीं थी)। इसका मतलब यह नहीं कि कुछ मौजूद नहीं है। "
+       "बाद में फिर कोशिश करें या किसी मानव फ़ैक्ट-चेकर से पूछें।",   # NOT NATIVE-REVIEWED
+ "te": "Sach ఈ తనిఖీని పూర్తి చేయలేకపోయింది (AI తనిఖీదారు లేదా వెబ్ శోధన అందుబాటులో లేదు). ఏదీ లేదని దీని అర్థం కాదు. "
+       "తర్వాత మళ్ళీ ప్రయత్నించండి లేదా మానవ ఫ్యాక్ట్-చెకర్‌ను అడగండి.",   # NOT NATIVE-REVIEWED
+}
+INCOMPLETE_ESC_NOTE = {  # the note above the human fact-checker links when the check was incomplete
+ "en": "Sach could not finish checking this, so it has no finding either way. Tap a name to open WhatsApp with your question filled in, "
+       "then send it yourself. Sach sends nothing.",
+ "hi": "Sach यह जाँच पूरी नहीं कर सका, इसलिए इस पर कोई नतीजा नहीं है। किसी नाम पर टैप करें, WhatsApp आपके सवाल के साथ खुलेगा; भेजना आपको खुद है। Sach कुछ नहीं भेजता।",   # NOT NATIVE-REVIEWED
+ "te": "Sach ఈ తనిఖీని పూర్తి చేయలేకపోయింది, కాబట్టి దీనిపై ఏ నిర్ణయమూ లేదు. ఒక పేరును నొక్కితే WhatsApp మీ ప్రశ్నతో తెరుచుకుంటుంది; మీరే పంపండి. Sach ఏమీ పంపదు.",   # NOT NATIVE-REVIEWED
+}
+
+
+def incomplete(res) -> bool:
+    """True when the overall verdict is UNVERIFIED and the check could not run fully: the AI judge failed or was unavailable (degraded),
+    or web search was down or partial. A decisive verdict (TRUE, FALSE, MISLEADING) stands on its cited source, so it is never incomplete.
+    Display-only: the verdict itself is never changed by this."""
+    if res.get("verdict") != "UNVERIFIED":
+        return False
+    return bool(res.get("degraded")) or res.get("search_status") in ("down", "partial")

@@ -266,7 +266,7 @@ def test_result_has_action_grid_summary_details_and_labelled_table(server):
     acts = h[h.index('<div class="row actions"'):]
     acts = acts[:acts.index("</div>") + 6]
     assert 'role="group"' in acts and acts.index("Share on WhatsApp") < acts.index("Copy card") < acts.index("Download image")
-    assert 'class="btn wa"' in acts and 'class="btn ghost" id="copy"' in acts and 'id="img-share"' in acts and "hidden" in acts
+    assert 'class="btn ghost" id="shareWa"' in acts and 'class="btn ghost" id="copy"' in acts and 'id="img-share"' in acts and "hidden" in acts   # no LLM here: limited mode, so the share button is the quieter ghost
     signs = h[h.index('<section class="signs"'):]
     signs = signs[:signs.index("</section>")]
     assert re.search(r'<p class="sg-sum">\d+ warning signs: [^<]+</p>', signs)

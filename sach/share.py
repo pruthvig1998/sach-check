@@ -13,9 +13,9 @@ from email.parser import BytesParser
 from urllib.parse import quote
 from . import timefmt
 from . import cache, store
-from .i18n import tr, text_lang
+from .i18n import EMOJI, incomplete, tr, text_lang
 from .lang import SUPPORTED
-from .report import _clean, _clip
+from .report import _clean, _clip, display_card, driver_claim, driver_index
 from .models import AUTHORITATIVE
 
 esc = html.escape
@@ -104,25 +104,62 @@ def shared_header(rec: dict) -> str:
 
 # ---------------------------------------------------------------- the WhatsApp message
 
-def _lead_url(res: dict):
-    cites = [x for c in (res.get("claims") or []) for x in (c.get("citations") or []) if x.get("url")]
+def _claim_link(res: dict, c: dict):
+    """The link for ONE claim (the driver): its official-first citation, else (for a matched claim in a multi-claim forward) its
+    match review link. Single-claim results keep the citation-only rule, so their text is unchanged."""
+    cites = [x for x in (c.get("citations") or []) if x.get("url")]
     lead = ([x for x in cites if x.get("tier") in AUTHORITATIVE] or cites or [None])[0]
-    return str(lead["url"]) if lead else None
+    if lead:
+        return str(lead["url"])
+    m = c.get("match") if c.get("layer") == "match" else None
+    if m and len(res.get("claims") or []) > 1 and m.get("review_url"):
+        return str(m["review_url"])
+    return None
+
+
+def _lead_url(res: dict):
+    c = driver_claim(res)
+    return _claim_link(res, c) if c else None
+
+
+def _claim_lines(res: dict, lang: str) -> list:
+    """Multi-claim forwards: one compact line per claim (at most three, the driver always among them) with that claim's own result
+    word, so no claim is attributed to another. A matched claim names its fact-checker. Claim text is cut to 80 characters."""
+    claims = res.get("claims") or []
+    d = driver_index(res)
+    keep = [0, 1, 2] if d < 3 else [0, 1, d]
+    keep = [i for i in keep if i < len(claims)]
+    out = []
+    for i in keep:
+        c = claims[i]
+        v = str(c.get("verdict", ""))
+        m = c.get("match") if c.get("layer") == "match" and c.get("match") else None
+        word = f'{m.get("rating_text", "")} by {m.get("checker", "")}' if m else v
+        txt = _clip(_clean((c.get("claim") or {}).get("text", "")), 80)
+        out.append(f'{EMOJI.get(v, "")} {word}: “{txt}”')
+    if len(claims) > len(keep):
+        out.append(f"+{len(claims) - len(keep)} more on the page")
+    return out
 
 
 def build_share_text(res: dict, site: str, link=None) -> str:
-    """Verdict card, the claim that was checked (quoted, max 140 chars), 'Full evidence: <link>', and a call to action.
-    Under SHARE_MAX characters when possible: the claim is shortened first, then dropped. A URL is never cut."""
+    """Verdict card, the claim that drives the verdict (quoted, max 140 chars), 'Full evidence: <link>' for that claim, and a call to
+    action. A forward with several claims lists each claim with its own result instead of quoting one. Under SHARE_MAX characters when
+    possible: the claim is shortened first, then dropped. A URL is never cut."""
     lang = text_lang(res.get("language", "en"))
-    card = str(res.get("card", "")).strip()
-    claims = res.get("claims") or []
-    claim = _clean(claims[0]["claim"]["text"]) if claims and claims[0].get("claim") else ""
-    ev = link or _lead_url(res)
+    card = display_card(res).strip()
+    drv = driver_claim(res)
+    multi = len(res.get("claims") or []) > 1
+    claim = _clean(drv["claim"]["text"]) if drv and drv.get("claim") else ""
+    lines = _claim_lines(res, lang) if multi else []
+    ev = link or (_claim_link(res, drv) if drv else None)
     cta = tr(CTA, lang).format(url=site)
 
     def compose(limit: int) -> str:
         parts = [card]
-        if limit and claim:
+        if lines:
+            parts.append("\n".join(lines))
+        if limit and claim and not multi:
             parts.append(f'{tr(CLAIM_LBL, lang)} “{_clip(claim, limit)}”')
         if ev and ev not in card:                                  # the card already carries its citation link
             parts.append(f"{tr(EVIDENCE_LBL, lang)} {ev}")
@@ -160,9 +197,13 @@ def _json_script(el_id: str, obj) -> str:
 def result_share_html(res: dict, site: str, link=None) -> tuple[str, str]:
     """(buttons that go first in the actions group, JSON data element for the scripts)."""
     text = build_share_text(res, site, link)
-    btns = (f'<a class="btn wa" id="shareWa" href="{esc(wa_url(text))}" rel="noopener">Share on WhatsApp</a>'
+    quiet = incomplete(res)            # an incomplete check: the share button is quieter than the 'try again later' hint, and no sticky bar
+    btns = (f'<a class="btn {"ghost" if quiet else "wa"}" id="shareWa" href="{esc(wa_url(text))}" rel="noopener">Share on WhatsApp</a>'
             f'<button class="btn ghost" id="more-share" type="button" hidden>More ways to share</button>')
-    return btns, _json_script("sach-share-data", {"text": text, "link": link or ""})
+    data = {"text": text, "link": link or ""}
+    if quiet:
+        data["quiet"] = True
+    return btns, _json_script("sach-share-data", data)
 
 
 # ---------------------------------------------------------------- WhatsApp -> Sach: share target (POST, text and image)
@@ -305,7 +346,7 @@ window.sachBindShare=function(){
   window.sachShareText=data?function(){return data.text}:null;
   if(more&&data&&navigator.share){more.hidden=false;
     more.addEventListener('click',function(){try{var p=navigator.share({title:'Sach verdict',text:data.text});if(p&&p.catch)p.catch(function(){})}catch(e){}})}
-  if(wa&&bar&&data&&'IntersectionObserver' in window){var bw=$('#sharebar-wa');if(bw)bw.href=wa.href;dismissed=false;
+  if(wa&&bar&&data&&!data.quiet&&'IntersectionObserver' in window){var bw=$('#sharebar-wa');if(bw)bw.href=wa.href;dismissed=false;
     io=new IntersectionObserver(function(es){var e=es[es.length-1],show=!e.isIntersecting&&!dismissed;
       bar.hidden=!show;root.classList.toggle('has-sharebar',show)});io.observe(wa)}
 };
