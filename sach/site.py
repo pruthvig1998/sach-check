@@ -670,6 +670,8 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 </div>
 {dlgnote}</dialog>
 </div></section>'''
+    from . import trending
+    trend_html = trending.section_html(trending.HOME_TOP)
     body = f"""<div class="wrap"><div class="hero"><div>
 <p class="kicker">A corrections desk for your family group</p>
 <h1>Got a forward? Get the <em>receipts.</em></h1>
@@ -691,7 +693,7 @@ def home(result: str = "", prefill: str = "", error: str = "", reply: str = "aut
 <div id="busy" role="status"><i></i>Reading PIB and official pages… this usually takes 10 to 30 seconds.</div>{progress_panel()}</form>{share.HOWTO_HTML}
 <div id="results">{f'<p role="alert" style="color:var(--false);font-weight:600;margin-top:14px">{esc(error)}</p>' if error else ''}{result}</div></div></div></section>
 {pwa.HOME_HTML}
-
+{trend_html}
 <section id="how"><div class="wrap"><h2>How it works</h2><p class="sub">Four steps, all visible. Nothing is invented: a citation appears only if we actually fetched that page.</p>
 <div class="grid4">
 <div class="card step"><span class="n">01</span><h3>Split</h3><p>The forward is broken into atomic, checkable claims and tagged: scheme or money, health, news, other.</p></div>
@@ -766,12 +768,13 @@ def pay_page(amount: int | None = None, bad_amount: bool = False, alt: bool = Fa
 
 
 def ledger_page() -> bytes:
+    from . import claimreview
     rows = ""
     data = list(reversed(ledger.load()))
     for r in data:
         cites = "".join(f'<div class="cite"><a href="{esc(c["url"])}" rel="noopener">{esc(c["source"])}</a> <span>· {esc(c["tier"].replace("_"," "))} · {esc(c["date_accessed"])}</span></div>'
                         for c in r["citations"]) or '<span class="note">none found</span>'
-        rows += (f'<tr role="row" data-v="{esc(r["verdict"])}"><td role="cell" data-label="Claim">{esc(r["claim"])}</td><td role="cell" data-label="Verdict"><span class="tag {esc(r["verdict"])}">{esc(r["verdict"])}</span></td>'
+        rows += (f'<tr role="row" id="{claimreview.row_id(r)}" data-v="{esc(r["verdict"])}"><td role="cell" data-label="Claim">{esc(r["claim"])}</td><td role="cell" data-label="Verdict"><span class="tag {esc(r["verdict"])}">{esc(r["verdict"])}</span></td>'
                  f'<td role="cell" data-label="Citations">{cites}</td><td role="cell" data-label="Checked" class="note">{esc(r["checked_at"][:10])}</td></tr>')
     if not rows:
         rows = '<tr data-v="NONE"><td colspan="4" class="note">No claims checked yet.</td></tr>'

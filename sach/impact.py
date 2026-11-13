@@ -6,6 +6,7 @@ from __future__ import annotations
 import json, os
 from . import fetch, ledger, store
 from .lang import NAMES, SUPPORTED
+from . import trending
 from .site import ROOT, esc, layout
 
 VERDICTS = ("TRUE", "FALSE", "MISLEADING", "UNVERIFIED")
@@ -221,9 +222,9 @@ def impact_page() -> bytes:
     body = ('<div class="wrap imp-sec"><section style="border:0"><p class="kicker">Live numbers</p><h1 style="font-size:clamp(34px,9vw,64px)">Impact</h1>'
             '<p class="sub">What Sach has done, counted by the server itself. Generated %s UTC.</p>%s'
             '<h2>Checks</h2><div class="imp-stats">%s</div>%s%s'
-            '<h2 style="margin-top:34px">Evaluation</h2>%s'
+            '%s<h2 style="margin-top:34px">Evaluation</h2>%s'
             '<h2 style="margin-top:34px">Public ledger</h2><p>%s</p><h3>Latest FALSE verdicts</h3>%s<p class="note">%s <a href="/?view=ledger">Open the full ledger</a>.</p>'
             '<h2 style="margin-top:34px">How each number is computed</h2><ul class="imp-how">%s</ul>'
             '<p class="note"><a href="/?view=impact&amp;format=json">The same data as JSON</a></p></section></div>') % (
-        esc(d["generated_at"].replace("T", " ")), honest, stats, vblock, lblock, evb, esc(ledger_line), recent, esc(sp_line), how)
+        esc(d["generated_at"].replace("T", " ")), honest, stats, vblock, lblock, trending.section_html(trending.IMPACT_TOP), evb, esc(ledger_line), recent, esc(sp_line), how)
     return layout(body, "Impact — Sach", path="/impact").replace(b"</style>", ("\n" + IMPACT_CSS).encode() + b"</style>", 1)

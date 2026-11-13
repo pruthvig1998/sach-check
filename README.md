@@ -145,6 +145,10 @@ An honest limit of the red team: it is a small hand-written set by the people wh
 
 Every official entry needs recorded evidence of why it is official; widening that list raises the risk of an overclaim, so it grows slowly. Why each host is in or out, and the date it was checked: [docs/sources.md](docs/sources.md). PIB only handles Union government matters, which is why Sach's strength is central schemes, money, health and public notices.
 
+## Open data
+
+Sach's own decisive verdicts (TRUE, FALSE, MISLEADING, each with at least one citation) are published as schema.org [ClaimReview](https://schema.org/ClaimReview) JSON at `/claimreview.json` (also `/?view=claimreview`), and as JSON-LD on shared result pages. Verdicts that are another checker's (layer `match`) and UNVERIFIED results are never published as Sach's reviews. Google shows ClaimReview only for publishers that meet its fact-check eligibility rules, and says it is phasing the feature out of Search; Sach does not claim eligibility. The feed is open data either way. The live "What India is checking this week" list is at `/?view=trending&format=json`.
+
 ## Run it yourself
 
 ```bash

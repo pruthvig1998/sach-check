@@ -10,7 +10,7 @@ from .retrieve import default_retrievers
 from . import razorpay_pay as rzp
 from . import telegram_bot as tg
 from . import ocr
-from . import pwa, share
+from . import pwa, share, claimreview, trending
 from . import siteurl
 from .legal import PAGES as LEGAL_PAGES, legal_page
 from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_png, tip_qr_svg, upi_link
@@ -135,6 +135,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._robots()
         if view == "sitemap" or u.path == "/sitemap.xml":
             return self._sitemap()
+        if view == "claimreview" or u.path == "/claimreview.json":     # Sach's own verdicts as schema.org ClaimReview (open data)
+            try:
+                limit = max(1, min(int(qs.get("limit", [claimreview.DEFAULT_LIMIT])[0]), 1000))
+            except ValueError:
+                limit = claimreview.DEFAULT_LIMIT
+            return self._send(claimreview.feed_bytes(limit), ctype="application/json; charset=utf-8")
+        if view == "trending" and qs.get("format", [""])[0] == "json":
+            return self._send(json.dumps(trending.data(), ensure_ascii=False).encode(), ctype="application/json; charset=utf-8", cache="no-store")
         if view in LEGAL_PAGES:                              # terms / privacy / refund / contact
             return self._send(legal_page(view))
         if view == "impact" or u.path == "/impact":          # live impact page (+ JSON); query form survives Vercel's rewrite
@@ -164,7 +172,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(home(error=share.EXPIRED, noindex=True), 404)
         res = dict(rec["result"]); res["cached"] = False
         res["warning_signs"] = scam_signs(rec["text"])
-        block = share.shared_header(rec) + result_block(res, link=share.permalink(rid, siteurl.site_url(self)))
+        link = share.permalink(rid, siteurl.site_url(self))
+        block = share.shared_header(rec) + result_block(res, link=link) + claimreview.json_ld_for_result(res, link)
         self._send(home(result=block, noindex=True), cache="no-store")
 
     def _share_post(self):
