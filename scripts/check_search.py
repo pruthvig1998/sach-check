@@ -24,6 +24,7 @@ def classify(err) -> str:
 
 def check(providers=None, out=print) -> int:
     """providers: list of (name, provider-or-None). None means no key. Returns the number of problems."""
+    sa_broken = False
     if providers is None:
         grounded = None
         try:
@@ -32,11 +33,16 @@ def check(providers=None, out=print) -> int:
             sa = vertex.ServiceAccount.from_env()
             grounded = GroundedSearch(vertex.VertexClient(sa)) if sa else None      # one billed grounded prompt
         except ValueError:
-            pass
+            sa_broken = True                                                        # set, but not a usable key
+
         providers = [("grounded", grounded), ("brave", BraveSearch(os.environ["BRAVE_API_KEY"]) if os.environ.get("BRAVE_API_KEY") else None),
                      ("tavily", TavilySearch(os.environ["TAVILY_API_KEY"]) if os.environ.get("TAVILY_API_KEY") else None)]
     bad = configured = 0
     for name, p in providers:
+        if p is None and name == "grounded" and sa_broken:
+            bad += 1
+            out(f"{name:8} GOOGLE_SA_JSON is set but could not be parsed")
+            continue
         if p is None:
             out(f"{name:8} no key (set {'GOOGLE_SA_JSON' if name == 'grounded' else name.upper() + '_API_KEY'} in .env)")
             continue

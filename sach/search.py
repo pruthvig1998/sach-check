@@ -150,8 +150,10 @@ def public_https_url(url) -> str:
     try:
         u = urllib.parse.urlparse(url)
         host = (u.hostname or "").lower().rstrip(".")
-        u.port
+        port = u.port                                       # ValueError if malformed
     except ValueError:
+        return ""
+    if port not in (None, 443):                             # only the default https port: a Location on :8443 etc. is dropped
         return ""
     if u.scheme != "https" or not host or "@" in u.netloc or "\\" in url or any(c.isspace() or ord(c) < 32 for c in url):
         return ""
@@ -232,11 +234,17 @@ class GroundedSearch:
             hit = self._cache.get(text)
             if hit and now - hit[0] < GROUNDED_CACHE_S:
                 return list(hit[1])
+        self.client.access_token(timeout=self.timeout)       # token first: a token failure must not use up the daily cap
         try:
             vertex.reserve_grounded(self._st, now)
         except vertex.VertexCapReached:
             raise SearchPaused("grounded: daily cap reached", vertex.seconds_to_utc_midnight(now)) from None
-        chunks = vertex.generate_grounded(self.client, self.model or vertex.grounded_model(), text, timeout=self.timeout)
+        try:
+            chunks = vertex.generate_grounded(self.client, self.model or vertex.grounded_model(), text, timeout=self.timeout)
+        except Exception as e:
+            if vertex.not_billed(e):                          # never served by Google (timeout, network, 401/403, 5xx): give the slot back
+                vertex.release_grounded(self._st, now)
+            raise
         uris = list(dict.fromkeys(u for t, u in chunks if not self._skip_title(t)))[:MAX_REDIRECTS_RESOLVED]
         if uris:
             with ThreadPoolExecutor(max_workers=min(RESOLVE_WORKERS, len(uris))) as ex:
@@ -315,13 +323,15 @@ class SearchChain:
     def search(self, query: str, count: int = 8, run: SearchRun | None = None) -> list[str]:
         """URLs from the first provider that answers. [] when none does; `run` (if given) records whether one did. A provider with
         `fallthrough_empty` that answers with no URL hands over to the next one (its empty answer counts only if no other answers)."""
-        empty_from = None
+        empty_from, others_failed = None, False
         for p in self.providers:
             if self.paused_until(p.name) > self._clock():
+                others_failed = True                        # skipped: it did not answer this query
                 continue                                    # paused: skip without a call
             try:
                 urls = p.search(query, count)
             except Exception as e:
+                others_failed = True
                 pause = getattr(e, "pause_s", None)
                 code = getattr(e, "code", None)              # HTTPError and vertex.VertexError both carry the HTTP status
                 if pause:
@@ -337,9 +347,9 @@ class SearchChain:
             if run is not None:
                 run.record(True, p.name)
             return urls
-        if empty_from is not None:
+        if empty_from is not None and not others_failed:
             if run is not None:
-                run.record(True, empty_from)
+                run.record(True, empty_from)                 # the empty grounded answer stands only when nothing else failed
             return []
         if run is not None:
             run.record(False, None)

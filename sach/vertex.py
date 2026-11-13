@@ -203,7 +203,9 @@ def _call(opener, req, timeout, what, auth=False):
         if auth and code in (400, 401, 403):
             code = 401
         raise VertexError("vertex: %s failed with HTTP %d" % (what, code), code, headers)
-    raise VertexError("vertex: %s failed (%s)" % (what, "network error" if kind == "network" else "unreadable reply"))
+    err = VertexError("vertex: %s failed (%s)" % (what, "network error" if kind == "network" else "unreadable reply"))
+    err.before_google = kind == "network"                  # no answer came back at all: the call was never served (see not_billed)
+    raise err
 
 
 # ---------------------------------------------------------------- token cache
@@ -300,9 +302,13 @@ class VertexClient:
         return "%s/v1/projects/%s/locations/global/publishers/google/models/%s:generateContent" % (
             HOST, urllib.parse.quote(self._sa.project_id, safe=":"), model)
 
+    def access_token(self, timeout: float = 10) -> str:
+        """The bearer token, cached or freshly minted. Callers that bill per call fetch it first, so a token failure costs no cap."""
+        return self._tokens.token(timeout=min(timeout, 10))
+
     def generate(self, model: str, body: dict, timeout: float = 15) -> dict:
         """POST a Gemini-shaped body to the global endpoint and return the parsed JSON reply (candidates[0].content.parts[0].text)."""
-        tok = self._tokens.token(timeout=min(timeout, 10))
+        tok = self.access_token(timeout)
         req = urllib.request.Request(self.url(model), json.dumps(body).encode(), {
             "Content-Type": "application/json", "Authorization": "Bearer " + tok, "User-Agent": "Sach-check/0.1"}, method="POST")
         out = _call(self._opener, req, timeout, "generateContent")
@@ -350,6 +356,36 @@ def reserve_call(st=None, now=None) -> None:
     'skipped' counter is bumped). Never raises anything else: a broken store only makes the cap per-instance."""
     _reserve("vx", max_per_day(), st, now)
 
+def _release(prefix: str, cap: int, st=None, now=None) -> None:
+    """Give one reserved call back (the mirror of _reserve's decrement). Never raises."""
+    if cap <= 0:
+        return
+    now = time.time() if now is None else now
+    try:
+        st = st or store.get_store()
+    except Exception:
+        st = None
+    key = "%s:d:%d" % (prefix, int(now // 86400))
+    try:
+        if st is not None and getattr(st, "remote", False):
+            st.incr(key, -1)
+        else:
+            limits._mem_incr(key, -1)
+    except Exception:
+        pass
+
+def not_billed(err) -> bool:
+    """True when a failed call never got a served answer from Google, so its reserved slot is given back: a timeout, a network error,
+    401/403 (auth), 5xx. A 429 (rate limited), any 4xx other than 401/403, and a reply that came back but could not be read stay counted."""
+    if isinstance(err, TimeoutError):
+        return True
+    if isinstance(err, VertexCapReached) or not isinstance(err, VertexError):
+        return False
+    if getattr(err, "before_google", False):
+        return True
+    code = err.code
+    return code in (401, 403) or (isinstance(code, int) and code >= 500)
+
 def _usage(prefix: str, cap: int, st=None, now=None) -> dict:
     now = time.time() if now is None else now
     out = {"calls_today": 0, "max_per_day": cap, "skipped_over_cap_today": 0}
@@ -372,7 +408,7 @@ def usage(st=None, now=None) -> dict:
 
 # ---------------------------------------------------------------- Grounding with Google Search (used by sach/search.py)
 GROUNDED_DEFAULT_MODEL = "gemini-3.1-flash-lite"
-GROUNDED_DEFAULT_MAX_PER_DAY = 400
+GROUNDED_DEFAULT_MAX_PER_DAY = 160
 
 def grounded_model() -> str:
     m = (os.environ.get("SACH_GROUNDED_MODEL") or "").strip()
@@ -384,6 +420,10 @@ def grounded_max_per_day() -> int:
 def reserve_grounded(st=None, now=None) -> None:
     """One grounded prompt against SACH_GROUNDED_MAX_PER_DAY (separate counter from the judge cap). Raises VertexCapReached."""
     _reserve("gr", grounded_max_per_day(), st, now, what="grounded search")
+
+def release_grounded(st=None, now=None) -> None:
+    """Give back one grounded reservation whose call never reached Google (see not_billed). Never raises."""
+    _release("gr", grounded_max_per_day(), st, now)
 
 def grounded_usage(st=None, now=None) -> dict:
     return _usage("gr", grounded_max_per_day(), st, now)

@@ -104,6 +104,20 @@ def test_only_the_vertex_redirect_host_is_ever_requested():
 def test_unsafe_locations_dropped(loc):
     assert resolve_redirect(RD + "a", Redirects({RD + "a": loc})) == ""
 
+@pytest.mark.parametrize("loc", ["https://pib.gov.in:8443/", "https://pib.gov.in:80/", "https://pib.gov.in:0/", "https://pib.gov.in:8443/PressReleasePage.aspx?PRID=1"])
+def test_location_on_a_non_default_port_is_dropped(loc):
+    assert resolve_redirect(RD + "a", Redirects({RD + "a": loc})) == ""
+
+@pytest.mark.parametrize("loc", ["https://pib.gov.in/", "https://pib.gov.in:443/", PIB])
+def test_location_on_default_https_port_is_kept(loc):
+    assert resolve_redirect(RD + "a", Redirects({RD + "a": loc})) == loc
+
+def test_public_https_url_port_rule():
+    assert public_https_url("https://pib.gov.in/") == "https://pib.gov.in/"
+    assert public_https_url("https://pib.gov.in:443/") == "https://pib.gov.in:443/"
+    assert public_https_url("https://pib.gov.in:8443/") == ""
+    assert public_https_url("https://pib.gov.in:abc/") == ""
+
 def test_non_redirect_status_and_failures_drop():
     assert resolve_redirect(RD + "a", Redirects({RD + "a": http_error(500)})) == ""
     assert resolve_redirect(RD + "a", Redirects({RD + "a": TimeoutError()})) == ""
@@ -218,10 +232,45 @@ def test_empty_grounded_falls_through_to_next_provider():
     run = SearchRun()
     assert SearchChain([g, b]).search("q", run=run) == ["https://x.gov.in/"] and run.provider == "brave" and run.status == "ok"
 
-def test_empty_grounded_alone_is_an_honest_ok_answer_when_next_fails():
+def test_empty_grounded_is_not_ok_when_the_next_provider_fails():
     g, b = FakeGrounded("grounded", []), Fake("brave", http_error(500))
     run = SearchRun()
-    assert SearchChain([g, b]).search("q", run=run) == [] and run.status == "ok" and run.provider == "grounded"
+    assert SearchChain([g, b]).search("q", run=run) == [] and run.status == "down" and run.provider == ""
+
+def test_empty_grounded_with_brave_500_and_tavily_timeout_is_down_like_without_grounded():
+    # the exact repro: grounded answered with nothing, both later providers raised
+    run = SearchRun()
+    assert SearchChain([FakeGrounded("grounded", []), Fake("brave", http_error(500)), Fake("tavily", TimeoutError())]).search("q", run=run) == []
+    assert run.status == "down"
+    no_g = SearchRun()
+    assert SearchChain([Fake("brave", http_error(500)), Fake("tavily", TimeoutError())]).search("q", run=no_g) == []
+    assert no_g.status == "down" and run.status == no_g.status
+
+def test_empty_grounded_as_the_only_provider_is_an_honest_ok():
+    run = SearchRun()
+    assert SearchChain([FakeGrounded("grounded", [])]).search("q", run=run) == [] and run.status == "ok" and run.provider == "grounded"
+
+@pytest.mark.parametrize("later", [
+    [Fake("brave", http_error(500))], [Fake("brave", TimeoutError())], [Fake("brave", http_error(403))],
+    [Fake("brave", [])], [Fake("brave", ["https://x.gov.in/"])],
+    [Fake("brave", TimeoutError()), Fake("tavily", [])], [Fake("brave", TimeoutError()), Fake("tavily", ["https://y.gov.in/"])],
+])
+def test_empty_grounded_status_matches_the_chain_without_grounded(later):
+    # whatever the later providers do, the status with an empty grounded answer in front equals the status without grounded
+    def build(providers):
+        return SearchChain(providers, clock=Clock())
+    with_g, without_g = SearchRun(), SearchRun()
+    urls_g = build([FakeGrounded("grounded", [])] + [Fake(p.name, *p.script) for p in later]).search("q", run=with_g)
+    urls_n = build([Fake(p.name, *p.script) for p in later]).search("q", run=without_g)
+    assert urls_g == urls_n and with_g.status == without_g.status and with_g.provider == without_g.provider
+
+def test_paused_later_provider_counts_as_not_answering():
+    clk = Clock()
+    b = Fake("brave", ["https://x.gov.in/"])
+    ch = SearchChain([FakeGrounded("grounded", []), b], clock=clk)
+    ch._pause("brave", 100)                                   # brave skipped without a call: it did not answer
+    run = SearchRun()
+    assert ch.search("q", run=run) == [] and run.status == "down" and b.calls == []
 
 def test_all_failing_is_down():
     run = SearchRun()
@@ -275,13 +324,75 @@ def test_cap_counts_only_real_calls_and_pauses_to_utc_midnight(sa, monkeypatch):
     chain = SearchChain([gs, Fake("brave", ["u"])], clock=clk)
     assert chain.search("four") == ["u"] and chain.paused_until("grounded") == now + 82800
 
-def test_cap_zero_is_unlimited_and_default_is_400(sa, monkeypatch):
-    assert V.grounded_max_per_day() == 400
+def test_cap_zero_is_unlimited_and_default_is_160(sa, monkeypatch):
+    assert V.grounded_max_per_day() == 160
     monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "0")
     gs, g, _ = make(sa, [], {})
     for i in range(5):
         gs.search("claim %d" % i)
     assert len(g.gen_calls()) == 5
+
+def test_default_grounded_cap_is_about_the_monthly_allowance_per_day():
+    assert V.GROUNDED_DEFAULT_MAX_PER_DAY == 160 and V.GROUNDED_DEFAULT_MAX_PER_DAY * 30 <= 5000
+
+def _cap_setup(sa, cap, monkeypatch, *, token_error=None, gen_error=None, chunks=None):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", str(cap))
+    now = 86400 * 50 + 10.0
+    clk = [now]
+    ch, tb = chunks_for(("pib.gov.in", PIB)) if chunks is None else chunks
+    g = Gen(ch)
+    g.token_error, g.gen_error = token_error, gen_error
+    tp = V.TokenProvider(sa, g, clock=lambda: clk[0])
+    gs = GroundedSearch(V.VertexClient(sa, tp, g), opener=Redirects(tb), clock=lambda: now)
+    return gs, g, clk, now
+
+def test_three_failed_token_attempts_do_not_exhaust_a_cap_of_three(sa, monkeypatch):
+    gs, g, clk, now = _cap_setup(sa, 3, monkeypatch, token_error=http_error(500))
+    for _ in range(3):
+        with pytest.raises(V.VertexError):
+            gs.search("claim")
+    assert V.grounded_usage(now=now)["calls_today"] == 0 and V.grounded_usage(now=now)["skipped_over_cap_today"] == 0
+    assert g.gen_calls() == []                                    # no generateContent without a token
+    g.token_error = None
+    clk[0] += 31                                                  # past the token's failed-refresh window
+    for i in range(3):
+        assert gs.search("claim %d" % i) == [PIB]
+    assert V.grounded_usage(now=now)["calls_today"] == 3
+    with pytest.raises(S.SearchPaused):
+        gs.search("claim 9")
+
+@pytest.mark.parametrize("err", [TimeoutError(), urllib.error.URLError("boom"), http_error(500), http_error(503),
+                                 http_error(401), http_error(403)])
+def test_failed_grounded_call_that_never_reached_google_gives_its_slot_back(sa, monkeypatch, err):
+    gs, g, clk, now = _cap_setup(sa, 1, monkeypatch, gen_error=err)
+    with pytest.raises(Exception):
+        gs.search("claim")
+    assert V.grounded_usage(now=now)["calls_today"] == 0
+    g.gen_error = None
+    assert gs.search("claim") == [PIB]                            # the one slot is still there
+    assert V.grounded_usage(now=now)["calls_today"] == 1
+
+@pytest.mark.parametrize("err", [http_error(429), http_error(400), http_error(404)])
+def test_429_and_other_4xx_stay_counted(sa, monkeypatch, err):
+    gs, g, clk, now = _cap_setup(sa, 5, monkeypatch, gen_error=err)
+    with pytest.raises(V.VertexError):
+        gs.search("claim")
+    assert V.grounded_usage(now=now)["calls_today"] == 1
+
+def test_successful_call_stays_counted(sa, monkeypatch):
+    gs, g, clk, now = _cap_setup(sa, 5, monkeypatch)
+    assert gs.search("claim") == [PIB]
+    assert V.grounded_usage(now=now)["calls_today"] == 1
+
+def test_reserve_then_release_restores_the_count(monkeypatch):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "2")
+    now = 86400 * 60 + 5.0
+    V.reserve_grounded(None, now)
+    assert V.grounded_usage(now=now)["calls_today"] == 1
+    V.release_grounded(None, now)
+    assert V.grounded_usage(now=now)["calls_today"] == 0
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "0")
+    V.release_grounded(None, now)                                 # unlimited: nothing was counted, nothing to give back
 
 # ---------------------------------------------------------------- status, secrets
 def test_status_rows(sa, monkeypatch):
@@ -289,7 +400,7 @@ def test_status_rows(sa, monkeypatch):
     class Ret:
         chain = SearchChain([gs, Fake("brave", ["u"])])
     rows = {r["provider"]: r for r in status.search_providers([Ret()])}
-    assert rows["grounded"]["configured"] and rows["grounded"]["state"] == "ready" and rows["grounded"]["max_per_day"] == 400
+    assert rows["grounded"]["configured"] and rows["grounded"]["state"] == "ready" and rows["grounded"]["max_per_day"] == 160
     gs.search("one claim")
     rows = {r["provider"]: r for r in status.search_providers([Ret()])}
     assert rows["grounded"]["calls_today"] == 1
@@ -302,6 +413,20 @@ def test_status_rows(sa, monkeypatch):
     assert off["grounded"]["configured"] is False and off["grounded"]["state"] == "off" and off["grounded"]["calls_today"] == 0
     page = status.status_page({**status.status_data(None, [Ret()]), }).decode()
     assert "grounded" in page and "Calls today" in page
+
+def test_check_search_reports_an_unparseable_service_account_as_such(monkeypatch, capsys):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("check_search", pathlib.Path(__file__).resolve().parents[1] / "scripts" / "check_search.py")
+    cs = importlib.util.module_from_spec(spec); spec.loader.exec_module(cs)
+    monkeypatch.setenv("GOOGLE_SA_JSON", "garbage!!")
+    monkeypatch.delenv("BRAVE_API_KEY", raising=False); monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    lines = []
+    bad = cs.check(out=lines.append)
+    text = "\n".join(lines)
+    assert "GOOGLE_SA_JSON is set but could not be parsed" in text and "no key" not in text.split("\n")[0]
+    assert bad == 1
+    lines.clear(); monkeypatch.delenv("GOOGLE_SA_JSON")
+    assert cs.check(out=lines.append) == 0 and "no key (set GOOGLE_SA_JSON" in "\n".join(lines)
 
 def test_no_secret_in_errors_repr_or_urls(sa):
     g = Gen([]); g.gen_error = http_error(500, body=b"Bearer ya29.LEAK private_key")

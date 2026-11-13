@@ -224,18 +224,24 @@ and everything else are dropped, so the trust root is unchanged. The model's pro
 judge and hard rules. Code: `GroundedSearch` in `sach/search.py`, `generate_grounded` and the cap in `sach/vertex.py`.
 
 **Order and fallback.** With the credential set and `SACH_SEARCH_ORDER` unset the chain is `grounded,brave,tavily`. If grounded fails or returns no
-official URL, the chain asks the next provider for that query. 401/403 pauses grounded 10 minutes, 429 for its Retry-After, 5xx and timeouts only skip
+official URL, the chain asks the next provider for that query. An empty grounded answer counts as answered only when no later provider failed;
+otherwise the run's status is what it would be without grounded. 401/403 pauses grounded 10 minutes, 429 for its Retry-After, 5xx and timeouts only skip
 it for that query, and the daily cap pauses it until 00:00 UTC. The retriever may issue up to three queries per claim; grounded answers repeated search
 text from a 5-minute in-memory cache, but each distinct text is one billed grounded prompt, so budget about 1 to 3 per live check. The status page has a `grounded` row (configured, ready or paused, calls today of the cap).
 
 **Cost and cap.** One grounded prompt is one charge however many searches the model runs internally. Per the project owner, Gemini 3 has a free
 monthly allowance of grounded prompts (about 5,000 a month, i.e. roughly 160 a day when divided by 30) and overage is billed per 1,000 grounded prompts
 from the trial credit. These figures and the overage price were **not verified here** (the pricing page could not be read by the tool used); check
-https://cloud.google.com/vertex-ai/generative-ai/pricing. `SACH_GROUNDED_MAX_PER_DAY` (default 400, 0 = unlimited) caps grounded prompts per UTC day,
-using the same shared counter as the Vertex cap (memory fallback without a store, separate counter from the judge's). Arithmetic: 400 a day is
-12,000 a month, above ~5,000 free, so a busy month would spend credit at the per-1,000 overage price on about 7,000 prompts; set it to about 160 to stay inside the allowance.
+https://cloud.google.com/vertex-ai/generative-ai/pricing. `SACH_GROUNDED_MAX_PER_DAY` (default 160, 0 = unlimited) caps grounded prompts per UTC day.
+The counter lives in the same shared store as the Vertex judge's cap, but under its own key prefix (`gr:d:<UTC day>`, against the judge's `vx:d:<UTC day>`),
+so the two caps are separate and never add to each other (memory fallback without a store). The access token is fetched before a slot is taken, so a token
+failure costs no slot. A slot is given back when the call never reached Google (timeout, network error, 401/403, 5xx). A 429, any other 4xx, and a served
+answer stay counted. Arithmetic: 160 a day is 4,800 a month, under the ~5,000 allowance quoted above (not verified), so the default is meant to keep a month
+inside that allowance; a month that goes past it would be billed at the overage price.
 
-**Setup.** Nothing new: it uses the same `GOOGLE_SA_JSON` service account (role `roles/aiplatform.user` is enough). `python scripts/check_search.py` probes it with one billed prompt.
+**Setup.** Nothing new: it uses the same `GOOGLE_SA_JSON` service account. Role `roles/aiplatform.user` is believed sufficient; verify when setting up.
+`python scripts/check_search.py` probes it with one billed prompt, and reports a set but unparseable `GOOGLE_SA_JSON` as such.
 
 **Limits.** Google decides which pages it returns; we cannot steer it beyond the prompt. Only official hosts and listed fact-checkers are used, so a claim
-whose evidence is elsewhere gets no grounded result and the chain falls through. The grounded call takes about 3.5 to 5 s.
+whose evidence is elsewhere gets no grounded result and the chain falls through. Redirect resolution accepts only default-port (443) https Locations.
+Observed 3.5-5 s in one manual test on 2026-11-13; not a guarantee.
