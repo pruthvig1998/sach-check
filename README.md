@@ -76,6 +76,122 @@ flowchart TD
 
 Judges are free-tier models with automatic failover (default order Groq, Gemini, OpenRouter, Mistral, then Anthropic if you add a paid key). Optionally, Gemini on Google Cloud Vertex AI (paid from your Google Cloud credit, capped per day) goes first when `GOOGLE_SA_JSON` is set, and the Vercel AI Gateway (free monthly credit, capped per day) sits after Groq when `AI_GATEWAY_API_KEY` is set. One check has a 48-second budget inside Vercel's 60-second limit; a claim that runs out of time is reported UNVERIFIED, never guessed.
 
+## Architecture
+
+The pipeline above, as code: the modules of the `sach/` package and how they connect - 23 components in five groups, 32 connections. Generated from the source tree with [GitDiagram](https://gitdiagram.com/pruthvig1998/sach-check); each box names the module that implements it.
+
+```mermaid
+flowchart TD
+
+subgraph group_entry["User entry points"]
+  node_web["Web API<br/>[web.py]"]
+  node_telegram["Telegram bot<br/>[telegram_bot.py]"]
+end
+
+subgraph group_checking["Claim checking"]
+  node_claim_input["Text and claims<br/>[extract.py]"]
+  node_ocr["Screenshot OCR<br/>[ocr.py]"]
+  node_language["Language handling<br/>[lang.py]"]
+  node_translation["Claim translation<br/>[gtranslate.py]"]
+  node_pipeline["Check orchestration<br/>[pipeline.py]"]
+  node_match["Published verdict match<br/>[match.py]"]
+end
+
+subgraph group_evidence["Evidence and judgment"]
+  node_retrieve["Evidence retrieval<br/>[retrieve.py]"]
+  node_pib_index[("PIB local index<br/>[index.py]")]
+  node_search["Web search<br/>[search.py]"]
+  node_fetch["Page fetching<br/>[fetch.py]"]
+  node_judge["Source judgment<br/>[llm.py]"]
+  node_stance["Stance validation<br/>[stance.py]"]
+end
+
+subgraph group_results["Verdicts and sharing"]
+  node_verdict["Hard verdict rules<br/>[verdict.py]"]
+  node_card["Verdict card<br/>[card.py]"]
+  node_ledger[("Evidence ledger<br/>[ledger.py]")]
+  node_share["Share results<br/>[share.py]"]
+end
+
+subgraph group_services["Safety and engagement"]
+  node_linkcheck["Link checker<br/>[linkcheck.py]"]
+  node_scamsigns["Scam warnings<br/>[scamsigns.py]"]
+  node_voice["Voice input<br/>[voice.py]"]
+  node_impact["Impact and trends<br/>[impact.py]"]
+end
+
+node_user(("Forward sender"))
+
+node_user -->|"submits forward"| node_web
+node_user -->|"sends message"| node_telegram
+node_web -->|"runs check"| node_pipeline
+node_web -->|"handles image"| node_ocr
+node_web -->|"routes check"| node_linkcheck
+node_web -->|"gets warnings"| node_scamsigns
+node_web -->|"serves voice"| node_voice
+node_telegram -->|"runs check"| node_pipeline
+node_ocr -->|"extracts text"| node_claim_input
+node_pipeline -->|"extracts claims"| node_claim_input
+node_pipeline -->|"detects language"| node_language
+node_pipeline -->|"tries match"| node_match
+node_pipeline -->|"translates claim"| node_translation
+node_pipeline -->|"retrieves evidence"| node_retrieve
+node_retrieve -->|"ranks releases"| node_pib_index
+node_retrieve -->|"searches sources"| node_search
+node_retrieve -->|"fetches pages"| node_fetch
+node_retrieve -->|"judges sources"| node_judge
+node_judge -->|"validates stance"| node_stance
+node_pipeline -->|"decides claim"| node_verdict
+node_pipeline -->|"renders result"| node_card
+node_pipeline -->|"records check"| node_ledger
+node_web -->|"serves permalinks"| node_share
+node_web -->|"serves ledger"| node_ledger
+node_web -->|"serves impact"| node_impact
+node_web -->|"shows match details"| node_match
+node_web -->|"provides check service"| node_judge
+node_web -->|"routes bot requests"| node_telegram
+node_web -->|"shows warnings"| node_scamsigns
+node_web -->|"accepts speech"| node_voice
+node_card -->|"returns cited verdict"| node_user
+node_user -->|"checks link or ID"| node_linkcheck
+
+click node_web "https://github.com/pruthvig1998/sach-check/blob/main/sach/web.py"
+click node_telegram "https://github.com/pruthvig1998/sach-check/blob/main/sach/telegram_bot.py"
+click node_claim_input "https://github.com/pruthvig1998/sach-check/blob/main/sach/extract.py"
+click node_ocr "https://github.com/pruthvig1998/sach-check/blob/main/sach/ocr.py"
+click node_language "https://github.com/pruthvig1998/sach-check/blob/main/sach/lang.py"
+click node_translation "https://github.com/pruthvig1998/sach-check/blob/main/sach/gtranslate.py"
+click node_pipeline "https://github.com/pruthvig1998/sach-check/blob/main/sach/pipeline.py"
+click node_match "https://github.com/pruthvig1998/sach-check/blob/main/sach/match.py"
+click node_retrieve "https://github.com/pruthvig1998/sach-check/blob/main/sach/retrieve.py"
+click node_pib_index "https://github.com/pruthvig1998/sach-check/blob/main/sach/index.py"
+click node_search "https://github.com/pruthvig1998/sach-check/blob/main/sach/search.py"
+click node_fetch "https://github.com/pruthvig1998/sach-check/blob/main/sach/fetch.py"
+click node_judge "https://github.com/pruthvig1998/sach-check/blob/main/sach/llm.py"
+click node_stance "https://github.com/pruthvig1998/sach-check/blob/main/sach/stance.py"
+click node_verdict "https://github.com/pruthvig1998/sach-check/blob/main/sach/verdict.py"
+click node_card "https://github.com/pruthvig1998/sach-check/blob/main/sach/card.py"
+click node_ledger "https://github.com/pruthvig1998/sach-check/blob/main/sach/ledger.py"
+click node_share "https://github.com/pruthvig1998/sach-check/blob/main/sach/share.py"
+click node_linkcheck "https://github.com/pruthvig1998/sach-check/blob/main/sach/linkcheck.py"
+click node_scamsigns "https://github.com/pruthvig1998/sach-check/blob/main/sach/scamsigns.py"
+click node_voice "https://github.com/pruthvig1998/sach-check/blob/main/sach/voice.py"
+click node_impact "https://github.com/pruthvig1998/sach-check/blob/main/sach/impact.py"
+
+classDef toneNeutral fill:#f8fafc,stroke:#334155,stroke-width:1.5px,color:#0f172a
+classDef toneBlue fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#172554
+classDef toneAmber fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f
+classDef toneMint fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d
+classDef toneRose fill:#ffe4e6,stroke:#e11d48,stroke-width:1.5px,color:#881337
+classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81
+classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a
+class node_web,node_telegram toneBlue
+class node_claim_input,node_ocr,node_language,node_translation,node_pipeline,node_match toneAmber
+class node_retrieve,node_pib_index,node_search,node_fetch,node_judge,node_stance toneMint
+class node_verdict,node_card,node_ledger,node_share toneRose
+class node_linkcheck,node_scamsigns,node_voice,node_impact,node_user toneIndigo
+```
+
 ## Verdict rules (as coded in `sach/verdict.py`)
 
 Evaluated in this order, per claim, on authoritative evidence only (PIB debunks and official sources):
