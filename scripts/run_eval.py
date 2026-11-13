@@ -165,6 +165,8 @@ def run(rows, ret, llm, ckpt, log=False, out=print, workers=1):
             ckpt["llm_failures"] = base + max(0, getattr(llm, "failures", 0) - start_fail)
             if res.get("search_status") in ("down", "partial"):
                 ckpt["search_failures"] = ckpt.get("search_failures", 0) + 1       # web search lost for this claim: not a full run
+            if res.get("degraded"):
+                ckpt["degraded_claims"] = ckpt.get("degraded_claims", 0) + 1       # a judge timed out / failed on this claim (its UNVERIFIED is not a real abstention)
             save_checkpoint(ckpt)
             out(f"[{i}/{n}] {r['label']:10} -> {ckpt['results'][r['claim']]['got']}")
 
@@ -318,7 +320,8 @@ def main(argv=None):
     res = run(sel, ret, llm, ckpt, log=bool(os.environ.get("SACH_SEED_LEDGER")), workers=a.workers)
     failed = ckpt["llm_failures"]
     sfailed = ckpt.get("search_failures", 0)
-    degraded = ckpt["no_llm"] or failed > 0 or sfailed > 0
+    dclaims = ckpt.get("degraded_claims", 0)
+    degraded = ckpt["no_llm"] or failed > 0 or sfailed > 0 or dclaims > 0
     if ckpt["no_llm"]:
         mode = "FALLBACK (no LLM key): clear PIB debunks only, never TRUE or MISLEADING"
     elif failed:
@@ -327,6 +330,8 @@ def main(argv=None):
         mode = "LLM stance (with second-opinion consensus where more than one judge is configured)"
     if sfailed:
         mode = (mode if (ckpt["no_llm"] or failed) else "FALLBACK") + f"; web search failed for {sfailed} claims (out of credits or outage), so those claims only had the built-in PIB list"
+    if dclaims:
+        mode = (mode if (ckpt["no_llm"] or failed or sfailed) else "FALLBACK") + f"; an AI judge timed out or failed on {dclaims} claims (judge_problems), so their UNVERIFIED is not a real abstention"
     meta = {"commit": commit, "dirty": dirty, "date": datetime.datetime.now(datetime.timezone.utc).date().isoformat(), "mode": mode,
             "retrievers": [type(x).__name__ for x in ret], "judges": judges, "no_match": bool(a.no_match)}
     report = build_report(res, meta, degraded, partial, failed)
