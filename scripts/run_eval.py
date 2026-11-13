@@ -299,17 +299,56 @@ def save_checkpoint(c):
 
 
 # ---------- running ----------
-_LONG_RUN = re.compile(r"[A-Za-z0-9]{24,}")     # a run this long looks like a key or token
+# Redaction for error text (no redaction is perfect; the failed table is reviewed before a report is committed):
+#  1. the value after a key/token/password name (key=, api_key=, token:, password=, Authorization: Bearer, x-goog-api-key: ...), any length
+_SECRET_KV = re.compile(r"(?i)(\b(?:(?:x-goog-|x-)?api[_-]?key|apikey|access_token|token|secret|password|passwd|pwd|auth|authorization)"
+                        r"\s*[=:]\s*(?:(?:bearer|basic)\s+)?|\bkey\s*=\s*)[^\s&\"',;]+")
+#  2. a Bearer token written without a key name
+_SECRET_BEARER = re.compile(r"(?i)(\bbearer\s+)[^\s&\"',;]+")
+#  3. a run of key-like characters (JWTs, API keys, AWS-style secrets), and URLs (their query strings and long path pieces)
+_RUN = re.compile(r"[A-Za-z0-9_\-+/=.%]{20,}")
+_URL = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s\"'<>]+")
+_PIECE = re.compile(r"[A-Za-z0-9_\-+=%]{20,}")      # one piece of a URL path, between / . ? and similar
+
+
+def _looks_secret(s):
+    """A run of 20+ key-like characters is a secret if it has a digit, or is 28+ long, or has upper and lower case
+    plus a symbol. Ordinary long words (ConnectionResetError) and plain URL paths do not match."""
+    if len(s) >= 28 or any(c.isdigit() for c in s):
+        return True
+    return any(c.isupper() for c in s) and any(c.islower() for c in s) and any(c in "_-+/=.%" for c in s)
+
+
+def _redact_url(url):
+    cut = min([url.find(c) for c in "?#" if c in url] or [len(url)])
+    base, rest = url[:cut], url[cut:]
+    base = _PIECE.sub(lambda p: "[redacted]" if _looks_secret(p.group(0)) else p.group(0), base)
+    rest = _RUN.sub(lambda p: "[redacted]" if _looks_secret(p.group(0)) else p.group(0), rest)
+    return base + rest
+
+
+def _redact_token(m):
+    s = m.group(0)
+    if "://" in s:
+        return _redact_url(s)
+    return "[redacted]" if _looks_secret(s) else s
+
+
+def redact_secrets(text):
+    text = _SECRET_KV.sub(lambda m: m.group(1) + "[redacted]", text)
+    text = _SECRET_BEARER.sub(lambda m: m.group(1) + "[redacted]", text)
+    return re.sub(_URL.pattern + "|" + _RUN.pattern, _redact_token, text)
 
 
 def safe_error_message(e, limit=160):
-    """Short exception text for the checkpoint and the failed table: long alphanumeric runs (keys, tokens) are redacted first,
-    then the text is cut so it is at most `limit` characters."""
+    """Short exception text for the checkpoint and the failed table: secrets are redacted first (redact_secrets), the text is
+    made UTF-8 safe (a lone surrogate would break json.dump and the report), and only then cut to at most `limit` characters."""
     try:
         text = str(e)
     except Exception:
         text = ""
-    text = _LONG_RUN.sub("[redacted]", " ".join(text.split()))
+    text = redact_secrets(" ".join(text.split()))
+    text = text.encode("utf-8", errors="backslashreplace").decode("utf-8")
     return text if len(text) <= limit else text[:limit - 3] + "..."
 
 
@@ -394,9 +433,11 @@ def build_report(res, meta, degraded, partial, failed, docs=None):
           f"- **Overclaimed FALSE (the unforgivable failure): {s['overclaimed_false']}**",
           f"- **Overclaimed TRUE (also an overclaim): {s['overclaimed_true']}**",
           f"- Wrong verdicts other than overclaims (e.g. MISLEADING where a TRUE/FALSE label stands; ERRORs excluded): {measures(res, failed)['wrong_not_overclaim']['count']}"]
-    for l in ("FALSE", "TRUE", "UNVERIFIED"):
+    for l in ("FALSE", "TRUE"):
         g = [r for r in res if r["label"] == l]
         L.append(f"- Label {l}: {sum(r['got'] == l for r in g)}/{len(g)} correct; {sum(r['got'] == 'UNVERIFIED' for r in g)} abstained as UNVERIFIED")
+    g = [r for r in res if r["label"] == "UNVERIFIED"]          # the controls: UNVERIFIED is the expected answer, so they are not "correct" or "abstained"
+    L.append(f"- Label UNVERIFIED (controls): {sum(r['got'] == 'UNVERIFIED' for r in g)}/{len(g)} answered UNVERIFIED as expected")
     for tag, flag in (("Seeded (the source's PRID is in data/seed_debunks.json or data/pib_index.jsonl; retrieval is partly circular)", True),
                       ("Unseeded (retrieval had to find the page itself)", False)):
         g = [r for r in res if r["seeded"] == flag and r["label"] != "UNVERIFIED"]
@@ -481,7 +522,7 @@ def main(argv=None):
     ap.add_argument("--limit", type=int, default=0, help="only the first N rows (partial run)")
     ap.add_argument("--no-match", action="store_true", help="switch the MATCH layer off (SACH_NO_MATCH=1) to measure the live layer alone; never replaces the headline files")
     ap.add_argument("--dry-run", action="store_true", help="validate and print the plan; no network calls")
-    ap.add_argument("--workers", type=int, default=1, help="check this many claims at once (default 1 = sequential; 5 is about 4-5x faster and stays inside the AI-call and search limits)")
+    ap.add_argument("--workers", type=int, default=1, help="check this many claims at once (default 1 = sequential; higher is faster; stays inside provider limits at 3)")
     a = ap.parse_args(argv)
     rows = load_rows()
     errs = validate_rows(rows)
