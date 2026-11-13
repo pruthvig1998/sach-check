@@ -50,7 +50,7 @@ ENGLISH_ONLY = frozenset({"mni"})
 LABEL.update({  # NOT NATIVE-REVIEWED
  "bn": {"TRUE": "সত্য", "FALSE": "মিথ্যা", "MISLEADING": "বিভ্রান্তিকর", "UNVERIFIED": "যাচাই হয়নি"},
  "as": {"TRUE": "সঁচা", "FALSE": "মিছা", "MISLEADING": "বিভ্ৰান্তিকৰ", "UNVERIFIED": "যাচাই কৰা হোৱা নাই"},
- "mr": {"TRUE": "खरे", "FALSE": "खोटे", "MISLEADING": "दिशाभूल करणारे", "UNVERIFIED": "पुष्टी झाली नाही"},
+ "mr": {"TRUE": "खरा", "FALSE": "खोटा", "MISLEADING": "दिशाभूल करणारा", "UNVERIFIED": "पुष्टी झाली नाही"},  # masculine, agrees with दावा in WHY (Muse review 2026-11-13)
  "kok": {"TRUE": "खरें", "FALSE": "खोटें", "MISLEADING": "दिशाभूल करपी", "UNVERIFIED": "खात्री जाल्ली ना"},
  "ne": {"TRUE": "सत्य", "FALSE": "झुटो", "MISLEADING": "भ्रामक", "UNVERIFIED": "पुष्टि भएको छैन"},
  "ta": {"TRUE": "உண்மை", "FALSE": "பொய்", "MISLEADING": "தவறாக வழிநடத்துகிறது", "UNVERIFIED": "உறுதிசெய்யப்படவில்லை"},
@@ -58,7 +58,7 @@ LABEL.update({  # NOT NATIVE-REVIEWED
  "ur": {"TRUE": "سچ", "FALSE": "جھوٹ", "MISLEADING": "گمراہ کن", "UNVERIFIED": "تصدیق نہیں ہوئی"},
  "kn": {"TRUE": "ನಿಜ", "FALSE": "ಸುಳ್ಳು", "MISLEADING": "ದಾರಿತಪ್ಪಿಸುವಂಥದ್ದು", "UNVERIFIED": "ಖಚಿತವಾಗಿಲ್ಲ"},
  "or": {"TRUE": "ସତ", "FALSE": "ମିଛ", "MISLEADING": "ଭ୍ରମାତ୍ମକ", "UNVERIFIED": "ଯାଞ୍ଚ ହୋଇନାହିଁ"},
- "ml": {"TRUE": "സത്യം", "FALSE": "തെറ്റ്", "MISLEADING": "തെറ്റിദ്ധരിപ്പിക്കുന്നത്", "UNVERIFIED": "സ്ഥിരീകരിച്ചിട്ടില്ല"},
+ "ml": {"TRUE": "സത്യം", "FALSE": "കള്ളം", "MISLEADING": "തെറ്റിദ്ധരിപ്പിക്കുന്നത്", "UNVERIFIED": "സ്ഥിരീകരിച്ചിട്ടില്ല"},
  "pa": {"TRUE": "ਸੱਚ", "FALSE": "ਝੂਠ", "MISLEADING": "ਗੁੰਮਰਾਹਕੁੰਨ", "UNVERIFIED": "ਪੁਸ਼ਟੀ ਨਹੀਂ ਹੋਈ"},
 })
 WHY.update({  # NOT NATIVE-REVIEWED
