@@ -24,13 +24,27 @@ def classify(err) -> str:
 
 def check(providers=None, out=print) -> int:
     """providers: list of (name, provider-or-None). None means no key. Returns the number of problems."""
+    sa_broken = False
     if providers is None:
-        providers = [("brave", BraveSearch(os.environ["BRAVE_API_KEY"]) if os.environ.get("BRAVE_API_KEY") else None),
+        grounded = None
+        try:
+            from sach.search import GroundedSearch
+            from sach import vertex
+            sa = vertex.ServiceAccount.from_env()
+            grounded = GroundedSearch(vertex.VertexClient(sa)) if sa else None      # one billed grounded prompt
+        except ValueError:
+            sa_broken = True                                                        # set, but not a usable key
+
+        providers = [("grounded", grounded), ("brave", BraveSearch(os.environ["BRAVE_API_KEY"]) if os.environ.get("BRAVE_API_KEY") else None),
                      ("tavily", TavilySearch(os.environ["TAVILY_API_KEY"]) if os.environ.get("TAVILY_API_KEY") else None)]
     bad = configured = 0
     for name, p in providers:
+        if p is None and name == "grounded" and sa_broken:
+            bad += 1
+            out(f"{name:8} GOOGLE_SA_JSON is set but could not be parsed")
+            continue
         if p is None:
-            out(f"{name:8} no key (set {name.upper()}_API_KEY in .env)")
+            out(f"{name:8} no key (set {'GOOGLE_SA_JSON' if name == 'grounded' else name.upper() + '_API_KEY'} in .env)")
             continue
         configured += 1
         t = time.time()
@@ -40,10 +54,11 @@ def check(providers=None, out=print) -> int:
         except Exception as e:
             bad += 1
             out(f"{name:8} FAIL {classify(e)}")
-    if not configured:
+    if not configured and not bad:
         out("\nNo search keys: Sach runs on its built-in PIB list only (search status 'off').")
     elif bad:
-        out(f"\n{bad} problem(s). A failing provider is skipped automatically at runtime (402/401/403: for 6 hours; 429: for its Retry-After).")
+        out(f"\n{bad} problem(s). A failing provider is skipped automatically at runtime: Brave and Tavily 401/402/403/432/433 for 6 hours; "
+            "grounded 401/403 for 10 minutes; 429 for its Retry-After.")
     else:
         out("\nAll configured search providers healthy.")
     return bad

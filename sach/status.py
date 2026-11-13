@@ -11,7 +11,7 @@ from . import gtranslate, ledger, limits, store, vertex, gateway
 
 _AI = [("vertex", "GOOGLE_SA_JSON"), ("groq", "GROQ_API_KEY"), ("gateway", "AI_GATEWAY_API_KEY"), ("gemini", "GEMINI_API_KEY"), ("openrouter", "OPENROUTER_API_KEY"), ("mistral", "MISTRAL_API_KEY"),
        ("cloudflare", "CLOUDFLARE_API_TOKEN"), ("claude", "ANTHROPIC_API_KEY")]
-_SEARCH = [("brave", "BRAVE_API_KEY"), ("tavily", "TAVILY_API_KEY")]
+_SEARCH = [("grounded", "GOOGLE_SA_JSON"), ("brave", "BRAVE_API_KEY"), ("tavily", "TAVILY_API_KEY")]
 
 
 def _family(name: str) -> str:
@@ -56,7 +56,7 @@ def ai_providers(llm, now=None, st=None) -> list:
     return rows
 
 
-def search_providers(retrievers, now=None) -> list:
+def search_providers(retrievers, now=None, st=None) -> list:
     now = time.time() if now is None else now
     chain = next((getattr(r, "chain", None) for r in (retrievers or []) if getattr(r, "chain", None) is not None), None)
     rows, have = [], set()
@@ -68,6 +68,12 @@ def search_providers(retrievers, now=None) -> list:
     for name, env in _SEARCH:
         if name not in have:
             rows.append({"provider": name, "configured": False, "state": "off", "paused_for_s": 0})
+    for r in rows:
+        if r["provider"] == "grounded":          # billed: calls today against the cap (counts only)
+            try:
+                r.update(vertex.grounded_usage(st, now))
+            except Exception:
+                r.update({"calls_today": 0, "max_per_day": vertex.grounded_max_per_day(), "skipped_over_cap_today": 0})
     return rows
 
 
@@ -85,7 +91,7 @@ def status_data(llm=None, retrievers=None, st=None, now=None) -> dict:
         "scope_note": ("Provider state (ready / paused, failures) is read from this one server instance's memory and resets when it "
                        "restarts; other instances may differ. Budget and counters come from the shared store when one is configured."),
         "ai_providers": ai_providers(llm, now, st),
-        "search_providers": search_providers(retrievers, now),
+        "search_providers": search_providers(retrievers, now, st),
         "live_budget": {"minute": {"used": use["minute_used"], "max": use["minute_max"]},
                         "day_utc": {"used": use["day_used"], "max": use["day_max"]},
                         "refused_busy_today": use["busy_today"], "shared_store": use["shared_store"],
@@ -113,9 +119,9 @@ def status_page(d: dict) -> bytes:
     ai = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s of %s</td><td>%s</td><td>%s</td></tr>" % (
         esc(r["provider"]), "yes" if r["configured"] else "no", _badge(r["state"]),
         r["paused_models"], r["models"], r["failures_since_start"], esc(_calls(r))) for r in d["ai_providers"])
-    se = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (
+    se = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (
         esc(r["provider"]), "yes" if r["configured"] else "no", _badge(r["state"]),
-        ("%s s" % r["paused_for_s"]) if r["paused_for_s"] else "-") for r in d["search_providers"])
+        ("%s s" % r["paused_for_s"]) if r["paused_for_s"] else "-", esc(_calls(r))) for r in d["search_providers"])
     b, ck = d["live_budget"], d["checks"]
     lim = lambda x: "no limit" if not x["max"] else "%s of %s" % (x["used"], x["max"])
     g = d["google_translation"]
@@ -123,7 +129,7 @@ def status_page(d: dict) -> bytes:
     body = ('<div class="wrap" style="padding:30px 0"><p class="kicker">Health</p><h1 style="font-size:clamp(32px,8vw,56px)">Status</h1>'
             '<p class="sub">Updated %s. %s</p>'
             '<h2>AI judges</h2><div style="overflow-x:auto"><table><thead><tr><th>Provider</th><th>Configured</th><th>Now</th><th>Models paused</th><th>Failures since start</th><th>Calls today</th></tr></thead><tbody>%s</tbody></table></div>'
-            '<h2 style="margin-top:28px">Web search</h2><div style="overflow-x:auto"><table><thead><tr><th>Provider</th><th>Configured</th><th>Now</th><th>Paused for</th></tr></thead><tbody>%s</tbody></table></div>'
+            '<h2 style="margin-top:28px">Web search</h2><div style="overflow-x:auto"><table><thead><tr><th>Provider</th><th>Configured</th><th>Now</th><th>Paused for</th><th>Calls today</th></tr></thead><tbody>%s</tbody></table></div>'
             '<h2 style="margin-top:28px">Live-check budget</h2><ul><li>This minute: <b>%s</b></li><li>Today (resets 5:30 am IST): <b>%s</b></li><li>Refused as busy today: <b>%s</b></li></ul><p class="note">%s</p>'
             '<h2 style="margin-top:28px">Google Translation</h2><ul><li>Configured: <b>%s</b></li><li>Characters today (resets 5:30 am IST): <b>%s</b></li><li>Skipped because the budget was used: <b>%s</b></li></ul><p class="note">Optional first-choice translator for non-English forwards; when it is off, over budget or unavailable, the AI translator is used. Repeats come from the cache and are not counted.</p>'
             '<h2 style="margin-top:28px">Checks</h2><ul><li>All time: <b>%s</b> (cache hits <b>%s</b>, everything else <b>%s</b>)</li><li>Counting since: %s</li></ul><p class="note">%s</p>'

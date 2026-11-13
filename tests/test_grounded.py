@@ -1,0 +1,768 @@
+"""GROUNDED work package: Gemini on Vertex with Grounding with Google Search as a web-search provider. Fully offline: fake openers only."""
+import io, json, os, pathlib, sys, threading, urllib.error
+import pytest
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from sach import search as S, status, vertex as V, retrieve as R
+from sach.search import GroundedSearch, SearchChain, SearchRun, resolve_redirect, public_https_url
+from test_vertex import rsa, sa, _sa_json, Resp, http_error, FakeGoogle, PROJECT   # noqa: F401  (rsa, sa are fixtures)
+
+RD = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/"
+PIB = "https://pib.gov.in/PressReleasePage.aspx?PRID=1"
+
+
+def redirect_err(loc, code=302):
+    class H(dict):
+        def get(self, k, d=None):
+            return dict.get(self, k, d)
+    return urllib.error.HTTPError("x", code, "Found", H({"Location": loc} if loc is not None else {}), io.BytesIO(b""))
+
+
+class Redirects:
+    """No-follow opener fake: maps a redirect token to a Location (or an exception); records every URL it is asked for."""
+    def __init__(self, table):
+        self.table, self.asked, self.reqs = table, [], []
+        self.lock = threading.Lock()
+    def __call__(self, req, timeout=None):
+        with self.lock:
+            self.asked.append(req.full_url)
+            self.reqs.append(req)
+        v = self.table.get(req.full_url)
+        if isinstance(v, Exception):
+            raise v
+        raise redirect_err(v)
+
+
+class Gen(FakeGoogle):
+    """Token + generateContent fake whose reply carries grounding chunks."""
+    def __init__(self, chunks, **kw):
+        super().__init__(**kw)
+        self.chunks = chunks
+    def __call__(self, req, timeout=None):
+        if req.full_url == V.TOKEN_URL or self.gen_error:
+            return super().__call__(req, timeout)
+        with self.lock:
+            self.reqs.append(req)
+        return Resp({"candidates": [{"content": {"parts": [{"text": "prose to ignore"}]},
+                                     "groundingMetadata": {"webSearchQueries": ["q"], "groundingChunks": [
+                                         {"web": {"title": t, "uri": u}} for t, u in self.chunks]}}]})
+
+
+def make(sa, chunks, table, **kw):
+    g = Gen(chunks)
+    client = V.VertexClient(sa, V.TokenProvider(sa, g), g)
+    rd = Redirects(table)
+    return GroundedSearch(client, opener=rd, **kw), g, rd
+
+
+def chunks_for(*pairs):
+    return [(t, RD + str(i)) for i, (t, _) in enumerate(pairs)], {RD + str(i): loc for i, (_, loc) in enumerate(pairs)}
+
+
+# ---------------------------------------------------------------- request body, parsing
+def test_request_body_and_endpoint(sa):
+    ch, tb = chunks_for(("pib.gov.in", PIB))
+    gs, g, rd = make(sa, ch, tb)
+    assert gs.search("Mahila Yojana Rs 5000") == [PIB]                # round 4 (P1): an unrestricted query (a site: query is refused, see test_grounded_search_itself_refuses_site_restricted_queries)
+    req = g.gen_calls()[0]
+    assert req.full_url == "https://aiplatform.googleapis.com/v1/projects/%s/locations/global/publishers/google/models/gemini-3.1-flash-lite:generateContent" % PROJECT
+    body = json.loads(req.data)
+    assert body["tools"] == [{"google_search": {}}]
+    txt = body["contents"][0]["parts"][0]["text"]
+    assert txt.startswith("Find official Indian government sources") and txt.endswith("Claim: Mahila Yojana Rs 5000")
+    assert req.get_header("Authorization").startswith("Bearer ")
+
+def test_model_from_env(sa, monkeypatch):
+    monkeypatch.setenv("SACH_GROUNDED_MODEL", "gemini-9-test")
+    gs, g, _ = make(sa, [], {})
+    gs.search("a claim")
+    assert "models/gemini-9-test:generateContent" in g.gen_calls()[0].full_url
+    monkeypatch.setenv("SACH_GROUNDED_MODEL", "bad model/../x")
+    assert V.grounded_model() == "gemini-3.1-flash-lite"
+
+def test_parse_chunks_tolerates_bad_shapes():
+    assert V.grounded_chunks({}) == [] and V.grounded_chunks({"candidates": []}) == []
+    assert V.grounded_chunks({"candidates": [{"groundingMetadata": {"groundingChunks": [{"x": 1}, {"web": {"uri": 5}}, None,
+                                                                                         {"web": {"uri": "u", "title": "t"}}]}}]}) == [("t", "u")]
+
+# ---------------------------------------------------------------- redirect resolution and safety
+def test_resolve_reads_location_without_following():
+    rd = Redirects({RD + "a": PIB})
+    assert resolve_redirect(RD + "a", rd) == PIB
+    assert rd.asked == [RD + "a"]
+
+def test_only_the_vertex_redirect_host_is_ever_requested():
+    rd = Redirects({})
+    for u in ("https://evil.example.com/grounding-api-redirect/x", "http://vertexaisearch.cloud.google.com/grounding-api-redirect/x",
+              "https://vertexaisearch.cloud.google.com.evil.com/grounding-api-redirect/x", "https://vertexaisearch.cloud.google.com@evil.com/grounding-api-redirect/x",
+              "https://vertexaisearch.cloud.google.com:8443/grounding-api-redirect/x", "https://vertexaisearch.cloud.google.com/other/x", "", "https://pib.gov.in/"):
+        assert resolve_redirect(u, rd) == ""
+    assert rd.asked == []
+
+@pytest.mark.parametrize("loc", ["http://pib.gov.in/x", "https://127.0.0.1/x", "https://10.0.0.5/x", "https://169.254.169.254/latest", "https://[::1]/x",
+                                 "https://localhost/x", "https://intranet/x", "https://box.internal/x", "https://user@pib.gov.in/x",
+                                 "https://pib.gov.in\\@evil.com/", "javascript:alert(1)", "", None])
+def test_unsafe_locations_dropped(loc):
+    assert resolve_redirect(RD + "a", Redirects({RD + "a": loc})) == ""
+
+@pytest.mark.parametrize("loc", ["https://pib.gov.in:8443/", "https://pib.gov.in:80/", "https://pib.gov.in:0/", "https://pib.gov.in:8443/PressReleasePage.aspx?PRID=1"])
+def test_location_on_a_non_default_port_is_dropped(loc):
+    assert resolve_redirect(RD + "a", Redirects({RD + "a": loc})) == ""
+
+@pytest.mark.parametrize("loc", ["https://pib.gov.in/", "https://pib.gov.in:443/", PIB])
+def test_location_on_default_https_port_is_kept(loc):
+    assert resolve_redirect(RD + "a", Redirects({RD + "a": loc})) == loc
+
+def test_public_https_url_port_rule():
+    assert public_https_url("https://pib.gov.in/") == "https://pib.gov.in/"
+    assert public_https_url("https://pib.gov.in:443/") == "https://pib.gov.in:443/"
+    assert public_https_url("https://pib.gov.in:8443/") == ""
+    assert public_https_url("https://pib.gov.in:abc/") == ""
+
+def test_non_redirect_status_and_failures_drop():
+    assert resolve_redirect(RD + "a", Redirects({RD + "a": http_error(500)})) == ""
+    assert resolve_redirect(RD + "a", Redirects({RD + "a": TimeoutError()})) == ""
+    assert resolve_redirect(RD + "a", Redirects({RD + "a": urllib.error.URLError("boom")})) == ""
+    class Ok:                                                  # a 200 (no redirect) is not a usable answer
+        status, headers = 200, {}
+        def close(self): pass
+    assert resolve_redirect(RD + "a", lambda req, timeout=None: Ok()) == ""
+
+def test_returned_3xx_response_also_works():
+    class R3:
+        status, headers = 302, {"Location": PIB}
+        def close(self): pass
+    assert resolve_redirect(RD + "a", lambda req, timeout=None: R3()) == PIB
+
+def test_relative_location_is_joined_then_checked():
+    # a relative Location lands on the redirect host itself: public https, so the resolver returns it; the trust filter rejects it
+    assert resolve_redirect(RD + "a", Redirects({RD + "a": "/x"})) == "https://vertexaisearch.cloud.google.com/x"
+
+def test_public_https_url():
+    assert public_https_url("https://pib.gov.in/x") and not public_https_url("ftp://pib.gov.in/")
+    assert public_https_url("https://8.8.8.8/")                       # a global IP literal is public; the trust filter will drop it
+
+@pytest.mark.parametrize("host", ["127.1", "0x7f.0.0.1", "0177.0.0.1", "2130706433", "0x7f000001", "1.2.3", "10.1", "0x7f.1",
+                                  "08.8.8.8", "1.2.3.4.5", "0xab", "1.0x7f", "a..b", "0x", "127.0.0.1", "10.0.0.1", "192.168.1.1"])
+def test_numeric_looking_or_non_global_hosts_are_rejected(host):
+    assert public_https_url("https://%s/x" % host) == ""
+
+@pytest.mark.parametrize("url", ["https://pib.gov.in/", "https://mohfw.gov.in/a", "https://8.8.8.8/", "https://[2606:4700:4700::1111]/",
+                                 "https://www.rbi.org.in/x", "https://dlas1.ucloud.int/"])
+def test_real_hostnames_and_global_literals_are_accepted(url):
+    assert public_https_url(url) == url
+
+def test_docs_section_10_matches_the_code():
+    text = (pathlib.Path(__file__).resolve().parents[1] / "docs" / "scaling.md").read_text(encoding="utf-8")
+    sec = text[text.index("## 10. Grounded search"):]
+    sec = sec[:sec.index("\n## ", 5)] if "\n## " in sec[5:] else sec
+    assert "give" not in sec.lower() and "released" not in sec.lower()          # the give-back mechanism is removed
+    assert "up to three queries" not in sec and "makes at most one grounded prompt" in sec    # only the official pool query reaches grounded
+    assert "site:" in sec and "inurl:" in sec                                  # the round 4 routing rule is documented
+    assert "per Google's published pricing as read on 2026-11-13; unverified by us" in sec
+    assert "observed in one manual test, no record kept in the repo" in sec
+    assert sec.count("3.5-5 s") == 1 and "3.5-5 s" in sec.split("observed in one manual test")[0]
+
+def test_failure_drops_only_that_url(sa):
+    ch, tb = chunks_for(("pib.gov.in", PIB), ("mha.gov.in", TimeoutError()), ("mohfw.gov.in", "https://mohfw.gov.in/a"))
+    gs, g, rd = make(sa, ch, tb)
+    assert gs.search("claim text") == [PIB, "https://mohfw.gov.in/a"]
+
+def test_resolution_is_parallel_but_capped_at_six(sa, monkeypatch):
+    live, peak, lock = [0], [0], threading.Lock()
+    ev = threading.Event()
+    def opener(req, timeout=None):
+        with lock:
+            live[0] += 1; peak[0] = max(peak[0], live[0])
+        ev.wait(0.05)
+        with lock:
+            live[0] -= 1
+        raise redirect_err("https://pib.gov.in/p" + req.full_url[-2:])
+    ch = [("pib.gov.in", RD + "%02d" % i) for i in range(12)]
+    g = Gen(ch)
+    gs = GroundedSearch(V.VertexClient(sa, V.TokenProvider(sa, g), g), opener=opener)
+    assert len(gs.search("claim", count=20)) == 12
+    assert 1 < peak[0] <= S.RESOLVE_WORKERS == 6
+
+# ---------------------------------------------------------------- trust filter
+def test_official_filter_drops_news_keeps_pib_and_factcheckers(sa):
+    ch, tb = chunks_for(("pib.gov.in", PIB), ("timesofindia.indiatimes.com", "https://timesofindia.indiatimes.com/a"),
+                        ("boomlive.in", "https://www.boomlive.in/fact-check/x"), ("evil.com", "https://evil.com/pib.gov.in"),
+                        ("pib.gov.in", "https://pib.gov.in.evil.com/x"), ("indiatoday.in", "https://www.indiatoday.in/news/x"),
+                        ("rbi.org.in", "https://rbi.org.in/y"), ("x", "https://8.8.8.8/z"), ("pib.gov.in", PIB))
+    gs, g, rd = make(sa, ch, tb)
+    assert gs.search("claim") == [PIB, "https://www.boomlive.in/fact-check/x", "https://rbi.org.in/y"]
+    # a title that is a plainly untrusted domain is not even resolved (fewer requests to Google)
+    assert RD + "0" in rd.asked and RD + "1" not in rd.asked
+
+def test_relative_redirect_to_non_official_is_filtered(sa):
+    ch, tb = chunks_for(("pib.gov.in", "/grounding-api-redirect/zzz"))
+    gs, _, _ = make(sa, ch, tb)
+    assert gs.search("claim") == []
+
+def test_prose_is_ignored(sa):
+    gs, g, rd = make(sa, [], {})
+    assert gs.search("claim") == []
+
+# ---------------------------------------------------------------- chain order and fallthrough
+class Fake:
+    def __init__(self, name, *script):
+        self.name, self.script, self.calls = name, list(script), []
+    def search(self, query, count=8):
+        self.calls.append(query)
+        item = self.script.pop(0) if len(self.script) > 1 else self.script[0]
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+class FakeGrounded(Fake):
+    fallthrough_empty = True
+    auth_pause_s = V.AUTH_PAUSE_S
+
+class Clock:
+    def __init__(self): self.t = 1000.0
+    def __call__(self): return self.t
+
+def test_order_defaults_grounded_first_only_when_credential_set(rsa, monkeypatch):
+    monkeypatch.setenv("BRAVE_API_KEY", "bk"); monkeypatch.setenv("TAVILY_API_KEY", "tk")
+    assert [p.name for p in SearchChain.from_env().providers] == ["brave", "tavily"]
+    monkeypatch.setenv("GOOGLE_SA_JSON", _sa_json(rsa))
+    assert [p.name for p in SearchChain.from_env().providers] == ["grounded", "brave", "tavily"]
+    monkeypatch.setenv("SACH_SEARCH_ORDER", "tavily,brave")
+    assert [p.name for p in SearchChain.from_env().providers] == ["tavily", "brave", "grounded"]
+    monkeypatch.setenv("SACH_SEARCH_ORDER", "brave,grounded,tavily")
+    assert [p.name for p in SearchChain.from_env().providers] == ["brave", "grounded", "tavily"]
+
+def test_off_without_credential_and_with_a_broken_one(monkeypatch):
+    assert SearchChain.from_env().providers == [] and not SearchChain.from_env().configured
+    monkeypatch.setenv("GOOGLE_SA_JSON", "garbage!!")
+    assert SearchChain.from_env().providers == []                         # no error, just off
+    monkeypatch.setenv("GOOGLE_SA_JSON", "")
+    assert not [r for r in R.default_retrievers() if type(r).__name__ == "BraveRetriever"]
+
+def test_sa_alone_enables_web_search_retriever(rsa, monkeypatch):
+    monkeypatch.setenv("GOOGLE_SA_JSON", _sa_json(rsa))
+    assert [r for r in R.default_retrievers() if type(r).__name__ == "BraveRetriever"]
+
+def test_grounded_hit_stops_the_chain():
+    g, b = FakeGrounded("grounded", [PIB]), Fake("brave", ["https://x.gov.in/"])
+    run = SearchRun()
+    assert SearchChain([g, b]).search("q", run=run) == [PIB] and b.calls == [] and run.provider == "grounded"
+
+def test_empty_grounded_falls_through_to_next_provider():
+    g, b = FakeGrounded("grounded", []), Fake("brave", ["https://x.gov.in/"])
+    run = SearchRun()
+    assert SearchChain([g, b]).search("q", run=run) == ["https://x.gov.in/"] and run.provider == "brave" and run.status == "ok"
+
+def test_empty_grounded_is_not_ok_when_the_next_provider_fails():
+    g, b = FakeGrounded("grounded", []), Fake("brave", http_error(500))
+    run = SearchRun()
+    assert SearchChain([g, b]).search("q", run=run) == [] and run.status == "down" and run.provider == ""
+
+def test_empty_grounded_with_brave_500_and_tavily_timeout_is_down_like_without_grounded():
+    # the exact repro: grounded answered with nothing, both later providers raised
+    run = SearchRun()
+    assert SearchChain([FakeGrounded("grounded", []), Fake("brave", http_error(500)), Fake("tavily", TimeoutError())]).search("q", run=run) == []
+    assert run.status == "down"
+    no_g = SearchRun()
+    assert SearchChain([Fake("brave", http_error(500)), Fake("tavily", TimeoutError())]).search("q", run=no_g) == []
+    assert no_g.status == "down" and run.status == no_g.status
+
+def test_empty_grounded_as_the_only_provider_is_an_honest_ok():
+    run = SearchRun()
+    assert SearchChain([FakeGrounded("grounded", [])]).search("q", run=run) == [] and run.status == "ok" and run.provider == "grounded"
+
+@pytest.mark.parametrize("later", [
+    [Fake("brave", http_error(500))], [Fake("brave", TimeoutError())], [Fake("brave", http_error(403))],
+    [Fake("brave", [])], [Fake("brave", ["https://x.gov.in/"])],
+    [Fake("brave", TimeoutError()), Fake("tavily", [])], [Fake("brave", TimeoutError()), Fake("tavily", ["https://y.gov.in/"])],
+])
+def test_empty_grounded_status_matches_the_chain_without_grounded(later):
+    # whatever the later providers do, the status with an empty grounded answer in front equals the status without grounded
+    def build(providers):
+        return SearchChain(providers, clock=Clock())
+    with_g, without_g = SearchRun(), SearchRun()
+    urls_g = build([FakeGrounded("grounded", [])] + [Fake(p.name, *p.script) for p in later]).search("q", run=with_g)
+    urls_n = build([Fake(p.name, *p.script) for p in later]).search("q", run=without_g)
+    assert urls_g == urls_n and with_g.status == without_g.status and with_g.provider == without_g.provider
+
+def test_paused_later_provider_counts_as_not_answering():
+    clk = Clock()
+    b = Fake("brave", ["https://x.gov.in/"])
+    ch = SearchChain([FakeGrounded("grounded", []), b], clock=clk)
+    ch._pause("brave", 100)                                   # brave skipped without a call: it did not answer
+    run = SearchRun()
+    assert ch.search("q", run=run) == [] and run.status == "down" and b.calls == []
+
+def test_all_failing_is_down():
+    run = SearchRun()
+    assert SearchChain([FakeGrounded("grounded", TimeoutError()), Fake("brave", http_error(500))]).search("q", run=run) == [] and run.status == "down"
+
+@pytest.mark.parametrize("code", [401, 403])
+def test_auth_failure_pauses_grounded_ten_minutes(code):
+    clk = Clock()
+    g, b = FakeGrounded("grounded", V.VertexError("x", code)), Fake("brave", ["https://a.gov.in/"])
+    ch = SearchChain([g, b], clock=clk)
+    assert ch.search("q") == ["https://a.gov.in/"]
+    assert ch.paused_until("grounded") == clk.t + 600
+    ch.search("q"); assert len(g.calls) == 1                                # paused: skipped without a call
+    clk.t += 601
+    ch.search("q"); assert len(g.calls) == 2
+
+def test_429_uses_retry_after_and_5xx_timeout_do_not_pause():
+    clk = Clock()
+    g = FakeGrounded("grounded", V.VertexError("x", 429, {"retry-after": "30"}))
+    ch = SearchChain([g, Fake("brave", ["u"])], clock=clk)
+    ch.search("q"); assert ch.paused_until("grounded") == clk.t + 30
+    for err in (V.VertexError("x", 503), TimeoutError(), V.VertexError("x")):
+        g2 = FakeGrounded("grounded", err); ch2 = SearchChain([g2, Fake("brave", ["u"])], clock=clk)
+        assert ch2.search("q") == ["u"] and ch2.paused_until("grounded") == 0.0
+
+def test_real_provider_errors_are_classified(sa):
+    g = Gen([]); g.gen_error = http_error(403)
+    gs = GroundedSearch(V.VertexClient(sa, V.TokenProvider(sa, g), g))
+    clk = Clock(); ch = SearchChain([gs, Fake("brave", ["u"])], clock=clk)
+    assert ch.search("q") == ["u"] and ch.paused_until("grounded") == clk.t + 600
+    g2 = Gen([]); g2.gen_error = http_error(429, headers={"retry-after": "42"})
+    ch2 = SearchChain([GroundedSearch(V.VertexClient(sa, V.TokenProvider(sa, g2), g2))], clock=clk)
+    ch2.search("q"); assert ch2.paused_until("grounded") == clk.t + 42
+
+# ---------------------------------------------------------------- daily cap
+def test_cap_counts_only_real_calls_and_pauses_to_utc_midnight(sa, monkeypatch):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "2")
+    ch1, tb = chunks_for(("pib.gov.in", PIB))
+    now = 86400 * 100 + 3600.0
+    gs, g, _ = make(sa, ch1, tb, clock=lambda: now)
+    assert gs.search("one") == [PIB] and gs.search("one") == [PIB]           # second is cached: one billed call
+    assert V.grounded_usage(now=now)["calls_today"] == 1
+    gs.search("two")
+    with pytest.raises(S.SearchPaused) as ei:
+        gs.search("three")
+    assert ei.value.pause_s == 86400 - 3600 and len(g.gen_calls()) == 2
+    u = V.grounded_usage(now=now)
+    assert u["calls_today"] == 2 and u["max_per_day"] == 2 and u["skipped_over_cap_today"] == 1
+    assert V.usage(now=now)["calls_today"] == 0                              # the judge cap is a separate counter
+    clk = Clock(); clk.t = now
+    chain = SearchChain([gs, Fake("brave", ["u"])], clock=clk)
+    assert chain.search("four") == ["u"] and chain.paused_until("grounded") == now + 82800
+
+def test_cap_zero_is_unlimited_and_default_is_160(sa, monkeypatch):
+    assert V.grounded_max_per_day() == 160
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "0")
+    gs, g, _ = make(sa, [], {})
+    for i in range(5):
+        gs.search("claim %d" % i)
+    assert len(g.gen_calls()) == 5
+
+def test_default_grounded_cap_is_about_the_monthly_allowance_per_day():
+    assert V.GROUNDED_DEFAULT_MAX_PER_DAY == 160 and V.GROUNDED_DEFAULT_MAX_PER_DAY * 30 <= 5000
+
+def _cap_setup(sa, cap, monkeypatch, *, token_error=None, gen_error=None, chunks=None):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", str(cap))
+    now = 86400 * 50 + 10.0
+    clk = [now]
+    ch, tb = chunks_for(("pib.gov.in", PIB)) if chunks is None else chunks
+    g = Gen(ch)
+    g.token_error, g.gen_error = token_error, gen_error
+    tp = V.TokenProvider(sa, g, clock=lambda: clk[0])
+    gs = GroundedSearch(V.VertexClient(sa, tp, g), opener=Redirects(tb), clock=lambda: now)
+    return gs, g, clk, now
+
+def test_three_failed_token_attempts_do_not_exhaust_a_cap_of_three(sa, monkeypatch):
+    gs, g, clk, now = _cap_setup(sa, 3, monkeypatch, token_error=http_error(500))
+    for _ in range(3):
+        with pytest.raises(V.VertexError):
+            gs.search("claim")
+    assert V.grounded_usage(now=now)["calls_today"] == 0 and V.grounded_usage(now=now)["skipped_over_cap_today"] == 0
+    assert g.gen_calls() == []                                    # no generateContent without a token
+    g.token_error = None
+    clk[0] += 31                                                  # past the token's failed-refresh window
+    for i in range(3):
+        assert gs.search("claim %d" % i) == [PIB]
+    assert V.grounded_usage(now=now)["calls_today"] == 3
+    with pytest.raises(S.SearchPaused):
+        gs.search("claim 9")
+
+@pytest.mark.parametrize("err", [TimeoutError(), urllib.error.URLError("boom"), http_error(500), http_error(503),
+                                 http_error(401), http_error(403), http_error(429), http_error(400), http_error(404)])
+def test_every_failed_generate_call_counts_against_the_cap(sa, monkeypatch, err):
+    # no give-back: a call that reached the reserve step is counted, whatever its outcome (conservative)
+    gs, g, clk, now = _cap_setup(sa, 1, monkeypatch, gen_error=err)
+    with pytest.raises(Exception):
+        gs.search("claim")
+    assert V.grounded_usage(now=now)["calls_today"] == 1
+    g.gen_error = None
+    with pytest.raises(S.SearchPaused):
+        gs.search("claim 2")                                       # the slot was used up by the failed call
+    assert len(g.gen_calls()) == 1 and V.grounded_usage(now=now)["calls_today"] == 1
+
+def test_successful_call_stays_counted(sa, monkeypatch):
+    gs, g, clk, now = _cap_setup(sa, 5, monkeypatch)
+    assert gs.search("claim") == [PIB]
+    assert V.grounded_usage(now=now)["calls_today"] == 1
+
+def test_give_back_mechanism_is_gone():
+    for name in ("release_grounded", "not_billed", "_release"):
+        assert not hasattr(V, name)
+
+def test_reserve_grounded_then_over_cap_leaves_the_count_at_the_cap(monkeypatch):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "2")
+    now = 86400 * 60 + 5.0
+    V.reserve_grounded(None, now); V.reserve_grounded(None, now)
+    with pytest.raises(V.VertexCapReached):
+        V.reserve_grounded(None, now)
+    assert V.grounded_usage(now=now)["calls_today"] == 2 and V.grounded_usage(now=now)["skipped_over_cap_today"] == 1
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "0")
+    for _ in range(3):
+        V.reserve_grounded(None, now)                             # unlimited: nothing counted, nothing raised
+    assert V.grounded_usage(now=now)["calls_today"] == 2
+
+def test_failed_remote_increment_is_refused_not_counted_in_memory(monkeypatch):
+    # round 4 (C2): the remote store's incr fails once; the attempt is refused (GroundedCounterDown), nothing is counted in memory,
+    # and the healthy remote counter still says one call.
+    from test_scale import FakeStore
+    class FailOnce(FakeStore):
+        fail_next = False
+        def incr(self, name, by=1):
+            if self.fail_next:
+                self.fail_next = False
+                return 0
+            return super().incr(name, by)
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "1")
+    now = 86400 * 70 + 9.0
+    key = "gr:d:%d" % int(now // 86400)
+    st = FailOnce()
+    V.reserve_grounded(st, now)                                   # call A: remote count 1
+    st.fail_next = True
+    with pytest.raises(V.GroundedCounterDown):
+        V.reserve_grounded(st, now)                               # call B: remote incr fails, refused
+    assert st.counters([key])[key] == 1 and not V._grounded_mem   # the healthy remote counter still says one call; memory untouched
+
+def test_counter_never_goes_below_zero_under_threads_and_memory_resets(monkeypatch):
+    import threading
+    from sach import limits
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "3")
+    monkeypatch.setattr(V.store, "get_store", lambda: None)       # no shared store: the in-memory fallback
+    now = 86400 * 80 + 1.0
+    key = "gr:d:%d" % int(now // 86400)
+    limits.reset_memory()
+    ok, low, lock = [], [0], threading.Lock()
+    stop = threading.Event()
+
+    def reset_loop():
+        while not stop.is_set():
+            limits.reset_memory()
+
+    def worker():
+        for _ in range(40):
+            try:
+                V.reserve_grounded(None, now)
+                with lock: ok.append(1)
+            except V.VertexCapReached:
+                pass
+            with limits._mem_lock:
+                with lock: low[0] = min(low[0], limits._mem.get(key, 0))
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    assert low[0] >= 0                                            # sampled after every call, no reset running
+    assert V.grounded_usage(now=now)["calls_today"] == 3 and len(ok) == 3   # no resets: exactly the cap
+    limits.reset_memory()
+    resetter = threading.Thread(target=reset_loop)
+    resetter.start()
+    try:
+        ts = [threading.Thread(target=worker) for _ in range(8)]
+        for t in ts: t.start()
+        for t in ts: t.join()
+    finally:
+        stop.set(); resetter.join()
+    assert low[0] >= 0 and V.grounded_usage(now=now)["calls_today"] == 3   # the grounded memory is not cleared by the shared reset
+    limits.reset_memory()
+
+# ---------------------------------------------------------------- status, secrets
+def test_status_rows(sa, monkeypatch):
+    gs, _, _ = make(sa, [], {})
+    class Ret:
+        chain = SearchChain([gs, Fake("brave", ["u"])])
+    rows = {r["provider"]: r for r in status.search_providers([Ret()])}
+    assert rows["grounded"]["configured"] and rows["grounded"]["state"] == "ready" and rows["grounded"]["max_per_day"] == 160
+    gs.search("one claim")
+    rows = {r["provider"]: r for r in status.search_providers([Ret()])}
+    assert rows["grounded"]["calls_today"] == 1
+    Ret.chain._pause("grounded", 100)
+    rows = {r["provider"]: r for r in status.search_providers([Ret()])}
+    assert rows["grounded"]["state"] == "paused" and rows["grounded"]["paused_for_s"] > 0
+    V.reset_grounded_memory()                  # round 4 (C1): the grounded counter has its own reset, not limits.reset_memory()
+    off = {r["provider"]: r for r in status.search_providers([])}
+    assert off["grounded"]["configured"] is False and off["grounded"]["state"] == "off" and off["grounded"]["calls_today"] == 0
+    page = status.status_page({**status.status_data(None, [Ret()]), }).decode()
+    assert "grounded" in page and "Calls today" in page
+
+def test_check_search_reports_an_unparseable_service_account_as_such(monkeypatch, capsys):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("check_search", pathlib.Path(__file__).resolve().parents[1] / "scripts" / "check_search.py")
+    cs = importlib.util.module_from_spec(spec); spec.loader.exec_module(cs)
+    monkeypatch.setenv("GOOGLE_SA_JSON", "garbage!!")
+    monkeypatch.delenv("BRAVE_API_KEY", raising=False); monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    lines = []
+    bad = cs.check(out=lines.append)
+    text = "\n".join(lines)
+    assert "GOOGLE_SA_JSON is set but could not be parsed" in text and "no key" not in text.split("\n")[0]
+    assert "No search keys" not in text                           # a set-but-broken credential is not 'off'
+    assert "grounded 401/403 for 10 minutes" in text                 # grounded's auth pause is 600 s, not Brave/Tavily's 6 hours
+    assert "grounded 401/403 for 6 hours" not in text
+    assert bad == 1
+    lines.clear(); monkeypatch.delenv("GOOGLE_SA_JSON")
+    assert cs.check(out=lines.append) == 0 and "no key (set GOOGLE_SA_JSON" in "\n".join(lines)
+
+def test_no_secret_in_errors_repr_or_urls(sa):
+    g = Gen([]); g.gen_error = http_error(500, body=b"Bearer ya29.LEAK private_key")
+    gs = GroundedSearch(V.VertexClient(sa, V.TokenProvider(sa, g), g))
+    with pytest.raises(V.VertexError) as ei:
+        gs.search("claim")
+    blob = repr(gs) + str(ei.value) + repr(ei.value.__dict__)
+    assert "ya29" not in blob and "PRIVATE" not in blob and "LEAK" not in blob
+    ch, tb = chunks_for(("pib.gov.in", PIB))
+    gs2, g2, rd = make(sa, ch, tb)
+    gs2.search("claim")
+    assert rd.reqs and all(r.get_header("Authorization") is None and r.get_method() == "GET" for r in rd.reqs)   # the token never goes to the redirect host
+
+# ---------------------------------------------------------------- round 4: P1 query routing, C1 memory, C2 store refusal, C3 cap parsing
+from sach import retrieve as _R
+PIB_999 = "https://pib.gov.in/PressReleasePage.aspx?PRID=999"
+POOL_Q = "claim words " + _R.BraveRetriever.OFFICIAL_Q
+
+def test_p1_pib_targeted_query_gets_the_pib_release_not_the_ministry_page():
+    G = FakeGrounded("grounded", ["https://www.mha.gov.in/notice"])
+    B = Fake("brave", [PIB_999])
+    run = SearchRun()
+    assert SearchChain([G, B]).search("site:pib.gov.in claim words", run=run) == [PIB_999]
+    assert G.calls == [] and B.calls == ["site:pib.gov.in claim words"] and run.provider == "brave"
+
+@pytest.mark.parametrize("q", ["site:pib.gov.in claim words", "claim words site:mohfw.gov.in", "claim words inurl:pib.gov.in",
+                               "claim words (site:boomlive.in OR site:altnews.in)", "claim words (site:gov.in OR site:nic.in)",
+                               "site:"])
+def test_restricted_queries_never_reach_grounded(q):
+    G = FakeGrounded("grounded", ["https://www.mha.gov.in/notice"])
+    B = Fake("brave", ["https://x.gov.in/"])
+    assert SearchChain([G, B]).search(q) == ["https://x.gov.in/"] and G.calls == []
+
+@pytest.mark.parametrize("q", ["claim words", POOL_Q])
+def test_unrestricted_and_official_pool_queries_are_answered_by_grounded(q):
+    G = FakeGrounded("grounded", ["https://www.mha.gov.in/notice"])
+    B = Fake("brave", ["https://x.gov.in/"])
+    assert SearchChain([G, B]).search(q) == ["https://www.mha.gov.in/notice"] and B.calls == []
+
+def test_grounded_result_off_the_query_site_is_dropped_and_the_next_provider_is_asked():
+    G = FakeGrounded("grounded", ["https://www.boomlive.in/fact-check/x"])
+    B = Fake("brave", ["https://www.who.int/a"])
+    assert SearchChain([G, B]).search(POOL_Q) == ["https://www.who.int/a"] and B.calls == [POOL_Q]
+
+def test_grounded_only_chain_does_not_count_a_query_it_may_not_answer():
+    G = FakeGrounded("grounded", ["https://www.mha.gov.in/notice"])
+    run = SearchRun()
+    assert SearchChain([G]).search("site:pib.gov.in x", run=run) == [] and run.total == 0 and G.calls == []
+
+def test_grounded_search_itself_refuses_site_restricted_queries(sa):
+    ch, tb = chunks_for(("pib.gov.in", PIB))
+    gs, g, rd = make(sa, ch, tb)
+    assert gs.search("site:pib.gov.in claim") == [] and g.gen_calls() == []
+
+def test_each_query_shape_of_the_retriever_routes_as_designed(monkeypatch):
+    G = FakeGrounded("grounded", ["https://www.mha.gov.in/notice"])
+    B = Fake("brave", [PIB_999])
+    monkeypatch.setattr(_R.BraveRetriever, "_evidence", lambda self, url, tier: None)   # no page fetches in this test
+    r = _R.BraveRetriever(key="bk", chain=SearchChain([G, B]))
+    short, kw = r._short("claim words"), r._keywords("claim words")
+    assert r._search_claim("claim words") == []
+    pib_q = "site:pib.gov.in " + short
+    fc_q = short + " " + _R.BraveRetriever.FC_Q
+    assert G.calls == [kw + " " + _R.BraveRetriever.OFFICIAL_Q]          # only the official pool reaches grounded
+    assert B.calls[0] == pib_q and B.calls[-1] == fc_q                 # PIB first and fact-checkers last go to brave
+
+def test_retriever_pool_falls_through_to_brave_when_grounded_is_empty(monkeypatch):
+    G = FakeGrounded("grounded", [])
+    B = Fake("brave", ["https://www.mha.gov.in/notice"])
+    monkeypatch.setattr(_R.BraveRetriever, "_evidence", lambda self, url, tier: None)
+    r = _R.BraveRetriever(key="bk", chain=SearchChain([G, B]))
+    r._search_claim("claim words")
+    assert len(G.calls) == 1 and any("OR site:" in q for q in B.calls)
+
+# ---------------------------------------------------------------- C1: memory counter is its own, never cleared by the shared flood rule
+def test_grounded_cap_is_not_reset_by_the_shared_memory_flood(monkeypatch):
+    from sach import limits
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "2")
+    now = 86400 * 90 + 7.0
+    V.reserve_grounded(None, now)
+    for i in range(600):
+        limits._mem_incr("lv:m:%d" % i)            # per-minute admission keys: past 500 the shared dict is cleared
+    V.reserve_grounded(None, now)
+    with pytest.raises(V.VertexCapReached):
+        V.reserve_grounded(None, now)
+    assert V.grounded_usage(now=now)["calls_today"] == 2
+
+def test_grounded_memory_keeps_only_today(monkeypatch):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "100")
+    for d in range(5):
+        V.reserve_grounded(None, 86400 * (200 + d) + 1.0)
+    assert len(V._grounded_mem) == 1
+
+# ---------------------------------------------------------------- C2: a failing shared store refuses the attempt, never counts in memory
+class FailFirst:
+    """A remote store whose first `n` incr calls fail the way UpstashStore does (return 0)."""
+    remote = True
+    def __init__(self, n):
+        from test_scale import FakeStore
+        self.inner, self.n = FakeStore(), n
+    def incr(self, name, by=1):
+        if self.n > 0:
+            self.n -= 1
+            return 0
+        return self.inner.incr(name, by)
+    def expire(self, name, ttl_s):
+        self.inner.expire(name, ttl_s)
+    def counters(self, names):
+        return self.inner.counters(names)
+
+def test_store_failure_refuses_the_attempt_and_the_cap_of_three_holds(sa, monkeypatch):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", "3")
+    now = 86400 * 95 + 3.0
+    st = FailFirst(1)
+    ch, tb = chunks_for(("pib.gov.in", PIB))
+    g = Gen(ch)
+    gs = GroundedSearch(V.VertexClient(sa, V.TokenProvider(sa, g), g), opener=Redirects(tb), st=st, clock=lambda: now)
+    outcomes = []
+    for i in range(10):
+        try:
+            outcomes.append(gs.search("claim %d" % i))
+        except S.SearchPaused as e:
+            outcomes.append(("paused", e.pause_s))
+    assert outcomes[0] == ("paused", 60)                          # the store failed: refused, not counted in memory
+    assert len(g.gen_calls()) == 3                                # at most the cap in total over ten attempts
+    assert st.inner.counters(["gr:d:%d" % int(now // 86400)])["gr:d:%d" % int(now // 86400)] == 3
+
+# ---------------------------------------------------------------- C3: negative and non-numeric values are invalid -> 160
+@pytest.mark.parametrize("raw,expected", [("-1", 160), ("-500", 160), ("abc", 160), ("1.5", 160), ("", 160), ("  ", 160),
+                                          (" 7 ", 7), ("0", 0), ("12", 12)])
+def test_grounded_cap_parsing(monkeypatch, raw, expected):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", raw)
+    assert V.grounded_max_per_day() == expected
+
+# ---------------------------------------------------------------- round 5: D1 PIB-only grounded answers for the official pool, D3 strict cap digits, D4 SA gate
+from types import SimpleNamespace
+from test_vertex import http_error as _http_error
+
+MHA = "https://www.mha.gov.in/notice"
+WHO = "https://www.who.int/a"
+
+class Dispatch:
+    """A brave/tavily stand-in whose answer depends on the query text (so PIB, pool and fact-check queries can differ)."""
+    def __init__(self, name, fn):
+        self.name, self.fn, self.calls = name, fn, []
+    def search(self, query, count=8):
+        self.calls.append(query)
+        return self.fn(query)
+
+def _pool_brave(urls=(MHA,)):
+    return lambda q: list(urls) if "OR site:" in q else []           # the official pool answers; PIB and fact-check queries do not
+
+def _retriever_urls(monkeypatch, providers):
+    """The retriever's own consumer (_search_claim) on fake providers; returns the non-PIB official URLs it keeps, in order."""
+    monkeypatch.setattr(_R.BraveRetriever, "_evidence", lambda self, url, tier: SimpleNamespace(url=url, tier=tier))
+    r = _R.BraveRetriever(key="bk", chain=SearchChain(providers))
+    ev = r._search_claim("claim words")
+    return [e.url for e in ev if "pib.gov.in" not in e.url]
+
+def test_d1_pib_only_grounded_answer_falls_through_to_brave_for_the_official_pool():
+    G = FakeGrounded("grounded", [PIB_999])
+    B = Fake("brave", [MHA])
+    assert SearchChain([G, B]).search(POOL_Q) == [MHA] and B.calls == [POOL_Q]
+
+def test_d1_pib_only_grounded_answer_from_the_real_provider_falls_through(sa):
+    ch, tb = chunks_for(("pib.gov.in", PIB_999))
+    gs, g, rd = make(sa, ch, tb)
+    chain = SearchChain([gs, Fake("brave", [MHA])])
+    run = SearchRun()
+    assert chain.search(POOL_Q, run=run) == [MHA] and len(g.gen_calls()) == 1 and run.provider == "brave"
+
+def test_d1_mixed_grounded_answer_keeps_the_ministry_url_only_for_the_pool(sa):
+    G = FakeGrounded("grounded", [PIB_999, MHA])
+    assert SearchChain([G, Fake("brave", [WHO])]).search(POOL_Q) == [MHA]
+
+def test_d1_non_pib_official_grounded_urls_are_kept_for_the_pool():
+    assert SearchChain([FakeGrounded("grounded", [MHA, WHO]), Fake("brave", [])]).search(POOL_Q) == [MHA, WHO]
+
+def test_d1_pib_urls_from_other_providers_are_untouched_for_the_pool():
+    # the filter applies to grounded's answer only: brave's PIB URL is returned as before (the consumer decides what to do with it)
+    assert SearchChain([FakeGrounded("grounded", []), Fake("brave", [PIB_999])]).search(POOL_Q) == [PIB_999]
+
+def test_d1_unrestricted_query_still_keeps_grounded_pib_urls():
+    # only the official-pool consumer discards PIB; an unrestricted query's consumer keeps it, so grounded's PIB answer stands
+    G = FakeGrounded("grounded", [PIB_999])
+    assert SearchChain([G, Fake("brave", [MHA])]).search("claim words") == [PIB_999]
+
+@pytest.mark.parametrize("grounded_urls", [[PIB_999], [PIB_999, MHA], [MHA], []])
+@pytest.mark.parametrize("brave", ["ok", "empty", "raises"])
+def test_d1_matrix_grounded_never_returns_fewer_non_pib_official_urls_than_without_grounded(monkeypatch, grounded_urls, brave):
+    def brave_provider():
+        if brave == "raises":
+            return Dispatch("brave", lambda q: (_ for _ in ()).throw(_http_error(500)))
+        return Dispatch("brave", _pool_brave((MHA,) if brave == "ok" else ()))
+    with_g = _retriever_urls(monkeypatch, [FakeGrounded("grounded", list(grounded_urls)), brave_provider()])
+    without_g = _retriever_urls(monkeypatch, [brave_provider()])
+    assert len(with_g) >= len(without_g)
+    if brave == "ok":
+        assert with_g == [MHA] == without_g                  # same official evidence as the chain without grounded
+
+def test_d1_matrix_pib_only_grounded_equals_the_chain_without_grounded(monkeypatch):
+    for brave in ("ok", "empty", "raises"):
+        mk = lambda: Dispatch("brave", (lambda q: (_ for _ in ()).throw(_http_error(500))) if brave == "raises" else _pool_brave((MHA,) if brave == "ok" else ()))
+        assert _retriever_urls(monkeypatch, [FakeGrounded("grounded", [PIB_999]), mk()]) == _retriever_urls(monkeypatch, [mk()])
+
+def test_d1_grounded_pool_policy_is_scoped_to_the_pool_query():
+    # non-pool restricted queries are not asked grounded at all (existing policy), so no PIB filter is needed for them
+    G = FakeGrounded("grounded", [PIB_999])
+    assert SearchChain([G, Fake("brave", [MHA])]).search("site:pib.gov.in claim words") == [MHA] and G.calls == []
+
+# D3: plain decimal digits only (optionally surrounded by whitespace); everything else is the default 160
+@pytest.mark.parametrize("raw,expected", [("1_000", 160), ("+3", 160), ("1e3", 160), ("2.5", 160), ("-5", 160), ("0x10", 160),
+                                          ("1 000", 160), ("٣", 160), ("12abc", 160), (" 007 ", 7), ("\t0\n", 0),
+                                          ("99999999999999999999", 99999999999999999999)])
+def test_d3_cap_accepts_only_plain_decimal_digits(monkeypatch, raw, expected):
+    monkeypatch.setenv("SACH_GROUNDED_MAX_PER_DAY", raw)
+    assert V.grounded_max_per_day() == expected
+
+def test_d3_unset_is_the_default(monkeypatch):
+    monkeypatch.delenv("SACH_GROUNDED_MAX_PER_DAY", raising=False)
+    assert V.grounded_max_per_day() == 160
+
+# D4: a GOOGLE_SA_JSON that cannot be parsed does not enable the Brave retriever (behaves as if unset)
+@pytest.mark.parametrize("raw", ["garbage!!", "{}", "[]", "eyJhIjoxfQ"])
+def test_d4_unparseable_google_sa_does_not_add_the_brave_retriever(monkeypatch, raw):
+    for k in ("BRAVE_API_KEY", "TAVILY_API_KEY", "GOOGLE_FACTCHECK_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("GOOGLE_SA_JSON", raw)
+    assert [type(r).__name__ for r in R.default_retrievers()] == ["PibRetriever"]
+
+def test_d4_unparseable_google_sa_with_a_brave_key_is_unchanged(monkeypatch):
+    for k in ("TAVILY_API_KEY", "GOOGLE_FACTCHECK_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("GOOGLE_SA_JSON", "garbage!!"); monkeypatch.setenv("BRAVE_API_KEY", "bk")
+    assert [type(r).__name__ for r in R.default_retrievers()] == ["PibRetriever", "BraveRetriever"]
+
+def test_d4_usable_google_sa_still_adds_the_brave_retriever(rsa, monkeypatch):
+    for k in ("BRAVE_API_KEY", "TAVILY_API_KEY", "GOOGLE_FACTCHECK_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("GOOGLE_SA_JSON", _sa_json(rsa))
+    assert [type(r).__name__ for r in R.default_retrievers()] == ["PibRetriever", "BraveRetriever"]
+
+# round 5 docs: section 10 says what the code now does (the section is read from docs/scaling.md)
+def test_round5_docs_section_10_states_the_pib_discard_the_cap_caveat_and_the_d3_rule():
+    text = (pathlib.Path(__file__).resolve().parents[1] / "docs" / "scaling.md").read_text(encoding="utf-8")
+    sec = text[text.index("## 10. Grounded search"):]
+    sec = sec[:sec.index("\n## ", 5)] if "\n## " in sec[5:] else sec
+    assert "all-PIB" in sec and "falls through" in sec                        # (a) an all-PIB grounded answer for the pool query is discarded
+    assert "exact when the shared store answers" in sec                       # (b) the cap is exact only when the store answers
+    assert "can leave the store count slightly too high" in sec or "slightly too high" in sec
+    assert "web search unavailable" in sec and "no other provider answers" in sec   # (c) the generic status text
+    assert "1_000" in sec and "+3" in sec and "plain decimal digits" in sec  # (d) the D3 parsing rule
