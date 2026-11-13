@@ -51,7 +51,14 @@ def test_parallel_run_matches_the_sequential_run(monkeypatch):
     par, ck4, peak4, saved, lines = _go(monkeypatch, 4)
     assert peak1 == 1 and 1 < peak4 <= 4                      # really concurrent, never above the requested number
     assert [r["claim"] for r in par] == [r["claim"] for r in seq]       # results come back in eval-set order
-    assert par == seq and ck4["results"] == ck1["results"]
+    def without_timing(row):
+        assert row["latency_ms"] > 0 and row["started_at"].endswith("+00:00")
+        return {key: value for key, value in row.items() if key not in ("latency_ms", "started_at")}
+
+    assert [without_timing(row) for row in par] == [without_timing(row) for row in seq]
+    assert {claim: without_timing(row) for claim, row in ck4["results"].items()} == {
+        claim: without_timing(row) for claim, row in ck1["results"].items()
+    }
     assert ck4["search_failures"] == ck1["search_failures"] == 3        # claims 0, 5, 10 lost search; counted exactly once each under threads
     assert saved and saved[-1] == 12 and sorted(saved) == list(range(1, 13))     # every claim checkpointed exactly once
     assert len(lines) == 12 and all("->" in l for l in lines)
@@ -68,17 +75,21 @@ def test_resumed_claims_are_not_rechecked_in_parallel(monkeypatch):
     assert "claim 0" not in calls and len(calls) == 3 and out[0]["got"] == "TRUE"
 
 
-def test_a_failing_worker_raises_like_a_sequential_run(monkeypatch):
+def test_a_failing_worker_records_the_error_and_other_rows_finish(monkeypatch):
     ev = _run_eval()
-    monkeypatch.setattr(ev, "check_forward", lambda text, ret, llm, log=False: (_ for _ in ()).throw(RuntimeError("boom")))
+    def check(text, ret, llm, log=False):
+        if text == "claim 1":
+            raise RuntimeError("sensitive exception detail")
+        return {"verdict": "TRUE", "claims": [], "layer": "live"}
+
+    monkeypatch.setattr(ev, "check_forward", check)
     monkeypatch.setattr(ev, "save_checkpoint", lambda c: None)
     ck = {"key": {}, "results": {}, "llm_failures": 0, "search_failures": 0, "no_llm": False}
-    try:
-        ev.run(_rows(3), [], _Llm(), ck, out=lambda *_: None, workers=2)
-    except RuntimeError as e:
-        assert "boom" in str(e)
-    else:
-        raise AssertionError("worker error was swallowed")
+    lines = []
+    result = ev.run(_rows(3), [], _Llm(), ck, out=lines.append, workers=2)
+    assert [row["status"] for row in result] == ["completed", "error", "completed"]
+    assert result[1]["got"] is None and result[1]["error_category"] == "check_exception"
+    assert len(ck["results"]) == 3 and "sensitive exception detail" not in str((ck, lines))
 
 
 def test_workers_flag_exists_and_defaults_to_sequential():

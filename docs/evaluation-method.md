@@ -29,19 +29,29 @@ All of these rows were written by an AI model and have not been reviewed by a na
 ```
 python scripts/run_eval.py --dry-run      # validates the set, prints counts by language and label, no network calls
 python scripts/run_eval.py                # full run; spends LLM quota, needs keys in .env
-python scripts/run_eval.py --resume       # continue after a stop (quota); same commit, same set, same dirty state
+python scripts/run_eval.py --resume       # reuse rows when schema, code, configuration and dataset match
 python scripts/run_eval.py --only-lang hi,te   # partial run, written to docs/evaluation-partial-run.md
 python scripts/run_eval.py --limit 5           # partial run
+python scripts/run_eval.py --no-match          # check with the published-verdict match layer disabled
+python scripts/run_eval.py --offline           # run three local synthetic fixtures without keys
 ```
-The run sets `SACH_NO_CACHE=1`, so the verdict cache is never read or written. Progress is checkpointed after each claim in `cache/eval_progress.json`; without `--resume` a run starts fresh. The report header names the commit measured (and whether the tree was dirty), the UTC date, the retrievers and the judges.
+The run sets `SACH_NO_CACHE=1` to disable verdict cache reads and writes. Progress is checkpointed after each claim in `cache/eval_progress.json`; without `--resume` a run starts fresh. Resume checks the checkpoint schema, commit, full dataset hash, working source files, local retrieval data, and effective provider, model and runtime settings. A resumed run preserves completed row outcomes, including failures. Start a fresh run to remeasure after an outage. The report header gives the commit, dirty state, UTC date, retrievers and judges.
+
+## Machine-readable results
+
+Live execution writes a versioned JSON artifact at `cache/evaluation-live.json`. Each row has a stable fixture ID, dataset provenance, expected label, prediction, check status, UTC start time, latency, code and config hashes, and evidence IDs. PIB releases use their PRIDs. Other evidence URLs use SHA-256 identifiers. Source availability records the search status and the evidence records observed by the pipeline. Availability of the source page itself remains unknown. The JSON omits claim text, evidence excerpts, credential values and exception messages.
+
+Accuracy, abstention, each type of overclaim and system failure use all attempted rows as their denominator. Accuracy counts exact matches on completed rows. Abstention counts completed UNVERIFIED responses, including correct controls. The `abstained_on_decisive` metric uses all attempted rows with a non-UNVERIFIED expected label as its denominator. Degraded and errored rows count as system failures. A wrong decisive fallback prediction still counts as an overclaim. Latency reports nearest-rank p50 and p95 across attempted rows, including failures. The live artifact breaks out curated claims, translated claims and invented controls by provenance.
+
+The offline fixture run uses local evidence and a deterministic judge through the claim-checking pipeline. It bypasses live matching, retrieval and provider construction and writes `cache/evaluation-offline-fixture.json` only. CI runs the tests and uploads this file as `evaluation-offline-fixtures`. The fixture pass rate measures a regression check with three English cases and carries its own dataset and mode.
 
 ## Degraded and partial runs
-A run is **degraded** if no LLM was available or the LLM failed on any source judgement (quota, outage). The failure count is stored in the checkpoint, so a resumed run that mixes healthy and failed claims is still degraded. A degraded run is written to `docs/evaluation-fallback-run.md`. A **partial** run (`--only-lang`, `--limit`) goes to `docs/evaluation-partial-run.md`. Neither can overwrite `docs/evaluation.md` or `data/eval_summary.json` (the numbers the website shows).
+A run is **degraded** if no LLM was available, a judge or web search failed, a live check ran with web search disabled, or a row timed out or raised an exception. Failures survive resume. A full degraded run goes to `docs/evaluation-fallback-run.md`. A **partial** run (`--only-lang`, `--limit`) goes to `docs/evaluation-partial-run.md`. A full run with matching disabled goes to `docs/evaluation-no-match-run.md`.
 
-Only a full, non-degraded run replaces `docs/evaluation.md`. The old report is first moved to `docs/evaluation-history/` with a "superseded" banner, and the new report links to it under "Previous runs".
+Only a complete, non-degraded live run with matching enabled replaces `docs/evaluation.md` and `data/eval_summary.json` (the numbers the website shows). The old report is moved to `docs/evaluation-history/` with a "superseded" banner, and the new report links to it under "Previous runs".
 
 ## Known weaknesses
-- About 50 rows. Per-language groups have 2 to 6 rows each, so one claim swings a percentage a lot.
+- Per-language groups are small, so one claim can move the result substantially.
 - The non-English rows are AI-written, so they are cleaner than real forwards. Real forwards have typos, mixed scripts, emoji and long chains.
 - Seeded rows are partly circular; many FALSE claims paraphrase PIB debunk titles.
 - Live search results vary between runs, so numbers move by a claim or two.
