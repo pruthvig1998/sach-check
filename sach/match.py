@@ -31,6 +31,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import date, datetime, timezone
 from urllib.parse import quote
 from . import index as pib_index
+from . import pibposts
 from .fetch import is_factchecker, host_of
 from .i18n import EMOJI, tr
 from .models import Claim, ClaimVerdict, FALSE, MISLEADING, TRUE, TIER_PIB, TIER_FACTCHECKER
@@ -47,6 +48,9 @@ TRANSLATE_TIMEOUT_S = 10.0   # only for non-English forwards
 DEFAULT_MAX_AGE_YEARS = 5.0  # third-party reviews older than this are not used (PIB is exempt)
 
 PIB_NAME = "PIB Fact Check"
+PIB_X_NAME = "PIB Fact Check (on X)"        # a debunk PIB published as a post on X (data/pib_posts.jsonl), never a pib.gov.in release
+PIB_NAMES = (PIB_NAME, PIB_X_NAME)
+POST_MIN_JACCARD = 0.9    # a post's claim is short and specific, so the wording must be (near) identical on top of every check_pair rule
 PIB_HOSTS = ("pib.gov.in", "factcheck.pib.gov.in")
 
 def enabled() -> bool:
@@ -161,6 +165,9 @@ def load_pib_records() -> list[dict]:
         seen.add(prid)
         rows.append({"title": title, "review_date": d, "url": f"https://pib.gov.in/PressReleasePage.aspx?PRID={prid}", "prid": prid,
                      "text": str(r.get("excerpt") or "")})
+    for r in pibposts.load():                  # PIB Fact Check posts on X (separate file; every record validated by sach.pibposts.valid)
+        rows.append({"title": r["claim"], "claim": r["claim"], "review_date": r["date"], "url": r["url"], "prid": "", "post_id": r["id"],
+                     "kind": "post", "verdict": r["verdict"], "text": ""})      # no page_text: numbers must match exactly
     return rows
 
 # ------------------------------------------------------------------------------------------------ candidates
@@ -183,13 +190,20 @@ def _fresh(review_date: str, today: date, is_pib: bool) -> bool:
 def _pib_candidates(claim_texts: list[str], records: list[dict]) -> list[dict]:
     out = []
     for r in records:
-        reviewed = pib_claim_from_title(r["title"])
+        post = r.get("kind") == "post"
+        reviewed = r["claim"] if post else pib_claim_from_title(r["title"])       # a post's claim is already PIB's own wording
         best = None
         for ct in claim_texts:
             res = check_pair(ct, reviewed, r.get("text", ""))
+            if post and res["similarity"]["jaccard"] < POST_MIN_JACCARD:
+                continue                    # tighter than check_pair for posts: one different word ("tablets", "PM") must fall through to the live layer
             if res["ok"] and (best is None or res["similarity"]["jaccard"] > best[1]["similarity"]["jaccard"]):
                 best = (ct, res)
         if best:
+            if post:
+                out.append(_cand(PIB_X_NAME, "https://x.com/PIBFactCheck", r["url"], r["review_date"],
+                                 "Misleading" if r["verdict"] == "MISLEADING" else "Fake", r["title"], "pib_x_post", best[0], reviewed, best[1]))
+                continue
             rating = "Misleading" if re.search(r"\bmisleading\b", r["title"], re.I) else "Fake"
             out.append(_cand(PIB_NAME, "https://factcheck.pib.gov.in/", r["url"], r["review_date"], rating, r["title"], "pib_archive",
                              best[0], reviewed, best[1]))
@@ -231,7 +245,7 @@ def pick_best(cands: list[dict]) -> dict | None:
     """Prefer PIB, then the most recent review, then the closest wording."""
     if not cands:
         return None
-    return sorted(cands, key=lambda c: (c["checker"] != PIB_NAME, _neg_day(c["review_date"]), -c["similarity"]))[0]
+    return sorted(cands, key=lambda c: (c["checker"] not in PIB_NAMES, _neg_day(c["review_date"]), -c["similarity"]))[0]
 
 def _neg_day(s: str) -> int:
     d = _parse_day(s)
@@ -337,7 +351,7 @@ def public_match(c: dict) -> dict:
     return {k: v for k, v in c.items() if not k.startswith("_")}
 
 def verdict_from_match(claim: Claim, c: dict, english: str, now_iso: str, translator: str = "") -> ClaimVerdict:
-    pib = c["checker"] == PIB_NAME
+    pib = c["checker"] in PIB_NAMES
     cite = {"source": c["checker"], "url": c["review_url"], "tier": TIER_PIB if pib else TIER_FACTCHECKER,
             "date_accessed": c["review_date"], "fetched_at": now_iso}
     cites = ", ".join(k for k, v in c["_checks"].items() if v)
