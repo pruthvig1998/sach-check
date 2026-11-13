@@ -40,6 +40,25 @@ A run is **degraded** if no LLM was available or the LLM failed on any source ju
 
 Only a full, non-degraded run replaces `docs/evaluation.md`. The old report is first moved to `docs/evaluation-history/` with a "superseded" banner, and the new report links to it under "Previous runs".
 
+## What each measure means
+The report ("Measures, separately") and `data/eval_summary.json` (`measures`) give each number its own denominator. None is a score for another.
+
+- **Accuracy (exact match)**: claims where Sach's verdict equals the label, over all claims (n). Abstentions and ERRORs count as misses.
+- **Abstention rate**: UNVERIFIED answers on claims whose label is TRUE or FALSE, over those decisive-label claims only. The UNVERIFIED control rows are excluded, since abstaining is correct there.
+- **Site card "abstained"** (`abstained` in `data/eval_summary.json`, the number shown on the home page): every UNVERIFIED answer where the label is not UNVERIFIED, whatever the label. It is a different count from the abstention rate above, which counts only TRUE/FALSE-labelled claims. The UNVERIFIED-labelled controls are correct when Sach says UNVERIFIED, so they are in neither count. The report's line for them reads "Label UNVERIFIED (controls): X/N answered UNVERIFIED as expected" and does not call them correct or abstained. The two agree today only because the set has no MISLEADING rows.
+- **Overclaim FALSE** and **Overclaim TRUE**: FALSE or TRUE verdicts where the label says something else, each counted over all claims (n).
+- **Wrong, not an overclaim**: any other wrong verdict (e.g. MISLEADING where the label is TRUE, FALSE or UNVERIFIED), over n. ERRORs are excluded here.
+- **Failures**: claims with a judge problem (`degraded`: a judge timed out or failed), a search failure (web search down or partial), or an ERROR (the check raised an exception; the run continues and the claim is recorded as ERROR). Each kind is counted and listed by claim, and a run with any of them is written as a fallback run. The count of source judgements the LLM failed on is reported beside them.
+- **Latency**: wall time per claim in seconds (p50, p90, p95, max, mean), using nearest-rank percentiles, over all claims with timing and per layer (`match`, `live`). The layers `mixed` (a match plus a live check) and `error` (the check raised an exception) also appear when they occur, so the per-layer rows are not only `match` and `live`. Claims from checkpoints written before timing was recorded are counted as untimed, not dropped.
+- **Failed, abstained and wrong cases**: every claim whose result is not an exact match, with its label, Sach's answer, layer, reason codes, language and time. The "Why" column gives the reason(s): judge problem, search failure, error, wrong verdict, overclaim or abstained (a claim can have several). For an ERROR claim the "Error" column gives only the exception class name (for example `TimeoutError`).
+
+**Error messages are never committed.** The committed reports (`docs/evaluation*.md`) and `data/eval_summary.json` contain no exception message text, only the class name. The local checkpoint (`cache/eval_progress.json`, git-ignored and never committed) keeps a best-effort-redacted message for debugging. Redaction there is three steps: (1) the value after a key or token name (`key=`, `api_key=`, `token:`, `password=`, `secret=`, `auth=`, `Authorization:`, `x-goog-api-key:` and similar), in plain, quoted, JSON and repr forms (`"password": "..."`, `{'api_key': '...'}`, `token "..."`) and of any length, is replaced; (2) a `Bearer` token is replaced; (3) a 20+ character key-like run (letters, digits, `_ - + / = . %`) is replaced when it has a digit, is 28+ characters long, or mixes upper and lower case with a symbol, and a symbol-bearing upper-only or lower-only 20 to 27 character token written straight after a key name is replaced too. The text is then made UTF-8 safe and cut to 160 characters.
+
+The redaction has real limits, which is why no message reaches a committed file. A short secret with no key name, a token of under 20 characters, a token with no digit and no symbol that is not after a key name, a secret split across lines or encoded, and an unusual format of any kind can all get through the checkpoint. The checkpoint is local and is read only by the person running the evaluation.
+
+## Running with `--workers`
+`--workers` checks several claims at once (default 1, sequential). It is faster, and it stays inside the provider limits at 3. The speed-up was observed once: about 4.7 minutes for 79 claims at 5 workers, against an estimated 20+ minutes sequentially. It is not guaranteed, and it depends on provider load.
+
 ## Known weaknesses
 - About 50 rows. Per-language groups have 2 to 6 rows each, so one claim swings a percentage a lot.
 - The non-English rows are AI-written, so they are cleaner than real forwards. Real forwards have typos, mixed scripts, emoji and long chains.

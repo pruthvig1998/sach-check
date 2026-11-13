@@ -51,7 +51,10 @@ def test_parallel_run_matches_the_sequential_run(monkeypatch):
     par, ck4, peak4, saved, lines = _go(monkeypatch, 4)
     assert peak1 == 1 and 1 < peak4 <= 4                      # really concurrent, never above the requested number
     assert [r["claim"] for r in par] == [r["claim"] for r in seq]       # results come back in eval-set order
-    assert par == seq and ck4["results"] == ck1["results"]
+    untimed = lambda rs: [{k: v for k, v in r.items() if k != "ms"} for r in rs]      # wall time differs run to run; everything else must match
+    assert untimed(par) == untimed(seq)
+    assert {k: {f: v for f, v in x.items() if f != "ms"} for k, x in ck4["results"].items()} == \
+           {k: {f: v for f, v in x.items() if f != "ms"} for k, x in ck1["results"].items()}
     assert ck4["search_failures"] == ck1["search_failures"] == 3        # claims 0, 5, 10 lost search; counted exactly once each under threads
     assert saved and saved[-1] == 12 and sorted(saved) == list(range(1, 13))     # every claim checkpointed exactly once
     assert len(lines) == 12 and all("->" in l for l in lines)
@@ -68,17 +71,20 @@ def test_resumed_claims_are_not_rechecked_in_parallel(monkeypatch):
     assert "claim 0" not in calls and len(calls) == 3 and out[0]["got"] == "TRUE"
 
 
-def test_a_failing_worker_raises_like_a_sequential_run(monkeypatch):
+def test_a_failing_worker_is_recorded_as_error_and_the_run_continues(monkeypatch):
+    """Changed from 'a worker error re-raises': a claim whose check raises is recorded as ERROR and the other claims still run."""
     ev = _run_eval()
-    monkeypatch.setattr(ev, "check_forward", lambda text, ret, llm, log=False: (_ for _ in ()).throw(RuntimeError("boom")))
+    def boom_on_1(text, ret, llm, log=False):
+        if text == "claim 1":
+            raise RuntimeError("boom")
+        return {"verdict": "FALSE", "claims": [], "layer": "live"}
+    monkeypatch.setattr(ev, "check_forward", boom_on_1)
     monkeypatch.setattr(ev, "save_checkpoint", lambda c: None)
     ck = {"key": {}, "results": {}, "llm_failures": 0, "search_failures": 0, "no_llm": False}
-    try:
-        ev.run(_rows(3), [], _Llm(), ck, out=lambda *_: None, workers=2)
-    except RuntimeError as e:
-        assert "boom" in str(e)
-    else:
-        raise AssertionError("worker error was swallowed")
+    out = ev.run(_rows(3), [], _Llm(), ck, out=lambda *_: None, workers=2)
+    assert len(out) == 3
+    assert ck["results"]["claim 1"]["got"] == "ERROR" and ck["results"]["claim 1"]["error"] == "RuntimeError"
+    assert ck["results"]["claim 0"]["got"] == "FALSE" and ck["results"]["claim 2"]["got"] == "FALSE"
 
 
 def test_workers_flag_exists_and_defaults_to_sequential():
