@@ -144,24 +144,43 @@ def save_checkpoint(c):
 
 
 # ---------- running ----------
-def run(rows, ret, llm, ckpt, log=False, out=print):
-    """Check every row not already in the checkpoint; update + persist the checkpoint after each claim."""
+def run(rows, ret, llm, ckpt, log=False, out=print, workers=1):
+    """Check every row not already in the checkpoint; update + persist the checkpoint after each claim.
+    workers > 1 checks that many claims at once (the pipeline is thread-safe: the web server runs it concurrently). Results, the checkpoint and the
+    degraded-run counters are identical to a sequential run; only the progress lines arrive in completion order. Default 1 = sequential."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
     ckpt["no_llm"] = bool(ckpt.get("no_llm")) or llm is None
     base = ckpt.get("llm_failures", 0)
     start_fail = getattr(llm, "failures", 0)
+    lock = threading.Lock()
+    n = len(rows)
+
+    def one(i, r):
+        res = check_forward(r["claim"], ret, llm, log=log)
+        with lock:                                  # one writer at a time: the checkpoint file and the counters
+            ckpt["results"][r["claim"]] = {"got": res["verdict"], "reasons": [v["reason_code"] for v in res["claims"]],
+                                           "cites": [c["url"] for v in res["claims"] for c in v["citations"]],
+                                           "layer": res.get("layer", "live")}      # which layer answered: match | live | mixed
+            ckpt["llm_failures"] = base + max(0, getattr(llm, "failures", 0) - start_fail)
+            if res.get("search_status") in ("down", "partial"):
+                ckpt["search_failures"] = ckpt.get("search_failures", 0) + 1       # web search lost for this claim: not a full run
+            save_checkpoint(ckpt)
+            out(f"[{i}/{n}] {r['label']:10} -> {ckpt['results'][r['claim']]['got']}")
+
+    todo = []
     for i, r in enumerate(rows, 1):
         if r["claim"] in ckpt["results"]:
-            out(f"[{i}/{len(rows)}] {r['label']:10} -> (resumed) {ckpt['results'][r['claim']]['got']}")
-            continue
-        res = check_forward(r["claim"], ret, llm, log=log)
-        ckpt["results"][r["claim"]] = {"got": res["verdict"], "reasons": [v["reason_code"] for v in res["claims"]],
-                                       "cites": [c["url"] for v in res["claims"] for c in v["citations"]],
-                                       "layer": res.get("layer", "live")}      # which layer answered: match | live | mixed
-        ckpt["llm_failures"] = base + max(0, getattr(llm, "failures", 0) - start_fail)
-        if res.get("search_status") in ("down", "partial"):
-            ckpt["search_failures"] = ckpt.get("search_failures", 0) + 1       # web search lost for this claim: not a full run
-        save_checkpoint(ckpt)
-        out(f"[{i}/{len(rows)}] {r['label']:10} -> {ckpt['results'][r['claim']]['got']}")
+            out(f"[{i}/{n}] {r['label']:10} -> (resumed) {ckpt['results'][r['claim']]['got']}")
+        else:
+            todo.append((i, r))
+    if max(1, int(workers or 1)) == 1:
+        for i, r in todo:
+            one(i, r)
+    else:
+        with ThreadPoolExecutor(max_workers=int(workers)) as ex:
+            for f in [ex.submit(one, i, r) for i, r in todo]:
+                f.result()                          # re-raise any error from a worker, like the sequential run would
     return [{**r, **ckpt["results"][r["claim"]]} for r in rows if r["claim"] in ckpt["results"]]
 
 
@@ -264,6 +283,7 @@ def main(argv=None):
     ap.add_argument("--limit", type=int, default=0, help="only the first N rows (partial run)")
     ap.add_argument("--no-match", action="store_true", help="switch the MATCH layer off (SACH_NO_MATCH=1) to measure the live layer alone; never replaces the headline files")
     ap.add_argument("--dry-run", action="store_true", help="validate and print the plan; no network calls")
+    ap.add_argument("--workers", type=int, default=1, help="check this many claims at once (default 1 = sequential; 5 is about 4-5x faster and stays inside the AI-call and search limits)")
     a = ap.parse_args(argv)
     rows = load_rows()
     errs = validate_rows(rows)
@@ -295,7 +315,7 @@ def main(argv=None):
     key = {"commit": commit, "eval_hash": eval_hash(rows), "dirty": dirty, **({"no_match": True} if a.no_match else {})}
     ckpt = load_checkpoint(key) if a.resume else {"key": key, "results": {}, "llm_failures": 0, "search_failures": 0, "no_llm": False}
     judges = [f"{n} ({s})" for n, s in llm.describe()] if llm is not None and hasattr(llm, "describe") else ([] if llm is None else [type(llm).__name__])
-    res = run(sel, ret, llm, ckpt, log=bool(os.environ.get("SACH_SEED_LEDGER")))
+    res = run(sel, ret, llm, ckpt, log=bool(os.environ.get("SACH_SEED_LEDGER")), workers=a.workers)
     failed = ckpt["llm_failures"]
     sfailed = ckpt.get("search_failures", 0)
     degraded = ckpt["no_llm"] or failed > 0 or sfailed > 0
