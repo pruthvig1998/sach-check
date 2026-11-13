@@ -224,6 +224,6 @@ def impact_page() -> bytes:
             '<h2 style="margin-top:34px">Evaluation</h2>%s'
             '<h2 style="margin-top:34px">Public ledger</h2><p>%s</p><h3>Latest FALSE verdicts</h3>%s<p class="note">%s <a href="/?view=ledger">Open the full ledger</a>.</p>'
             '<h2 style="margin-top:34px">How each number is computed</h2><ul class="imp-how">%s</ul>'
-            '<p class="note"><a href="/?view=impact&amp;format=json">The same data as JSON</a></p></section></div>') % (
+            '<p class="note"><a href="/?view=impact&amp;format=json">The same data as JSON</a> &middot; <a href="/?view=status" rel="nofollow">Service status</a></p></section></div>') % (
         esc(d["generated_at"].replace("T", " ")), honest, stats, vblock, lblock, evb, esc(ledger_line), recent, esc(sp_line), how)
     return layout(body, "Impact — Sach", path="/impact").replace(b"</style>", ("\n" + IMPACT_CSS).encode() + b"</style>", 1)

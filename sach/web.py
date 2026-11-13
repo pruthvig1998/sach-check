@@ -12,6 +12,7 @@ from . import telegram_bot as tg
 from . import ocr
 from . import pwa, share
 from . import siteurl
+from . import limits
 from .legal import PAGES as LEGAL_PAGES, legal_page
 from .site import MAX_CHARS, REPLY_LANGS, UPI_APPS, home, ledger_page, pay_page, result_block, tip_amount, tip_config, tip_qr_png, tip_qr_svg, upi_link
 
@@ -40,8 +41,10 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):           # keep serverless logs quiet
         pass
 
-    def _send(self, body: bytes, code=200, ctype="text/html; charset=utf-8", cache=None):
+    def _send(self, body: bytes, code=200, ctype="text/html; charset=utf-8", cache=None, extra=None):
         self.send_response(code)
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -50,8 +53,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _json(self, obj, code=200):
-        self._send(json.dumps(obj, ensure_ascii=False).encode(), code, "application/json; charset=utf-8")
+    def _json(self, obj, code=200, extra=None):
+        self._send(json.dumps(obj, ensure_ascii=False).encode(), code, "application/json; charset=utf-8", extra=extra)
+
+    def _busy(self, adm, want_json, text, lang_choice):
+        """Global live-check budget is used up: no check, no verdict, an honest notice (JSON: 503 + Retry-After)."""
+        if want_json:
+            return self._json(limits.busy_result(adm.reason, adm.retry_after), 503, extra={"Retry-After": str(adm.retry_after)})
+        self._send(home(result=limits.busy_block(adm.reason), prefill=text, reply=lang_choice, noindex=True))
 
     def _redirect_home_tip(self):
         self.send_response(302)
@@ -72,7 +81,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _robots(self):
         site = siteurl.site_url(self)
-        body = ("User-agent: *\nAllow: /\nDisallow: /?api=\nDisallow: /?go=\nDisallow: /?view=pay\nDisallow: /?view=tipqr\nDisallow: /?r=\n"
+        body = ("User-agent: *\nAllow: /\nDisallow: /?api=\nDisallow: /?go=\nDisallow: /?view=pay\nDisallow: /?view=tipqr\nDisallow: /?view=status\nDisallow: /?r=\n"
                 f"Sitemap: {site}/sitemap.xml\n")
         self._send(body.encode(), ctype="text/plain; charset=utf-8")
 
@@ -135,6 +144,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._robots()
         if view == "sitemap" or u.path == "/sitemap.xml":
             return self._sitemap()
+        if view == "status":                                 # provider / budget health: no keys, no IPs, never indexed or cached
+            from . import status
+            if Handler.llm is None and Handler.retrievers is None:
+                Handler.retrievers, Handler.llm = default_retrievers(), get_llm()
+            return status.serve(self, Handler.llm, Handler.retrievers, as_json=qs.get("format", [""])[0] == "json")
         if view in LEGAL_PAGES:                              # terms / privacy / refund / contact
             return self._send(legal_page(view))
         if view == "impact" or u.path == "/impact":          # live impact page (+ JSON); query form survives Vercel's rewrite
@@ -326,14 +340,18 @@ class Handler(BaseHTTPRequestHandler):
             return fail(400, "Please paste a message to check.")
         if len(text) > MAX_CHARS:
             return fail(413, f"That message is too long. Please keep it under {MAX_CHARS} characters, or paste the key claim.")
-        if rate_limited(self._client_ip()):
+        if limits.ip_limited(self._client_ip(), rate_limited):          # shared across instances when Upstash is set, else per instance
             return fail(429, "You're checking quickly. Please wait a minute and try again.")
         if Handler.retrievers is None:
             Handler.retrievers, Handler.llm = default_retrievers(), get_llm()   # lazy: serverless has no main()
+        adm = limits.admit(text, None if lang_choice == "auto" else lang_choice)   # cache/match answers are free; a live check needs budget
+        if adm.busy:
+            return self._busy(adm, want_json, text, lang_choice)
         try:
             res = check_forward(text, Handler.retrievers, Handler.llm, reply_lang=None if lang_choice == "auto" else lang_choice)
         except Exception:
             return fail(500, "Something went wrong while checking. Nothing was recorded. Please try again.")
+        limits.refund(adm, res)
         res = dict(res); res["warning_signs"] = scam_signs(text)   # advice only: from THIS request's text, never cached or stored
         if want_json:
             return self._json(res)
