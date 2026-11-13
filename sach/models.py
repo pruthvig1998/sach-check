@@ -37,6 +37,7 @@ class ClaimVerdict:
     trace: dict = field(default_factory=dict)   # audit trail: what was searched, every source judged, which rule fired
     layer: str = "live"      # "match" = a fact-checker's or PIB's existing published verdict (sach/match.py), not Sach's own check
     match: dict = field(default_factory=dict)   # attribution of a matched verdict: checker, review_url, review_date, rating_text, ...
+    detected: str | None = None                 # language Google detected (not in to_dict())
 
     def to_dict(self):
         d = {"claim": asdict(self.claim), "verdict": self.verdict, "english": self.english,
@@ -57,11 +58,14 @@ RULE_TEXT = {
     "timed_out": "The check ran out of time before it finished, so the result is UNVERIFIED.",
 }
 
-def build_trace(searched_as: str, evidence: list, reason_code: str) -> dict:
-    return {"searched_as": searched_as,
-            "sources": [{"source": e.source_name, "url": e.url, "tier": e.tier, "fetched_at": e.fetched_at,
-                         "title": e.title, "stance": e.stance} for e in evidence[:8]],
-            "rule": reason_code, "rule_text": RULE_TEXT.get(reason_code, "")}
+def build_trace(searched_as: str, evidence: list, reason_code: str, translator: str | None = None) -> dict:
+    t = {"searched_as": searched_as,
+         "sources": [{"source": e.source_name, "url": e.url, "tier": e.tier, "fetched_at": e.fetched_at,
+                      "title": e.title, "stance": e.stance} for e in evidence[:8]],
+         "rule": reason_code, "rule_text": RULE_TEXT.get(reason_code, "")}
+    if translator:
+        t["translator"] = translator          # "google" | "llm" | "none": who produced the English used for searching
+    return t
 
 def overall_rule(verdicts: list) -> str:
     """Plain sentence for whichever branch of verdict.aggregate() decides the overall verdict."""

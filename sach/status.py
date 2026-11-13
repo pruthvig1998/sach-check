@@ -6,7 +6,7 @@ Never shows keys, key suffixes or IP addresses: a Gemini judge's internal name c
 are labelled by position ("gemini #1") here, never by their internal name."""
 from __future__ import annotations
 import time
-from . import ledger, limits, store
+from . import gtranslate, ledger, limits, store
 
 _AI = [("groq", "GROQ_API_KEY"), ("gemini", "GEMINI_API_KEY"), ("openrouter", "OPENROUTER_API_KEY"), ("mistral", "MISTRAL_API_KEY"),
        ("cloudflare", "CLOUDFLARE_API_TOKEN"), ("claude", "ANTHROPIC_API_KEY")]
@@ -76,6 +76,7 @@ def status_data(llm=None, retrievers=None, st=None, now=None) -> dict:
                         "day_utc": {"used": use["day_used"], "max": use["day_max"]},
                         "refused_busy_today": use["busy_today"], "shared_store": use["shared_store"],
                         "note": "Fixed windows (the minute, the UTC day). A max of 0 means no limit. Cache and match answers are not counted."},
+        "google_translation": gtranslate.usage(st, now),
         "checks": {"total_all_time": total, "cache_hits_all_time": hits, "live_all_time": max(total - hits, 0),
                    "counting_since": c.get("first_event_at"),
                    "note": "All-time counters from the same store as the impact page (cache hits cost nothing). Matches are included in the live figure until they have their own counter."},
@@ -99,15 +100,18 @@ def status_page(d: dict) -> bytes:
         ("%s s" % r["paused_for_s"]) if r["paused_for_s"] else "-") for r in d["search_providers"])
     b, ck = d["live_budget"], d["checks"]
     lim = lambda x: "no limit" if not x["max"] else "%s of %s" % (x["used"], x["max"])
+    g = d["google_translation"]
+    gt_used = "%s of %s" % (g["chars_today"], g["max_chars_per_day"]) if g["max_chars_per_day"] else "%s (no limit)" % g["chars_today"]
     body = ('<div class="wrap" style="padding:30px 0"><p class="kicker">Health</p><h1 style="font-size:clamp(32px,8vw,56px)">Status</h1>'
             '<p class="sub">Updated %s UTC. %s</p>'
             '<h2>AI judges</h2><div style="overflow-x:auto"><table><thead><tr><th>Provider</th><th>Configured</th><th>Now</th><th>Models paused</th><th>Failures since start</th></tr></thead><tbody>%s</tbody></table></div>'
             '<h2 style="margin-top:28px">Web search</h2><div style="overflow-x:auto"><table><thead><tr><th>Provider</th><th>Configured</th><th>Now</th><th>Paused for</th></tr></thead><tbody>%s</tbody></table></div>'
             '<h2 style="margin-top:28px">Live-check budget</h2><ul><li>This minute: <b>%s</b></li><li>Today (UTC): <b>%s</b></li><li>Refused as busy today: <b>%s</b></li></ul><p class="note">%s</p>'
+            '<h2 style="margin-top:28px">Google Translation</h2><ul><li>Configured: <b>%s</b></li><li>Characters today (UTC): <b>%s</b></li><li>Skipped because the budget was used: <b>%s</b></li></ul><p class="note">Optional first-choice translator for non-English forwards; when it is off, over budget or unavailable, the AI translator is used. Repeats come from the cache and are not counted.</p>'
             '<h2 style="margin-top:28px">Checks</h2><ul><li>All time: <b>%s</b> (cache hits <b>%s</b>, everything else <b>%s</b>)</li><li>Counting since: %s</li></ul><p class="note">%s</p>'
             '<p class="note"><a href="/?view=status&amp;format=json">The same data as JSON</a> &middot; <a href="/impact">Impact</a></p></div>') % (
         esc(d["generated_at"].replace("T", " ")), esc(d["scope_note"]), ai, se, esc(lim(b["minute"])), esc(lim(b["day_utc"])),
-        b["refused_busy_today"], esc(b["note"]), ck["total_all_time"], ck["cache_hits_all_time"], ck["live_all_time"],
+        b["refused_busy_today"], esc(b["note"]), "yes" if g["configured"] else "no", esc(gt_used), g["skipped_over_budget_today"], ck["total_all_time"], ck["cache_hits_all_time"], ck["live_all_time"],
         esc(str(ck["counting_since"] or "not available")), esc(ck["note"]))
     return layout(body, "Status — Sach", path="/?view=status", noindex=True)
 

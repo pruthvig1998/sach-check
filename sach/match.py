@@ -297,27 +297,29 @@ def default_matcher() -> Matcher:
         _default = Matcher()
     return _default
 
-def run_match(claims: list[Claim], lang: str, llm, matcher: Matcher | None = None) -> list[tuple]:
+def run_match(claims: list[Claim], lang: str, llm, matcher: Matcher | None = None, info: list | None = None) -> list[tuple]:
     """-> [(match dict or None, english text)] per claim, in order. Claims run in parallel; whatever has not finished by the deadline
-    is simply not matched (it goes to the live layer). Never raises."""
+    is simply not matched (it goes to the live layer). Never raises. `info` (optional, one dict per claim) is filled with
+    {"translator", "detected"} so the pipeline can show who translated and refine the language."""
     m = matcher or default_matcher()
     n = len(claims)
     out = [(None, "")] * n
 
-    def one(c: Claim):
+    def one(c: Claim, i: int = -1):
         english = ""
-        if lang != "en" and llm is not None and hasattr(llm, "translate"):
-            try:
-                english = (llm.translate(c.text) or "").strip()
-            except Exception:
-                english = ""
+        if lang != "en":
+            from . import gtranslate               # Google Translate first (when keyed), the LLM as the automatic fallback
+            tr = gtranslate.translate_claim(c.text, lang, llm)
+            english = tr["text"]
+            if info is not None and 0 <= i < len(info):
+                info[i].update(translator=tr["translator"], detected=tr["detected"])
         if english == c.text:
             english = ""
         return m.match(c.text, english), english
 
     ex = ThreadPoolExecutor(max_workers=max(1, min(3, n)))
     try:
-        futs = [ex.submit(one, c) for c in claims]
+        futs = [ex.submit(one, c, i) for i, c in enumerate(claims)]
         wait(futs, timeout=API_TIMEOUT_S + 1.0 + (TRANSLATE_TIMEOUT_S if lang != "en" and llm is not None else 0))
         for i, f in enumerate(futs):
             if f.done():
@@ -334,7 +336,7 @@ def public_match(c: dict) -> dict:
     """The match object that goes into results, the cache, the ledger and the API: no private evidence keys."""
     return {k: v for k, v in c.items() if not k.startswith("_")}
 
-def verdict_from_match(claim: Claim, c: dict, english: str, now_iso: str) -> ClaimVerdict:
+def verdict_from_match(claim: Claim, c: dict, english: str, now_iso: str, translator: str = "") -> ClaimVerdict:
     pib = c["checker"] == PIB_NAME
     cite = {"source": c["checker"], "url": c["review_url"], "tier": TIER_PIB if pib else TIER_FACTCHECKER,
             "date_accessed": c["review_date"], "fetched_at": now_iso}
@@ -347,6 +349,8 @@ def verdict_from_match(claim: Claim, c: dict, english: str, now_iso: str) -> Cla
              "match_note": f"Checks passed: {cites}."}
     from .models import RULE_TEXT
     trace["rule_text"] = RULE_TEXT["matched_fact_check"]
+    if translator:
+        trace["translator"] = translator
     return ClaimVerdict(claim, c["category"], "matched_fact_check", [cite], english=english, trace=trace, layer="match", match=public_match(c))
 
 def fmt_date(iso: str) -> str:

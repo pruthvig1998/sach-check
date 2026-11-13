@@ -167,6 +167,7 @@ With no keys Sach still runs in a conservative heuristic mode: high precision, l
 | `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `MISTRAL_API_KEY` | More free-tier judges for failover (models overridable with `SACH_GROQ_MODELS`, `SACH_OPENROUTER_MODELS`, `SACH_MISTRAL_MODELS`, `SACH_GEMINI_MODEL`) |
 | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Workers AI as another free judge (`SACH_CLOUDFLARE_MODELS`) |
 | `SACH_MAX_LIVE_PER_MIN`, `SACH_MAX_LIVE_PER_DAY` | Global live-check budget (defaults 6 and 100; 0 = no limit). Cache hits never count. See [docs/scaling.md](docs/scaling.md) |
+| `GOOGLE_TRANSLATE_API_KEY`, `SACH_TRANSLATE_MAX_CHARS_PER_DAY` (default 150000; 0 = no limit), `SACH_TRANSLATE_MAX_CHARS_PER_MIN` (default 20000) | Optional. Uses Google Cloud Translation first for non-English forwards (on Google Cloud trial credits) and the AI translator as the fallback. Sach works without it. See [docs/scaling.md](docs/scaling.md) |
 | `SACH_EXCERPT_CHARS` | Page text sent to the AI per source (default 1200 of the most relevant characters; 0 = old behaviour) |
 | `ANTHROPIC_API_KEY` | Optional, paid, last-resort judge (`SACH_MODEL`) |
 | `SACH_JUDGE_ORDER` | Judge order, default `groq,gemini,openrouter,mistral,cloudflare,claude` |

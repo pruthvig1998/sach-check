@@ -452,6 +452,9 @@ def trace_block(res: dict) -> str:
         h = f'<div class="tc"><p><b>{esc(c["claim"]["text"])}</b></p>'
         if ct.get("searched_as") and ct["searched_as"] != c["claim"]["text"]:
             h += f'<p class="note">Searched as: {esc(ct["searched_as"])}</p>'
+            tw = {"google": "Google Translate", "llm": "an AI model"}.get(ct.get("translator"))
+            if tw:
+                h += f'<p class="note">Translated to English with {tw}.</p>'
         srcs = ct.get("sources") or []
         if srcs:
             items = ""

@@ -6,7 +6,7 @@ from .card import render_card
 from .extract import clean_text, extract_claims
 from .i18n import NOCLAIM, NOCLAIM_LABEL, tr
 from .lang import SUPPORTED, detect_language
-from . import cache, match as _match
+from . import cache, gtranslate, match as _match
 from .models import Claim, ClaimVerdict, UNVERIFIED, build_trace, overall_rule
 from .retrieve import canonical_key
 from .search import combine_status, DOWN
@@ -35,13 +35,17 @@ def _search_one(r, q):
     fn = getattr(r, "search_with_status", None)
     return fn(q) if fn else (r.search(q), None)
 
-def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, english: str = "") -> ClaimVerdict:
+def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, english: str = "", tinfo: dict | None = None) -> ClaimVerdict:
     left = lambda cap: max(0.3, min(cap, deadline - time.monotonic()))
     q = claim.text                                      # text used for searching + judging
+    tinfo = tinfo if tinfo is not None else {}
     if english:
         q = english                                     # already translated by the match layer: do not pay for it twice
-    elif lang != "en" and llm is not None and hasattr(llm, "translate"):
-        q = _run_with_deadline(lambda: llm.translate(claim.text), left(15), "") or claim.text   # PIB pages are mostly English
+    elif lang != "en":
+        tr = _run_with_deadline(lambda: gtranslate.translate_claim(claim.text, lang, llm), left(15), None)   # Google first, LLM fallback; PIB pages are mostly English
+        if tr:
+            q = tr["text"] or claim.text
+            tinfo.update(translator=tr["translator"], detected=tr["detected"])
     evidence = []
     rex = ThreadPoolExecutor(max_workers=max(1, len(retrievers)))      # PIB and web search in parallel, not one after the other
     rfuts = [rex.submit(_search_one, r, q) for r in retrievers]
@@ -75,7 +79,8 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
     ex.shutdown(wait=False)
     v = decide(claim, evidence)
     v.english = q if q != claim.text else ""
-    v.trace = build_trace(q, evidence, v.reason_code)      # every judged source, cited or not
+    v.trace = build_trace(q, evidence, v.reason_code, tinfo.get("translator") or "none")      # every judged source, cited or not
+    v.detected = tinfo.get("detected")
     v.trace["layer"] = "LIVE"
     v.search_status, v.search_provider = combine_status(sstat), ",".join(dict.fromkeys(sprov))   # not in to_dict(): read by check_forward
     return v
@@ -115,9 +120,10 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
     deadline = time.monotonic() + BUDGET_S
     # MATCH layer: an existing published verdict from PIB or a verified fact-checker, attributed. No live retrieval or LLM for these claims.
     matches = [(None, "")] * len(claims)
+    tinfos = [{} for _ in claims]           # per claim: which translator ran and what Google detected
     if not force_live and _match.enabled():
         try:
-            matches = _match.run_match(claims, lang, llm, matcher)
+            matches = _match.run_match(claims, lang, llm, matcher, tinfos)
         except Exception:
             matches = [(None, "")] * len(claims)
     now_iso = ledger.now()
@@ -125,11 +131,11 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
     todo = []
     for i, (c, (m, eng)) in enumerate(zip(claims, matches)):
         if m:
-            results[i] = _match.verdict_from_match(c, m, eng, now_iso)
+            results[i] = _match.verdict_from_match(c, m, eng, now_iso, tinfos[i].get("translator") or ("none" if lang == "en" else ""))
         else:
             todo.append(i)
     ex = ThreadPoolExecutor(max_workers=PARALLEL_CLAIMS)
-    futs = {i: ex.submit(_check_claim, claims[i], lang, retrievers, llm, deadline, matches[i][1]) for i in todo}
+    futs = {i: ex.submit(_check_claim, claims[i], lang, retrievers, llm, deadline, matches[i][1], tinfos[i]) for i in todo}
     for i, f in futs.items():
         try:
             results[i] = f.result(timeout=max(0.3, deadline - time.monotonic() + 3))
@@ -137,6 +143,12 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
             c = claims[i]
             results[i] = ClaimVerdict(c, UNVERIFIED, "timed_out", [], trace=build_trace(c.text, [], "timed_out"))   # ran out of time: say so, never guess
     ex.shutdown(wait=False)
+    if lang != "en":                      # Google's detector may sharpen an ambiguous Devanagari / Bengali-script guess (only the 'auto' reply language follows)
+        newlang = gtranslate.refine_language(lang, gtranslate.consensus_detected(tinfos), text)
+        if newlang != lang:
+            if out_lang == lang and not (reply_lang in SUPPORTED):
+                out_lang = newlang
+            lang = newlang
     live = [v for v in results if v.layer != "match"]
     overall = aggregate(results)
     # card cites the evidence behind the verdict that drove the overall result (Sach's own live claims only; matches carry their own attribution)

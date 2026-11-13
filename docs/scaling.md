@@ -138,3 +138,29 @@ Measured with a script over `data/pib_index.jsonl` (351 PIB releases, using the 
 
 The index only stores 1,500 characters per release, so the first row understates the saving on real live pages, which the old code
 cut at 6,000. The second row is synthetic (real text, joined), not a measurement of real long pages; real savings on live pages will sit between the two rows.
+
+## 7. Google Cloud trial credits (optional translator)
+
+With `GOOGLE_TRANSLATE_API_KEY` set, Sach sends a non-English claim to the Google Cloud Translation API (Basic, v2) first and falls back
+to the AI translator when Google is off, over budget, slow or errors. It uses Google's translator first and the AI model as fallback;
+we have not measured whether this is more accurate, only that it saves the AI quota (one call per non-English claim) and that Google
+reports the detected language. Latin-script text (English, Hinglish, Tinglish) never goes to Google.
+
+**What uses credits.** Only characters sent to Google: at most 1,000 characters per claim, only for Indian-script text, only on a
+cache miss (translations are cached 7 days under `gt:<sha256>`, so repeats cost nothing and are not counted). Language detection and
+translation are one call and are billed as characters.
+
+**Price and free allowance** (Google's pricing page, https://cloud.google.com/translate/pricing, read 2026-11-13): NMT text translation
+and language detection, the first 500,000 characters per month are free ("applied as $10 credit every month"), then $20.00 per
+1,000,000 characters. At the default cap of 150,000 characters per day the worst case is 4,500,000 characters in a 30-day month, which
+would be about $80 outside a free trial; on trial credits there is no automatic charge. Lower the cap if you want it inside the free 500,000
+characters (about 16,000 characters per day).
+
+**The guard.** `SACH_TRANSLATE_MAX_CHARS_PER_DAY` (default 150000, 0 = unlimited) and `SACH_TRANSLATE_MAX_CHARS_PER_MIN` (default 20000)
+are counted in the store per UTC day / minute (same pattern as the live-check budget; a failing store falls back to a per-instance
+counter, so it can only loosen the guard, never block checks). When a budget is used up, Google is skipped silently and the AI translator
+runs as before; the skip is counted on the status page, not logged as an error. After a 403 or 429 from Google Sach pauses Google for five minutes.
+
+**When the trial ends.** Google suspends the account's billing-enabled services; calls start returning 403, Sach pauses Google, and the
+AI translator takes over silently. Nothing breaks. There is no charge unless you upgrade the account to a paid one. Unset the key to switch it off.
+The status page (`/?view=status`) shows whether it is configured and today's characters against the cap (never the key).
