@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://sachcheck.in"><img alt="live: sachcheck.in" src="https://img.shields.io/badge/live-sachcheck.in-c2321f"></a>
   <img alt="English + 15 Indian languages" src="https://img.shields.io/badge/languages-English%20%2B%2015%20Indian-17140f">
-  <img alt="4012 tests" src="https://img.shields.io/badge/tests-4012%20passing-1f7a45">
+  <a href="EVIDENCE.md"><img alt="Recorded test evidence" src="https://img.shields.io/badge/tests-recorded%20evidence-1f7a45"></a>
   <img alt="cost to run: 0 rupees" src="https://img.shields.io/badge/cost%20to%20run-%E2%82%B90-c9780a">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-6b6558"></a>
 </p>
@@ -72,7 +72,7 @@ flowchart TD
 1. **Split** the forward into claims. Call-to-action fragments ("click the link") are dropped; `Rs.` / `रु.` / `రూ.` are understood.
 2. **Search in priority order.** PIB first: hand-seeded debunks, a local index of harvested PIB releases (`data/pib_index.jsonl`), PIB's live RSS feed, a PIB-scoped web search. Then the wider official pool. Fact-checkers are queried only when nothing authoritative turned up, and they can never decide a verdict. Web search tries Brave, then fails over to Tavily.
 3. **Judge each source.** The model must return a label and a sentence **copied verbatim from the page**. Code then checks that the quote really is on the page, the claim's numbers appear, subject words match, a "contradiction" is an actual denial or debunk (not a page that merely mentions fake news), direction is not inverted, and the claim or page contains no instruction aimed at the judge. A decisive stance must be confirmed by a **second, different model**; if none can answer, a deterministic title and number check stands in as the second opinion. Disagreement means no stance.
-4. **Decide** with the hard rules below, then render the card. Every citation is a page Sach actually fetched, with the date accessed.
+4. **Decide** with the hard rules below, then render the card. Live evidence cites the page actually fetched. The separate MATCH layer can use an archived published review without fetching that page again; its current timestamp does not establish source freshness.
 
 Judges are free-tier models with automatic failover (default order Groq, Gemini, OpenRouter, Mistral, then Anthropic if you add a paid key). Optionally, Gemini on Google Cloud Vertex AI (paid from your Google Cloud credit, capped per day) goes first when `GOOGLE_SA_JSON` is set, and the Vercel AI Gateway (free monthly credit, capped per day) sits after Groq when `AI_GATEWAY_API_KEY` is set. One check has a 48-second budget inside Vercel's 60-second limit; a claim that runs out of time is reported UNVERIFIED, never guessed.
 
@@ -205,7 +205,7 @@ Evaluated in this order, per claim, on authoritative evidence only (PIB debunks 
 | 5 | An official source confirms | **TRUE** |
 | 6 | Nothing authoritative | **UNVERIFIED** (`factchecker_only` if only fact-checkers had something, else `no_evidence`) |
 
-For a whole forward: any FALSE claim makes it **FALSE**; otherwise any MISLEADING makes it **MISLEADING**; **TRUE** only if every claim is TRUE; otherwise **UNVERIFIED**. A citation appears only if the page was actually fetched. With no AI judge available ("limited mode") only a clear PIB debunk can produce FALSE, and TRUE and MISLEADING are impossible.
+For a whole forward: any FALSE claim makes it **FALSE**; otherwise any MISLEADING makes it **MISLEADING**; **TRUE** only if every claim is TRUE; otherwise **UNVERIFIED**. Live decisive verdicts require fetched, cited evidence. With no AI judge, the live heuristic can only report a clear PIB debunk as FALSE. The separate MATCH layer attributes an existing publisher's verdict. A partially failed check may retain other judged evidence, so the limited-mode flag alone does not define the verdict.
 
 ## Features
 
@@ -216,7 +216,7 @@ For a whole forward: any FALSE claim makes it **FALSE**; otherwise any MISLEADIN
 - **Link, number and UPI ID checker** (second tool, no AI): paste a link, a UPI ID, a phone number, an app name or a whole forward and Sach says, per item, whether it is on its verified official list, imitates an official address (with the rule that fired and the real address), matches a scam pattern, or is something it cannot vouch for. It never says "safe". Details and limits: [docs/link-checker.md](docs/link-checker.md).
 - **Report to PIB Fact Check:** opens PIB's own channels with the claim ready to send. Sach never sends anything for you.
 - **Shareable verdict image** and a WhatsApp-ready text reply with a permanent "Full evidence" link.
-- **Verdict trace:** per claim, every source that was looked at, its stance, and the quote that decided it.
+- **Verdict trace:** per claim, up to eight retrieved sources, their titles and stances, and the deterministic rule that decided it. Displaying the exact validated source sentence is a planned improvement; the current trace does not preserve that quote.
 - **Public evidence ledger** of every check, and a **verdict cache** (7 days for TRUE, FALSE and MISLEADING; 6 hours for UNVERIFIED, because an official source may appear later).
 - **Installable app** with a WhatsApp share target, offline shell and private on-device history.
 - **Telegram bot:** forward a message to the bot, get the same card. Free to run: [docs/telegram-bot.md](docs/telegram-bot.md).
@@ -230,7 +230,7 @@ A second tool under the main checker (`#linkcheck`, or `/?view=link&q=...` witho
 ## Evaluation
 
 <!-- EVAL:START -->
-**Status: the fresh evaluation is scheduled, and no accuracy figure is published here yet.** It will be one full run of the 79-claim set (English plus 17 language variants) after the free-tier model quota resets. The last full runs were degraded by free-tier limits, so they are labelled as such and are not used as headline numbers.
+**Status: a fresh live evaluation is pending; no current accuracy figure is published here.** The set contains 79 claims (English plus 17 language variants). This checkout has no configured application AI/search credentials, so a clean live run remains blocked. Historical quota-limited runs and synthetic offline fixtures are not headline accuracy results. See [EVIDENCE.md](EVIDENCE.md) for dated commands, results and limitations.
 
 The report in [docs/evaluation.md](docs/evaluation.md) is replaced only by a full, non-degraded run, and the method (including how degraded and partial runs are kept out) is in [docs/evaluation-method.md](docs/evaluation-method.md).
 <!-- EVAL:END -->
@@ -274,13 +274,15 @@ Sach's own decisive verdicts (TRUE, FALSE, MISLEADING, each with at least one ci
 
 ```bash
 git clone https://github.com/pruthvig1998/sach-check && cd sach-check
-python -m venv .venv && source .venv/bin/activate
+python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q                 # offline, recorded fixtures, no live web (4012 tests at the time of writing)
+python -m pytest -q                 # deterministic suite; recorded counts and runtime in EVIDENCE.md
 python -m sach.web                  # http://localhost:8080
 ```
 
-With no keys Sach still runs in a conservative heuristic mode: high precision, low recall, mostly UNVERIFIED. Copy `.env.example` to `.env` and add keys to switch the rest on.
+With no keys Sach still runs in a conservative heuristic mode, usually returning UNVERIFIED; this is not a measured current precision claim. Copy `.env.example` to `.env` and add keys to switch the rest on. The recorded full-suite baseline uses Python 3.13.1; Python 3.9 failed test collection.
+
+For a short walkthrough, see the [90-second test path and demo script](docs/demo-script.md). [Product priorities](docs/product-priorities.md) separates useful next features from additions to defer. The current ledger and shared-report storage can contain submitted claim text; use synthetic or public examples, not personal forwards, until deliberate private checking and publication consent are implemented.
 
 | Variable | What it does |
 |---|---|
@@ -314,6 +316,7 @@ Scripts:
 python scripts/check_llm.py        # test every AI key and model with a live call and a quality probe
 python scripts/check_search.py     # test each search key with one small query
 python scripts/run_eval.py --dry-run   # validate the set, print counts, no network
+python scripts/run_eval.py --offline   # synthetic pipeline fixtures; JSON artifact, not live accuracy
 python scripts/run_eval.py         # full evaluation run (spends quota), writes docs/evaluation.md
 python scripts/red_team.py         # run the red-team set live, exit 1 on any overclaim
 python scripts/eval_retrieval.py   # LLM-free retrieval check
@@ -328,7 +331,7 @@ Code map: `sach/extract.py` (claims), `sach/retrieve.py` and `sach/search.py` (r
 
 ## Limitations
 
-- **Free-tier quotas are real.** Gemini, Groq and Tavily free plans can run out under load. Failover helps; when every judge is out Sach says "limited mode" and can only report a clear PIB debunk as FALSE. Runs affected this way are labelled degraded and are never published as a headline result.
+- **Provider limits are real.** AI and search quotas can run out under load. Failover helps, but unavailable services produce a limited/degraded notice. When no AI judge is available, the live heuristic can only report a clear PIB debunk as FALSE; partial failures can retain other judged evidence. Degraded evaluation runs never become headline results.
 - **Source coverage.** The focus is the central government. PIB handles Union matters only, so state-level or private-sector claims are mostly UNVERIFIED.
 - **Translation drift.** Non-English claims are translated to English for search and judging. Numbers and quotes are checked against the English page, but a mistranslated claim could be matched to the wrong source.
 - **Wording is AI-written and unreviewed.** Every non-English string, including Hindi and Telugu, awaits native-speaker review. **Manipuri cards are in English** until a native speaker supplies the wording.
