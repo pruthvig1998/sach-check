@@ -84,3 +84,16 @@ def test_a_failing_worker_raises_like_a_sequential_run(monkeypatch):
 def test_workers_flag_exists_and_defaults_to_sequential():
     src = (ROOT / "scripts" / "run_eval.py").read_text(encoding="utf-8")
     assert '"--workers"' in src and "default=1" in src and "workers=a.workers" in src
+
+
+def test_a_claim_with_a_judge_problem_is_counted_so_the_run_cannot_pass_as_clean(monkeypatch):
+    """check_forward marks degraded=True when a judge timed out or failed (its UNVERIFIED is not a real abstention); run() must count it."""
+    ev = _run_eval()
+    monkeypatch.setattr(ev, "save_checkpoint", lambda c: None)
+    monkeypatch.setattr(ev, "check_forward", lambda text, ret, llm, log=False:
+                        {"verdict": "UNVERIFIED", "claims": [], "layer": "live", "degraded": text.endswith(("1", "3"))})
+    ck = {"key": {}, "results": {}, "llm_failures": 0, "search_failures": 0, "no_llm": False}
+    ev.run(_rows(6), [], _Llm(), ck, out=lambda *_: None, workers=3)
+    assert ck["degraded_claims"] == 2
+    src = (ROOT / "scripts" / "run_eval.py").read_text(encoding="utf-8")
+    assert "or dclaims > 0" in src and "judge_problems" in src          # a degraded claim makes the whole run a fallback run
