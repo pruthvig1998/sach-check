@@ -246,8 +246,8 @@
   "id": "altered-nbs-season",
   "category": "altered-real-fact",
   "lang": "en",
-  "text": "The Union Cabinet has approved Nutrient Based Subsidy rates for Kharif 2026 on phosphatic and potassic fertilizers.",
-  "attack": "Real subsidy approval with the season swapped from Rabi 2026-27 to Kharif 2026 (a word change; only the year is a number).",
+  "text": "The Union Cabinet has approved Nutrient Based Subsidy rates for Rabi 2030-31 on phosphatic and potassic fertilizers.",
+  "attack": "Real subsidy approval with the season swapped to one that cannot exist yet (Rabi 2030-31; only the years change). REVISED 2026-11-13: the first version used 'Kharif 2026', but PIB really did announce NBS rates for Kharif 2026 on 8 Apr 2026 (PRID 2250060), so Sach's TRUE was correct and the case premise was wrong.",
   "based_on": "https://pib.gov.in/PressReleasePage.aspx?PRID=2334972",
   "page": {
    "url": "https://pib.gov.in/PressReleasePage.aspx?PRID=2334972",
@@ -400,8 +400,8 @@
   "id": "opposite-retirement-raised",
   "category": "opposite-of-debunk",
   "lang": "en",
-  "text": "Central Government has increased the retirement age of employees to 62 years.",
-  "attack": "Asserts the opposite direction (increase) of a debunked rumour (reduction to 50). The page does not address an increase.",
+  "text": "Central Government has increased the retirement age of employees to 64 years.",
+  "attack": "Asserts the opposite direction (increase) of a debunked rumour (reduction to 50). The page does not address an increase. REVISED 2026-11-13: the first version said 'to 62', but Factly had published a debunk of exactly that claim, so the matched FALSE (attributed to Factly) was correct and the case premise was wrong.",
   "based_on": "https://pib.gov.in/PressReleasePage.aspx?PRID=1618590",
   "page": {
    "url": "https://pib.gov.in/PressReleasePage.aspx?PRID=1618590",
