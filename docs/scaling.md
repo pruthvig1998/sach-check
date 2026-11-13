@@ -164,3 +164,23 @@ runs as before; the skip is counted on the status page, not logged as an error. 
 **When the trial ends.** Google suspends the account's billing-enabled services; calls start returning 403, Sach pauses Google, and the
 AI translator takes over silently. Nothing breaks. There is no charge unless you upgrade the account to a paid one. Unset the key to switch it off.
 The status page (`/?view=status`) shows whether it is configured and today's characters against the cap (never the key).
+
+## 8. Vertex AI judge (optional, paid from Google Cloud credit)
+
+With `GOOGLE_SA_JSON` set, Sach adds Gemini on Google Cloud Vertex AI as an AI judge and puts it **first** in the default order
+(`vertex,groq,gemini,openrouter,...`). The free-tier Gemini quotas (section 2) are shared per project and run out; Vertex bills against
+your Google Cloud trial credit instead and has real quota, so it removes that bottleneck. It uses the same prompt, parsing and
+validation as the other Gemini judge; only the transport differs (an OAuth token from a service account, signed with a small RS256
+implementation in `sach/vertex.py`, because the runtime has no third-party packages). Unset, it is simply off. `SACH_JUDGE_ORDER` overrides the position.
+
+**Setup.** (1) In the Google Cloud project that holds the credit, enable the Vertex AI API. (2) Create a service account and give it the
+single role `roles/aiplatform.user`, nothing else. (3) Create a JSON key for it and paste the whole file (or its base64) into the Vercel environment
+variable `GOOGLE_SA_JSON`. Never commit it, never put it in `.env` files that are tracked. (4) Check with `python scripts/check_llm.py`.
+Models default to `gemini-3.1-flash-lite,gemini-3.8-flash` (`SACH_VERTEX_MODELS`) at the `global` location only (regional locations do not serve them).
+
+**The guard.** Every call is billed, so `SACH_VERTEX_MAX_PER_DAY` (default 4000, 0 = unlimited) caps calls per UTC day, counted in the shared
+store like the live-check budget (a failing store falls back to a per-instance counter). Beyond the cap the provider is paused until 00:00 UTC
+and the other judges answer; the skip is counted on the status page, not raised as an error. A 429 pauses that model, a 5xx moves to the next model,
+a 401 or 403 pauses Vertex for 10 minutes. A failed token refresh is remembered for 30 seconds so a broken key does not hammer Google.
+The status page (`/?view=status`) shows configured, ready or paused, and calls today of the cap (never the project, the account or any key).
+Cost: estimate with the formula in section 5 using the current Vertex price of the model you use; not measured here.
