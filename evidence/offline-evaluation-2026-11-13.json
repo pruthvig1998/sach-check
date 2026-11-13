@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "mode": "offline_fixture",
+  "commit": "bc5e30c39138b5b4918f54ad16a36166f8074e7d",
+  "eval_hash": "c3d7e9ce618e187b1c5db3aac4acfb87a03b9c7ff883c44a2cf8599149400174",
+  "code_hash": "59225942738fd6240856a639bff496fa1462ccc63bf6f066d1ba7507be11cf59",
+  "config_hash": "e979c8ba09e4eccd56b28013961323a6af6c03c2e8d309696dcebe7fc9ff1179",
+  "dataset": "offline_pipeline_fixtures",
+  "generated_at": "2026-11-13T16:32:16.090145+00:00",
+  "dirty": true,
+  "partial": false,
+  "degraded": false,
+  "complete": true,
+  "expected_rows": 3,
+  "config": {
+    "python": "3.13.1",
+    "dependencies": {
+      "beautifulsoup4": "4.15.0",
+      "soupsieve": "4.1",
+      "anthropic": "2.8.0"
+    },
+    "match_enabled": false,
+    "max_match_age_years": 5.0,
+    "verdict_cache_enabled": false,
+    "workers": 1,
+    "ledger_logging": false,
+    "budget_seconds": 48.0,
+    "judge_concurrency": 8,
+    "excerpt_chars": 1200,
+    "retrievers": [
+      "FixtureRetriever"
+    ],
+    "search_providers": [],
+    "judges": [
+      "fixture"
+    ],
+    "judge_models": [
+      []
+    ],
+    "translate_enabled": false,
+    "translate_max_per_day": 150000,
+    "translate_max_per_min": 20000,
+    "gateway_max_per_day": 1500,
+    "vertex_max_per_day": 4000
+  },
+  "metrics": {
+    "accuracy": {
+      "numerator": 3,
+      "denominator": 3
+    },
+    "abstention": {
+      "numerator": 1,
+      "denominator": 3
+    },
+    "abstained_on_decisive": {
+      "numerator": 0,
+      "denominator": 2
+    },
+    "overclaimed_false": {
+      "numerator": 0,
+      "denominator": 3
+    },
+    "overclaimed_true": {
+      "numerator": 0,
+      "denominator": 3
+    },
+    "system_failure": {
+      "numerator": 0,
+      "denominator": 3
+    },
+    "latency_ms": {
+      "n": 3,
+      "p50": 0.876,
+      "p95": 1.938
+    }
+  },
+  "metrics_by_provenance": {
+    "synthetic_fixture": {
+      "accuracy": {
+        "numerator": 3,
+        "denominator": 3
+      },
+      "abstention": {
+        "numerator": 1,
+        "denominator": 3
+      },
+      "abstained_on_decisive": {
+        "numerator": 0,
+        "denominator": 2
+      },
+      "overclaimed_false": {
+        "numerator": 0,
+        "denominator": 3
+      },
+      "overclaimed_true": {
+        "numerator": 0,
+        "denominator": 3
+      },
+      "system_failure": {
+        "numerator": 0,
+        "denominator": 3
+      },
+      "latency_ms": {
+        "n": 3,
+        "p50": 0.876,
+        "p95": 1.938
+      }
+    }
+  },
+  "rows": [
+    {
+      "fixture_id": "fixture-library-grant",
+      "provenance": "synthetic_fixture",
+      "translated_from_id": null,
+      "expected_source_id": "url-sha256:b526fa9b12ae24006c2a7fd24d3926bad25901cb8429c67d141fadcb5f069164",
+      "verified_on": null,
+      "seeded": false,
+      "language": "en",
+      "expected_label": "FALSE",
+      "prediction": "FALSE",
+      "abstained": false,
+      "overclaim": null,
+      "status": "completed",
+      "outcome": "correct",
+      "abstention_category": null,
+      "error_category": null,
+      "error_categories": [],
+      "reason_codes": [
+        "official_contradiction"
+      ],
+      "source_availability": {
+        "search": "offline_fixture",
+        "observed_source_records": 1,
+        "cited": 1,
+        "page_availability": "unknown"
+      },
+      "evidence_ids": [
+        "url-sha256:b526fa9b12ae24006c2a7fd24d3926bad25901cb8429c67d141fadcb5f069164"
+      ],
+      "layer": "live",
+      "started_at": "2026-11-13T16:32:16.086699+00:00",
+      "latency_ms": 1.938,
+      "code_hash": "59225942738fd6240856a639bff496fa1462ccc63bf6f066d1ba7507be11cf59",
+      "config_hash": "e979c8ba09e4eccd56b28013961323a6af6c03c2e8d309696dcebe7fc9ff1179"
+    },
+    {
+      "fixture_id": "fixture-library-opening",
+      "provenance": "synthetic_fixture",
+      "translated_from_id": null,
+      "expected_source_id": "url-sha256:99b3a214e37b1f6397beb9e417d6b750d667aaacf46401659a08ef335dc0619a",
+      "verified_on": null,
+      "seeded": false,
+      "language": "en",
+      "expected_label": "TRUE",
+      "prediction": "TRUE",
+      "abstained": false,
+      "overclaim": null,
+      "status": "completed",
+      "outcome": "correct",
+      "abstention_category": null,
+      "error_category": null,
+      "error_categories": [],
+      "reason_codes": [
+        "official_confirmation"
+      ],
+      "source_availability": {
+        "search": "offline_fixture",
+        "observed_source_records": 1,
+        "cited": 1,
+        "page_availability": "unknown"
+      },
+      "evidence_ids": [
+        "url-sha256:99b3a214e37b1f6397beb9e417d6b750d667aaacf46401659a08ef335dc0619a"
+      ],
+      "layer": "live",
+      "started_at": "2026-11-13T16:32:16.089003+00:00",
+      "latency_ms": 0.876,
+      "code_hash": "59225942738fd6240856a639bff496fa1462ccc63bf6f066d1ba7507be11cf59",
+      "config_hash": "e979c8ba09e4eccd56b28013961323a6af6c03c2e8d309696dcebe7fc9ff1179"
+    },
+    {
+      "fixture_id": "fixture-library-bonus",
+      "provenance": "synthetic_fixture",
+      "translated_from_id": null,
+      "expected_source_id": null,
+      "verified_on": null,
+      "seeded": false,
+      "language": "en",
+      "expected_label": "UNVERIFIED",
+      "prediction": "UNVERIFIED",
+      "abstained": true,
+      "overclaim": null,
+      "status": "completed",
+      "outcome": "correct",
+      "abstention_category": "no_evidence",
+      "error_category": null,
+      "error_categories": [],
+      "reason_codes": [
+        "no_evidence"
+      ],
+      "source_availability": {
+        "search": "offline_fixture",
+        "observed_source_records": 0,
+        "cited": 0,
+        "page_availability": "unknown"
+      },
+      "evidence_ids": [],
+      "layer": "live",
+      "started_at": "2026-11-13T16:32:16.089891+00:00",
+      "latency_ms": 0.215,
+      "code_hash": "59225942738fd6240856a639bff496fa1462ccc63bf6f066d1ba7507be11cf59",
+      "config_hash": "e979c8ba09e4eccd56b28013961323a6af6c03c2e8d309696dcebe7fc9ff1179"
+    }
+  ]
+}

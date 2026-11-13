@@ -2,6 +2,7 @@
 import io, json, time, traceback, urllib.error
 import pytest
 from sach import llm as L, status, gateway as G
+from sach.models import TIER_PIB
 
 KEY = "vck_FAKE-GATEWAY-KEY-1234567890"
 DEBUNK_T = "No reduction in retirement age of Central Government employees, PIB Fact Check busts fake news"
@@ -102,9 +103,12 @@ def test_429_pauses_that_model_for_retry_after():
     g = FakeGateway(text=REPLY)
     g.error = lambda m: http_error(429, {"retry-after": "42"}) if m == "openai/gpt-oss-120b" else None
     j = judge(g)
-    assert j.stance(CLAIM, DEBUNK_T, DEBUNK_X) == "contradicts"       # the second model answered
+    assert j.stance(CLAIM, DEBUNK_T, DEBUNK_X) == "none"
+    assert [json.loads(r.data)["model"] for r in g.reqs] == j.models
     p = j._pauses()
     assert list(p) == ["openai/gpt-oss-120b"] and 30 < p["openai/gpt-oss-120b"] - time.time() <= 43 and j.available()
+    assert j.stance(CLAIM, DEBUNK_T, DEBUNK_X, tier=TIER_PIB) == "contradicts"
+    assert [json.loads(r.data)["model"] for r in g.reqs] == j.models + [j.models[1]]
 
 def test_5xx_fails_over_without_benching():
     g = FakeGateway(); g.error = http_error(503)

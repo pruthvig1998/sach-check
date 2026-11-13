@@ -1,19 +1,31 @@
 """Hard verdict rules. Pure functions: no network, no randomness."""
 from __future__ import annotations
+from datetime import datetime
+from .fetch import http_host_of
 from .models import *
 
+def _has_citation(evidence: Evidence) -> bool:
+    if not http_host_of(evidence.url):
+        return False
+    try:
+        datetime.fromisoformat(evidence.fetched_at)
+    except (TypeError, ValueError):
+        return False
+    return True
+
 def decide(claim: Claim, evidence: list[Evidence]) -> ClaimVerdict:
-    auth = [e for e in evidence if e.tier in AUTHORITATIVE]
+    fetched = [e for e in evidence if _has_citation(e)]
+    auth = [e for e in fetched if e.tier in AUTHORITATIVE]
     contra = [e for e in auth if e.stance == "contradicts"]
     conf = [e for e in auth if e.stance == "confirms"]
     mixed = [e for e in auth if e.stance == "mixed"]
-    fc = [e for e in evidence if e.tier == TIER_FACTCHECKER]
+    fc = [e for e in fetched if e.tier == TIER_FACTCHECKER]
 
     def cites(*groups):
         seen, out = set(), []
         for g in groups:
             for e in g:
-                if e.url not in seen and e.fetched_at:
+                if e.url not in seen:
                     seen.add(e.url); out.append(e.cite())
         return out
 

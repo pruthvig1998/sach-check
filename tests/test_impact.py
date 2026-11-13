@@ -3,7 +3,7 @@ import ast, importlib.util, json, pathlib, re
 import pytest
 import urllib.request as _ur
 from test_sach import server, FakeRetriever, TS          # noqa: F401  (server is a fixture)
-from sach import impact, ledger, store, fetch
+from sach import impact, ledger, store, fetch, site
 from sach.models import Evidence, TIER_PIB, TIER_OFFICIAL
 from sach.pipeline import check_forward
 
@@ -111,14 +111,50 @@ def test_numbers_match_ledger_and_counters():
 def test_evaluation_headline_from_file_and_missing_fields():
     ev = json.load(open(ROOT / "data" / "eval_summary.json", encoding="utf-8"))
     d = impact.impact_data()["evaluation"]
-    assert d["n"] == ev["n"] and d["correct"] == ev["correct"] and d["abstained"] == ev["abstained"]
-    assert d["correct_pct"] == round(ev["correct"] * 100 / ev["n"], 1)
-    for k in ("commit", "date", "by_lang", "overclaimed_true"):
-        if k not in ev:
-            assert k in d["missing_fields"]
+    # The checked-in 26/31 summary is legacy and lacks a measured TRUE-overclaim
+    # count. Both pages suppress it rather than interpreting that count as zero.
+    assert d["available"] is False and d["n"] is None and d["correct_pct"] is None
     page = impact.impact_page().decode()
-    if d["missing_fields"]:
-        assert "older format" in page
+    assert "Not available" in page and "26/31" not in page
+
+
+def test_benchmark_eligibility_is_shared_between_home_and_impact(monkeypatch):
+    full = {"n": 10, "correct": 7, "overclaimed_false": 1, "overclaimed_true": 1, "abstained": 1,
+            "commit": "abc123456", "date": "2026-11-13", "by_lang": {"en": {"n": 10}}}
+    for status in ({}, {"mode": "live", "complete": True, "partial": False, "degraded": False,
+                    "no_match": False, "system_failures": 0}):
+        summary = dict(full, **status)
+        assert site.eval_display(summary) is not None
+        monkeypatch.setattr(impact, "_eval_file", lambda summary=summary: (summary, None))
+        assert impact._evaluation()["available"] is True
+    invalid = (
+        {k: v for k, v in full.items() if k != "overclaimed_true"},
+        dict(full, overclaimed_true=None), dict(full, correct=-1), dict(full, n=0),
+        dict(full, correct=11), dict(full, abstained=11), dict(full, mode="offline_fixture"),
+        dict(full, run_mode="offline_fixture"), dict(full, correct=8),
+        dict(full, mode="fallback"), dict(full, partial=True), dict(full, complete=False),
+        dict(full, degraded=True), dict(full, no_match=True), dict(full, system_failures=1),
+        dict(full, system_failures="unknown"),
+    )
+    for summary in invalid:
+        assert site.eval_display(summary) is None, summary
+        monkeypatch.setattr(impact, "_eval_file", lambda summary=summary: (summary, None))
+        ev = impact._evaluation()
+        assert ev["available"] is False and ev["n"] is None and ev["correct_pct"] is None, summary
+
+
+def test_usage_labels_and_repeat_traffic_caveat():
+    d = impact.impact_data()
+    assert "answered without the verdict cache" in d["how"]["checks_served_fresh"]
+    assert "people or demonstrated outcomes" in impact.impact_page().decode()
+
+
+def test_limited_mode_copy_covers_partial_source_judging():
+    res = check_forward(FALSE_T, [FakeRetriever([PIB])], None)
+    html = site.result_block(res)
+    assert "Part of Sach’s AI check was unavailable or at capacity" in html
+    assert "some source comparisons may be missing" in html
+    assert "unverified” as uncertainty, not as proof a claim is false" in html
 
 
 def test_evaluation_file_missing(monkeypatch):

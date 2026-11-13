@@ -8,7 +8,7 @@ from . import timefmt
 from . import fetch, ledger, store
 from .lang import NAMES, SUPPORTED
 from . import trending
-from .site import ROOT, esc, layout
+from .site import ROOT, esc, layout, eval_display
 
 VERDICTS = ("TRUE", "FALSE", "MISLEADING", "UNVERIFIED")
 LANGS = SUPPORTED          # every language Sach detects (lang.SUPPORTED); counters for ones never seen simply read zero
@@ -38,13 +38,16 @@ def _eval_file() -> tuple[dict, str | None]:
 
 def _evaluation() -> dict:
     d, err = _eval_file()
+    display = eval_display(d) if d else None
+    ev = {"available": display is not None,
+          "error": err or (None if display is not None else
+                           "evaluation summary is incomplete, degraded, offline, partial, or invalid; no benchmark is shown")}
     keys = ("n", "correct", "overclaimed_false", "overclaimed_true", "abstained", "commit", "date")
-    ev = {"available": bool(d), "error": err}
     for k in keys:
-        ev[k] = d.get(k)
-    ev["by_lang"] = d.get("by_lang")
-    ev["correct_pct"] = pct(d["correct"], d["n"]) if isinstance(d.get("correct"), int) and isinstance(d.get("n"), int) else None
-    ev["missing_fields"] = [k for k in keys if k not in d] + ([] if "by_lang" in d else ["by_lang"]) if d else []
+        ev[k] = d.get(k) if display is not None else None
+    ev["by_lang"] = d.get("by_lang") if display is not None else None
+    ev["correct_pct"] = pct(display["correct"], display["n"]) if display is not None else None
+    ev["missing_fields"] = [k for k in keys if k not in d]
     ev["how"] = ("Read from data/eval_summary.json, which scripts/run_eval.py writes after a full run of the "
                  "evaluation set. Percent correct = correct / n.")
     return ev
@@ -97,6 +100,7 @@ def impact_data() -> dict:
         "checks_served_fresh": max(total - hits, 0),
         "cache_hits": hits,
         "cache_hit_pct": pct(hits, total),
+        "usage_note": "Usage counts are checks and claim rows, not unique people or demonstrated outcomes. They may include repeat checks and test traffic; this server does not separate those cohorts.",
         "no_claims": noc,
         "verdicts": {"denominator": vsum,
                      **{v: {"count": st.get("verdict:" + v, 0), "pct": pct(st.get("verdict:" + v, 0), vsum)} for v in VERDICTS}},
@@ -107,7 +111,7 @@ def impact_data() -> dict:
         "sources_policy": _sources_policy(),
         "how": {
             "checks_total": "Counter checks_total: incremented once for every completed check, including cache hits.",
-            "checks_served_fresh": "checks_total minus cache_hits: checks that ran the full pipeline.",
+            "checks_served_fresh": "checks_total minus cache_hits: completed checks answered without the verdict cache. This can include no-claim and MATCH-only paths, so it does not mean the full pipeline ran.",
             "cache_hits": "Counter cache_hits: incremented when an identical forward was answered from the verdict cache.",
             "no_claims": "Counter no_claims: forwards with nothing checkable (greetings, emoji, bare links). They are not in the verdict breakdown.",
             "verdicts": "Counters verdict:TRUE, verdict:FALSE, verdict:MISLEADING, verdict:UNVERIFIED (overall verdict of each check). "
@@ -174,7 +178,7 @@ def impact_page() -> bytes:
     if d["checks_total"]:
         stats = "".join((
             _stat(esc(str(d["checks_total"])), "checks counted"),
-            _stat(esc(str(d["checks_served_fresh"])), "ran the full pipeline"),
+            _stat(esc(str(d["checks_served_fresh"])), "answered without the verdict cache"),
             _stat(esc(str(d["cache_hits"])), "answered from the cache (%s of all checks)" % _pct(d["cache_hit_pct"])),
             _stat(esc(str(d["no_claims"])), "had nothing checkable"),
         ))
@@ -182,15 +186,15 @@ def impact_page() -> bytes:
         stats = _stat(NA, "No checks counted yet, so there is nothing to show.", na=True)
     honest = ('<div class="honest imp-honest" id="honesty"><h2 style="font-size:22px">Read this first</h2>'
               '<p><b>Counting since %s.</b> This server\'s counters are <b>%s</b>%s.</p>'
-              '<p>Numbers are computed from the ledger and counters on every page load; nothing here is typed in. %s</p></div>') % (
+              '<p>Numbers are computed from the ledger and counters on every page load; nothing here is typed in. %s</p>'
+              '<p>%s</p></div>') % (
         esc(timefmt.fmt_ist(since)) if since else "not available (no check has been counted yet)",
         "persistent" if persistent else "temporary",
         "" if persistent else ": they reset when the server restarts",
-        esc(d["storage_note"]))
+        esc(d["storage_note"]), esc(d["usage_note"]))
     vblock = _share_block("Verdicts", VERDICTS, {}, v, "the sum of the four verdict counters")
     lblock = _share_block("Languages of the forwards", LANGS, LANG_NAME, lg, "the sum of the language counters")
     if ev["available"]:
-        miss = ev["missing_fields"]
         facts = [("Claims in the evaluation set", ev["n"]), ("Judged exactly right", ev["correct"]),
                  ("Percent right", _pct(ev["correct_pct"])),
                  ("Overclaimed FALSE", ev["overclaimed_false"]), ("Overclaimed TRUE", ev["overclaimed_true"]),
@@ -200,8 +204,6 @@ def impact_page() -> bytes:
         evb = "<ul>%s</ul>" % li
         if ev["by_lang"]:
             evb += '<p class="note">By language: %s</p>' % esc(json.dumps(ev["by_lang"], ensure_ascii=False))
-        if miss:
-            evb += '<p class="note">Not in this evaluation file (older format): %s. Shown as not available.</p>' % esc(", ".join(miss))
     else:
         evb = '<p class="note">Not available: %s.</p>' % esc(ev["error"] or "no evaluation summary")
     evb += '<p class="note">%s</p>' % esc(ev["how"])
