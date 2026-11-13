@@ -234,13 +234,61 @@ def test_no_claim_without_signs_is_exactly_as_before():
     assert "looks like a scam pattern" not in h and "Scam warning" not in h
 
 # ------------------------------------------------------------------ 5. visible truncation (page script)
+NODE_PASTE = r"""
+const vm = require('vm');
+const JS = process.argv[1], raw = process.argv[2];
+const input = JSON.parse(raw);
+const els = {};
+const mk = (tag) => ({ tag, id: '', className: '', value: '', maxLength: input.maxLength, textContent: '', hidden: false,
+  dataset: {}, disabled: false, listeners: {},
+  addEventListener(t, f) { (this.listeners[t] = this.listeners[t] || []).push(f); },
+  insertAdjacentElement(pos, el) { els.trunc = el; }, setAttribute() {}, focus() {}, scrollIntoView() {}, requestSubmit() {},
+  classList: { add() {}, remove() {} } });
+const ta = mk('textarea'); ta.value = input.value; ta.id = 'text';
+const pb = mk('button'); pb.id = 'paste';
+const cnt = mk('span'); cnt.id = 'count';
+const byId = { '#text': ta, '#count': cnt, '#paste': pb };
+const ctx = {
+  document: { documentElement: { dataset: {} }, createElement: mk, querySelectorAll: () => [], addEventListener() {},
+    querySelector: (s) => (s === '#trunc' ? (els.trunc || null) : (byId[s] || null)) },
+  navigator: { clipboard: { readText: () => Promise.resolve(input.clip) } },
+  console };
+ctx.window = ctx; ctx.addEventListener = () => {};
+vm.createContext(ctx);
+vm.runInContext(JS, ctx);
+(async () => {
+  await pb.listeners.click[0]();
+  const note = els.trunc || null;
+  process.stdout.write(JSON.stringify({ length: ta.value.length, note: note ? note.textContent : null, hidden: note ? note.hidden : null }));
+})();
+"""
+
+def _run_paste_button(value, clip, maxlen=4000):
+    import json, shutil, subprocess, pytest
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    out = subprocess.run([node, "-e", NODE_PASTE, site.JS, json.dumps({"value": value, "clip": clip, "maxLength": maxlen})],
+                         capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+NOTE = "Only the first 4,000 characters will be checked."
+
 def test_home_script_shows_the_truncation_note_on_paste_and_on_the_paste_button_path():
     h = site.home().decode()
     js = site.JS
-    assert "Only the first 4,000 characters will be checked." in js
+    assert NOTE in js
     assert "addEventListener('paste'" in js and "e.inputType" in js
     assert 'maxlength="4000"' in h and "'trunc'" in js                              # the note element is created once, on demand
     assert js.count("readText") == 1                                                 # no new clipboard read: only the existing click handler
+    # the paste button path, run for real under node with a mocked DOM
+    over = _run_paste_button("", "x" * 4001)
+    assert over["length"] == 4000 and over["note"] == NOTE and over["hidden"] is False
+    exact = _run_paste_button("", "x" * 4000)
+    assert exact["length"] == 4000 and (exact["note"] is None or exact["hidden"] is True)
+    short = _run_paste_button("", "hello")
+    assert short["length"] == 5 and (short["note"] is None or short["hidden"] is True)
 
 def test_truncation_note_is_not_in_a_result_page():
     out, _ = run(log=False, use_cache=False)
@@ -288,3 +336,30 @@ def test_panel_strings_have_every_key_in_each_language():
     for lang in ("hi", "te"):
         for key in UNVERIFIED_PANEL["en"]:
             assert key in UNVERIFIED_PANEL[lang]
+
+# ------------------------------------------------------------------ 7. no-claim page: link panel language and the scam stamp
+def test_no_claim_page_link_panel_gets_the_reply_language():
+    text = "Good morning 🙏 Visit http://bit.ly/xyz1 now to register."
+    out, _ = run(text, ev=(), llm=NoneLLM(), log=False, use_cache=False)
+    assert out["no_claims"]
+    out["language"] = "hi"
+    h = result_block(out, text=text)
+    assert linkcheck.panel_html(text, "hi") in h
+    if linkcheck.panel_html(text, "hi") != linkcheck.panel_html(text, "en"):
+        assert linkcheck.panel_html(text, "en") not in h
+    out_en = dict(out, language="en")
+    assert linkcheck.panel_html(text, "en") in result_block(out_en, text=text)
+
+def test_scam_stamp_has_its_own_neutral_class_and_no_verdict_token():
+    import re
+    out = _nc(SCAM)
+    h = result_block(out)
+    stamp = re.search(r'<div class="([^"]*)">Scam warning</div>', h)
+    assert stamp, "the scam stamp is rendered"
+    tokens = stamp.group(1).split()
+    assert "scamwarn" in tokens
+    assert not set(tokens) & {"TRUE", "FALSE", "MISLEADING", "UNVERIFIED"}
+    assert ".stamp.scamwarn{" in site.CSS
+    rule = re.search(r"\.stamp\.scamwarn\{([^}]*)\}", site.CSS).group(1)
+    assert "var(--mis)" in rule
+    assert "MISLEADING" not in h.split('class="stamp')[1].split("</div>")[0]

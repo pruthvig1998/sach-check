@@ -72,7 +72,7 @@ def ensure_share(text: str, reply_lang, out: dict, max_chars: int = 4000):
         if isinstance(cur, dict):
             return rid if cur.get("key") == k else None
         ttl = max(60, int(cache.ttl_for(out) - _age_s(out)))              # same expiry as the cache entry, not longer
-        keep = {x: v for x, v in out.items() if x not in ("warning_signs", "cached", "served_at")}
+        keep = {x: v for x, v in out.items() if x not in ("warning_signs", "cached", "served_at", "extraction")}   # extraction = the user's skipped sentences: private
         st.set("share:" + rid, {"key": k, "text": str(text).strip()[:max_chars], "result": keep}, ttl_s=ttl)
         return rid
     except Exception:

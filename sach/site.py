@@ -88,6 +88,7 @@ border-radius:10px;padding:8px 22px;transform:rotate(-8deg);position:relative;di
 .stamp::after{content:"";position:absolute;inset:-6px;border:2px solid currentColor;border-radius:14px;opacity:.5}
 .stamp.big{font-size:clamp(34px,6vw,54px)}.stamp.sm{font-size:20px;border-width:3px;padding:3px 12px;transform:rotate(-4deg)}
 .stamp.FALSE{color:var(--false)}.stamp.TRUE{color:var(--true)}.stamp.MISLEADING{color:var(--mis)}.stamp.UNVERIFIED{color:var(--unv)}
+.stamp.scamwarn{color:var(--mis)}
 .stampbox .stamp{font-size:clamp(22px,4vw,30px);padding:6px 16px;border-width:4px;animation:drop .7s both}
 .stampbox .stamp:nth-child(1){transform:rotate(-8deg);animation-delay:.2s}.stampbox .stamp:nth-child(2){transform:rotate(6deg);animation-delay:.45s}
 .stampbox .stamp:nth-child(3){transform:rotate(4deg);animation-delay:.7s}.stampbox .stamp:nth-child(4){transform:rotate(-5deg);animation-delay:.95s}
@@ -193,7 +194,7 @@ ta.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.
 $$('.chip').forEach(c=>c.addEventListener('click',()=>{ta.value=c.dataset.text;upd();ta.focus();$('#checker').scrollIntoView({behavior:'smooth',block:'center'})}));
 const tn=on=>{if(!ta)return;let n=$('#trunc');if(!n&&on){n=document.createElement('p');n.id='trunc';n.className='note';n.setAttribute('role','status');ta.insertAdjacentElement('afterend',n)}if(n){n.textContent=on?'Only the first 4,000 characters will be checked.':'';n.hidden=!on}};
 if(ta){ta.addEventListener('paste',e=>{const cd=e.clipboardData||window.clipboardData;const p=cd?(cd.getData('text')||''):'';const sel=ta.selectionEnd-ta.selectionStart;if(ta.value.length-sel+p.length>ta.maxLength)tn(true)});ta.addEventListener('input',e=>{if(ta.value.length<ta.maxLength)tn(false);else if(!e.inputType)tn(true)})}
-const pb=$('#paste');if(pb)pb.addEventListener('click',async()=>{try{ta.value=(await navigator.clipboard.readText()).slice(0,ta.maxLength);upd();ta.focus()}catch(e){pb.textContent='Paste with Ctrl/Cmd+V'}});
+const pb=$('#paste');if(pb)pb.addEventListener('click',async()=>{try{const s=await navigator.clipboard.readText();tn(s.length>ta.maxLength);ta.value=s.slice(0,ta.maxLength);upd();ta.focus()}catch(e){pb.textContent='Paste with Ctrl/Cmd+V'}});
 const lg=$('#lang');if(lg){try{const v=localStorage.getItem('sach-lang');if(v&&!document.querySelector('#result')&&lg.value==='auto')lg.value=v}catch(e){}lg.addEventListener('change',()=>{try{localStorage.setItem('sach-lang',lg.value)}catch(e){}})}
 const clr=$('#clear');if(clr)clr.addEventListener('click',()=>{ta.value='';upd();ta.focus()});
 const f=$('#form');if(f)f.addEventListener('submit',e=>{if(!ta.value.trim()){e.preventDefault();ta.focus();return}$('#busy').classList.add('on');$('#go').disabled=true;$('#go').textContent='Checking…'});
@@ -586,7 +587,7 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
         return (f'<div class="result" id="result"><div>{stamp}</div>'
                 f'<div>{honesty.SCAM_LEAD if scam else ""}<p class="kicker">Nothing to check</p><div class="bubble"{card_attrs(res.get("language", "en"))}><span id="cardtext">{esc(res["card"])}</span></div>'
                 f'<p class="note" style="margin-top:14px">Greetings, links, emoji and bare numbers are not factual claims. Paste the sentence that makes the claim.</p>'
-                f'{sg}{linkcheck.panel_html(text)}</div></div>')
+                f'{sg}{linkcheck.panel_html(text, res.get("language", "en"))}</div></div>')
     rows = ""
     ms = match.matched_claims(res)
     for c in res["claims"]:

@@ -443,3 +443,18 @@ def test_privacy_page_mentions_share_links_and_image_shares(srv):
     assert "A share link shows the checked message and Sach&#x27;s result" in p or "A share link shows the checked message and Sach's result" in p
     assert "7 days for TRUE/FALSE/MISLEADING, 6 hours for UNVERIFIED" in p and "not indexed by search engines" in p
     assert "share an image into Sach" in p and "not stored" in p
+
+
+# ---------------------------------------------------------------- the skipped sentences never reach the public share record
+def test_share_record_never_stores_the_skipped_sentences_and_the_permalink_does_not_show_them(srv):
+    from test_cache_trace import run as run_check
+    from test_pagehonesty import LONG
+    out, _ = run_check(LONG, log=False)
+    assert out["extraction"]["skipped"]                                  # the private result does hold them (it may stay in the cache)
+    rid = share.ensure_share(LONG, None, out)
+    assert rid
+    assert "extraction" not in share.load_share(rid)["result"]
+    assert "extraction" not in store.get_store().get("share:" + rid)["result"]
+    base, _ = srv
+    p = req(base, "GET", f"/?r={rid}")[2]
+    assert "Not checked" not in p and "Checked 5 of 8 sentences" not in p

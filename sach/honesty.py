@@ -118,6 +118,6 @@ def extraction_html(res: dict) -> str:
 
 
 # ------------------------------------------------------------------ 4. scam-shaped message with no checkable claim
-SCAM_STAMP = '<div class="stamp big MISLEADING">Scam warning</div>'
+SCAM_STAMP = '<div class="stamp big scamwarn">Scam warning</div>'          # its own neutral warning class: never a verdict colour
 SCAM_LEAD = ('<p class="scamlead" style="margin:0 0 10px"><b>No checkable fact here, but this looks like a scam pattern. '
              'Do not click links or share personal details.</b></p>')
