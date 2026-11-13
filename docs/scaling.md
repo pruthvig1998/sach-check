@@ -184,3 +184,31 @@ and the other judges answer; the skip is counted on the status page, not raised 
 a 401 or 403 pauses Vertex for 10 minutes. A failed token refresh is remembered for 30 seconds so a broken key does not hammer Google.
 The status page (`/?view=status`) shows configured, ready or paused, and calls today of the cap (never the project, the account or any key).
 Cost: estimate with the formula in section 5 using the current Vertex price of the model you use; not measured here.
+
+## 9. Vercel AI Gateway judge (optional, free monthly credit)
+
+**What.** With `AI_GATEWAY_API_KEY` set, Sach adds the Vercel AI Gateway (OpenAI-compatible, `https://ai-gateway.vercel.sh/v1`) as an AI judge. In the
+default order it sits **after Vertex and Groq and before the free-tier Gemini keys and OpenRouter** (`vertex,groq,gateway,gemini,openrouter,...`),
+because those free tiers are usually exhausted. `SACH_JUDGE_ORDER` still overrides. Unset, it is simply off. Same prompt, parsing and validation as the
+other judges; the code is `GatewayJudge` in `sach/llm.py` and `sach/gateway.py`.
+
+**Free credit.** Vercel gives each team a monthly free AI Gateway credit (about $5 at the time of writing; it starts at the first request, and
+buying credits ends it). Check the AI Gateway page of your dashboard: Vercel's pricing page also says the free tier covers only a subset of models
+and has lower per-model rate limits. Whether `openai/gpt-oss-120b` and `google/gemini-3.1-flash-lite` are covered by the free credit was **not verified**; if
+they are not, calls return 402 and Sach simply pauses the provider until 00:00 UTC (nothing breaks; set `SACH_GATEWAY_MODELS` to models the dashboard marks free).
+
+**The cap.** `SACH_GATEWAY_MAX_PER_DAY` (default 1500, 0 = unlimited) caps calls per UTC day, counted in the shared store like the Vertex cap
+(a failing store falls back to a per-instance counter). Arithmetic: the credit lasts the month if `cap x 30 x cost per call <= $5`, i.e.
+cost per call <= $5 / (1500 x 30) = about $0.00011. A judge call is roughly 1,500 input tokens (page excerpt plus prompt) and 100 to 700 output tokens
+(an estimate, not measured). At list prices (gpt-oss-120b $0.35 in / $0.75 out per million tokens; gemini-3.1-flash-lite $0.25 / $1.50) that is
+about $0.0005 to $0.001 per call, so $5 buys roughly 5,000 to 10,000 calls, or 170 to 330 a day. **Lower the cap to about 200 (or use
+`openai/gpt-oss-20b` at $0.07 / $0.30) if you want the credit to last the whole month**; leave 1500 only if you accept it running out early
+(a 402 then pauses the gateway until the next day, and the other judges answer). Prices change: check the model list in the dashboard.
+
+**Failures.** 401 (bad key) or 403 pauses the provider 10 minutes; 402 (credit or budget used up) and the daily cap pause it until 00:00 UTC; 429 pauses that
+model for the Retry-After seconds (a minute if absent); 5xx and timeouts use the normal model-by-model failover. The status page (`/?view=status`) shows a
+`gateway` row (configured, ready or paused, calls today of the cap, never the key).
+
+**Setup.** (1) Vercel dashboard, AI Gateway, API Keys, create a key named for Sach. (2) Add it to the project's environment variables as `AI_GATEWAY_API_KEY`
+(never commit it, never put it in a tracked `.env`). (3) Optionally set `SACH_GATEWAY_MODELS` (comma list of `creator/model`) and `SACH_GATEWAY_MAX_PER_DAY`.
+(4) Check with `python scripts/check_llm.py` (its probes spend a few calls of the credit). You can also set a budget on the key in the dashboard as a second guard.

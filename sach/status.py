@@ -7,9 +7,9 @@ are labelled by position ("gemini #1") here, never by their internal name."""
 from __future__ import annotations
 import time
 from . import timefmt
-from . import gtranslate, ledger, limits, store, vertex
+from . import gtranslate, ledger, limits, store, vertex, gateway
 
-_AI = [("vertex", "GOOGLE_SA_JSON"), ("groq", "GROQ_API_KEY"), ("gemini", "GEMINI_API_KEY"), ("openrouter", "OPENROUTER_API_KEY"), ("mistral", "MISTRAL_API_KEY"),
+_AI = [("vertex", "GOOGLE_SA_JSON"), ("groq", "GROQ_API_KEY"), ("gateway", "AI_GATEWAY_API_KEY"), ("gemini", "GEMINI_API_KEY"), ("openrouter", "OPENROUTER_API_KEY"), ("mistral", "MISTRAL_API_KEY"),
        ("cloudflare", "CLOUDFLARE_API_TOKEN"), ("claude", "ANTHROPIC_API_KEY")]
 _SEARCH = [("brave", "BRAVE_API_KEY"), ("tavily", "TAVILY_API_KEY")]
 
@@ -18,11 +18,13 @@ def _family(name: str) -> str:
     return "gemini" if name.startswith("gemini") else name
 
 
-def _vertex_usage(j, st, now) -> dict:
+def _capped_usage(j, st, now, mod) -> dict:
     try:
         return j.usage(st, now)
     except Exception:
-        return {"calls_today": 0, "max_per_day": vertex.max_per_day(), "skipped_over_cap_today": 0}
+        return {"calls_today": 0, "max_per_day": mod.max_per_day(), "skipped_over_cap_today": 0}
+
+_CAPPED = {"vertex": vertex, "gateway": gateway}      # billed providers: calls today against a daily cap
 
 
 def ai_providers(llm, now=None, st=None) -> list:
@@ -44,13 +46,13 @@ def ai_providers(llm, now=None, st=None) -> list:
                      "configured": True, "state": "ready" if ready else "paused",
                      "paused_models": len(paused), "models": len(getattr(j, "models", []) or [1]),
                      "failures_since_start": int(getattr(j, "failures", 0) or 0)})
-        if fam == "vertex":                      # billed provider: today's calls against the cap (counts only, never the project or account)
-            rows[-1].update(_vertex_usage(j, st, now))
+        if fam in _CAPPED:                       # billed provider: today's calls against the cap (counts only, never the project, account or key)
+            rows[-1].update(_capped_usage(j, st, now, _CAPPED[fam]))
     for fam, env in _AI:
         if fam not in seen:
             rows.append({"provider": fam, "configured": False, "state": "off", "paused_models": 0, "models": 0, "failures_since_start": 0})
-            if fam == "vertex":
-                rows[-1].update({"calls_today": 0, "max_per_day": vertex.max_per_day(), "skipped_over_cap_today": 0})
+            if fam in _CAPPED:
+                rows[-1].update({"calls_today": 0, "max_per_day": _CAPPED[fam].max_per_day(), "skipped_over_cap_today": 0})
     return rows
 
 

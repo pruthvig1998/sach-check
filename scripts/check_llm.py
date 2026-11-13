@@ -1,6 +1,7 @@
 """Check every configured AI judge: does each key/model answer, and does it pass a tiny quality probe?
 Usage: python scripts/check_llm.py     (reads .env)
-Vertex AI (GOOGLE_SA_JSON set) is probed like the others; its calls are billed and count toward SACH_VERTEX_MAX_PER_DAY."""
+Vertex AI (GOOGLE_SA_JSON set) is probed like the others; its calls are billed and count toward SACH_VERTEX_MAX_PER_DAY.
+Vercel AI Gateway (AI_GATEWAY_API_KEY set) is probed too; its calls spend the free credit and count toward SACH_GATEWAY_MAX_PER_DAY."""
 import os, pathlib, sys, time
 root = pathlib.Path(__file__).resolve().parents[1]; sys.path.insert(0, str(root)); os.chdir(root)
 import sach  # noqa: loads .env
@@ -15,7 +16,7 @@ PROBES = [("retirement age to 50", DEBUNK_T, DEBUNK_X, "Central Government will 
 
 judges = build_judges()
 if not judges:
-    sys.exit("No AI keys found. Set GEMINI_API_KEY (free: aistudio.google.com/apikey), (or GOOGLE_SA_JSON for Vertex AI), and optionally GROQ_API_KEY / OPENROUTER_API_KEY / MISTRAL_API_KEY in .env")
+    sys.exit("No AI keys found. Set GEMINI_API_KEY (free: aistudio.google.com/apikey), (or GOOGLE_SA_JSON for Vertex AI, or AI_GATEWAY_API_KEY for the Vercel AI Gateway), and optionally GROQ_API_KEY / OPENROUTER_API_KEY / MISTRAL_API_KEY in .env")
 bad = 0
 for j in judges:
     print(f"\n== {j.name}  ({', '.join(getattr(j, 'models', []) or ['single model'])})")

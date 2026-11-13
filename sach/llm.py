@@ -6,7 +6,7 @@ Mistral -> Anthropic. When one is rate-limited or down, the next answers; a quot
 from __future__ import annotations
 import json, os, time, urllib.error, urllib.request
 from .stance import validate_stance, heuristic_stance
-from . import vertex
+from . import vertex, gateway
 
 PROMPT = ("You judge ONE source page against ONE claim from a viral forward. Reply on ONE line as:  LABEL | quote\n"
           "where LABEL is exactly one of the words below and quote is a sentence COPIED VERBATIM from the page (max 30 words) that justifies it. For NEITHER write no quote.\n"
@@ -212,10 +212,48 @@ class OpenAICompatJudge(_Judge):
     def _raw(self, model, system, user, max_tokens):
         body = {"model": model, "temperature": 0, "max_tokens": max_tokens,
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+        self._tune(body, model, max_tokens)
+        return self._post(model, body)["choices"][0]["message"]["content"] or ""
+
+    def _tune(self, body, model, max_tokens):
         if self.name == "groq" and "gpt-oss" in model:
             # reasoning models spend tokens thinking before they answer; with a small budget the answer can come back empty
             body.update({"reasoning_effort": "low", "max_tokens": max(max_tokens, 700)})
-        return self._post(model, body)["choices"][0]["message"]["content"] or ""
+
+
+class GatewayJudge(OpenAICompatJudge):
+    """Vercel AI Gateway (OpenAI-compatible), paid from the owner's free monthly credit (sach/gateway.py). Same request/response parsing,
+    model failover and second-opinion logic as the other OpenAI-compatible judges; only the transport and the failure policy differ:
+    401/403 benches the provider 10 minutes; 402 (credits used up) and the daily call cap (SACH_GATEWAY_MAX_PER_DAY) pause it until
+    00:00 UTC; 429 pauses that model for Retry-After. The key never appears in the name, errors or logs."""
+    name = "gateway"
+
+    def __init__(self, key, models=None, timeout=15, st=None, opener=None):
+        self.key, self.timeout, self._st, self._opener = key, timeout, st, opener or urllib.request.urlopen
+        self.models = [m.strip() for m in (models or ",".join(gateway.models())).split(",") if m.strip()]
+
+    def __repr__(self):
+        return "<GatewayJudge redacted>"
+
+    def _post(self, model, body):
+        gateway.reserve_call(self._st)                     # raises GatewayCapReached beyond the daily cap
+        return gateway.post(self._opener, self.key, model, body, self.timeout)
+
+    def _tune(self, body, model, max_tokens):
+        if "gpt-oss" in model:                             # reasoning model: leave room to think, or the answer can come back empty
+            body["max_tokens"] = max(max_tokens, 700)
+
+    def _note_failure(self, err, model=None):
+        code = getattr(err, "code", None)
+        if isinstance(err, gateway.GatewayCapReached) or code == 402:
+            self.exhausted_until = time.time() + gateway.seconds_to_utc_midnight(time.time())
+        elif code in (401, 403):
+            self.exhausted_until = time.time() + gateway.AUTH_PAUSE_S
+        else:
+            super()._note_failure(err, model)
+
+    def usage(self, st=None, now=None):
+        return gateway.usage(st or self._st, now)
 
 
 class ClaudeJudge:
@@ -359,6 +397,9 @@ def build_judges():
         judges.append(vj)
     for key in dict.fromkeys(_env_list("GEMINI_API_KEY", "GEMINI_API_KEYS", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3")):
         judges.append(GeminiJudge(key=key))
+    gw_key = (os.environ.get("AI_GATEWAY_API_KEY") or "").strip()
+    if gw_key:
+        judges.append(GatewayJudge(gw_key))
     for name, env, base, models in PROVIDERS:
         base = _provider_base(base)
         if base is None:
@@ -371,7 +412,10 @@ def build_judges():
         except Exception:
             pass
     # Fastest reliable provider first: a slow first judge eats the 30 s judging window and sources time out as "none".
-    default = ("vertex," + DEFAULT_JUDGE_ORDER) if vj else DEFAULT_JUDGE_ORDER          # paid by credit, real quota: first, unless overridden
+    base = DEFAULT_JUDGE_ORDER.split(",")
+    if gw_key:                                           # free monthly credit: after groq, before the (usually exhausted) free-tier keys
+        base.insert(base.index("groq") + 1, "gateway")
+    default = ",".join((["vertex"] if vj else []) + base)  # Vertex is paid by credit, real quota: first, unless overridden
     order = [x.strip().lower() for x in os.environ.get("SACH_JUDGE_ORDER", default).split(",") if x.strip()]
     rank = lambda j: next((i for i, p in enumerate(order) if getattr(j, "name", "").lower().startswith(p)), len(order))
     return sorted(judges, key=rank)          # stable: keys of the same provider keep their order
