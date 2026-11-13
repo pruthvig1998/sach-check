@@ -5,6 +5,7 @@ the page overlaps strongly with the claim; everything else stays 'none' -> UNVER
 With ANTHROPIC_API_KEY set, an LLM judges stance (see llm.py)."""
 from __future__ import annotations
 import re
+from decimal import Decimal, localcontext
 from .pib import DEBUNK_MARKERS
 from .lang import to_ascii_digits
 from .langwords import DEBUNK_RE, NEGATION_RE
@@ -53,6 +54,56 @@ def tokens(text: str) -> set[str]:
 def numbers(text: str) -> set[str]:
     """Numbers with thousands separators removed, so 19,800 == 19800 and Indian 1,20,579 == 120579."""
     return {n.replace(",", "") for n in re.findall(r"\d[\d,]*(?:\.\d+)?", to_ascii_digits(text))}      # 2000 == ২০০০ == २००० == ٢٠٠٠
+
+# Figures for the STANCEHARDEN checks only (abstain-only, so they may normalise more than numbers() does): number words
+# ('two thousand', 'one lakh', 'five crore') become digits, so 'Rs 1 lakh' == 'Rs 100000' == '1,00,000'.
+_UNITS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+          "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+          "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
+_SCALES = {"hundred": 100, "thousand": 1000, "lakh": 100000, "lakhs": 100000, "crore": 10000000, "crores": 10000000}
+
+def _canon_num(s: str) -> str:
+    if "." in s:
+        s = s.rstrip("0").rstrip(".") or "0"
+    return s.lstrip("0") or "0"
+
+def _scaled(num: str, scale: int) -> str:
+    if len(num) > 30:                       # absurd figures: keep the digits, do not do big arithmetic
+        return _canon_num(num)
+    with localcontext() as ctx:
+        ctx.prec = 60
+        return _canon_num(format(Decimal(num) * scale, "f"))
+
+def figures(text: str) -> set[str]:
+    """Every figure in the text as a canonical digit string, with thousands separators and number words normalised."""
+    toks = re.findall(r"\d[\d,]*(?:\.\d+)?|[a-z]+", to_ascii_digits(text or "").lower())
+    out, i, n = set(), 0, len(toks)
+    while i < n:
+        t = toks[i]
+        if t[0].isdigit():
+            num = t.replace(",", "")
+            i += 1
+            if i < n and toks[i] in _SCALES:
+                out.add(_scaled(num, _SCALES[toks[i]]))
+                i += 1
+            else:
+                out.add(_canon_num(num))
+        elif t in _UNITS or t in _SCALES:
+            total, cur = 0, 0
+            while i < n and (toks[i] in _UNITS or toks[i] in _SCALES):
+                w = toks[i]
+                i += 1
+                if w in _UNITS:
+                    cur += _UNITS[w]
+                elif _SCALES[w] == 100:
+                    cur = (cur or 1) * 100
+                else:
+                    total += (cur or 1) * _SCALES[w]
+                    cur = 0
+            out.add(str(total + cur))
+        else:
+            i += 1
+    return out
 
 def overlap(claim: str, page: str) -> float:
     c = tokens(claim)
@@ -113,7 +164,7 @@ kharif rabi monsoon summer winter""".split()}
 def critical_words(claim: str) -> set:
     """Qualifier words, plus proper nouns / names (capitalised words inside the sentence: places, seasons, schemes)."""
     toks = tokens(claim)
-    caps = {_stem(w.lower()) for w in re.findall(r"(?<=[A-Za-z0-9,] )[A-Z][a-z]{2,}", claim)}   # also after an acronym: 'PM Kisan'
+    caps = {_stem(w.lower()) for w in re.findall(r"(?<=[a-z0-9,] )[A-Z][a-z]{2,}", claim)}
     return (toks & _QUALIFIERS) | (caps - _GENERIC)     # generic officialese ('Union', 'Cabinet') may be dropped in a short quote
 
 _META = re.compile(r"\b(fake|false|hoax|rumou?rs?|misinformation|fact[- ]?check\w*|scam|fraud\w*|misleading)\b", re.I)
@@ -151,45 +202,128 @@ _REPORTED = re.compile(r"\b(media report|news report|reports? (said|claim|sugges
 def _norm(t: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[\"'\u201c\u201d\u2018\u2019.\u2026]", "", t or "")).strip().lower()
 
-# Stance-scope checks (added with STANCEHARDEN). Each one only ever turns a stance into 'none'; none of them can create a stance.
-_NEG_QUOTE = re.compile(r"\b(not approved|has not|have not|never|cancell?ed|withdrawn|rejected|denied|no longer|not applicable|yet to)\b", re.I)
+# Stance-scope checks (STANCEHARDEN). Each one only ever turns a stance into 'none'; none of them can create a stance, and none
+# of them changes the label that the base checks would return. See docs/red-team.md for what is checked and what is not.
+#
+# Negated quote: a confirmation or partial match whose quote is negated ('has not approved', 'will not give', 'was scrapped') says the
+# opposite of a positive claim. The claim-side list stays as it was, so a negated claim is still matched by its own negation.
+_NEG_QUOTE = re.compile(r"\b(not approved|has not|have not|never|cancel\w*|withdrawn|rejected|denied|no longer|not applicable|yet to|"
+                        r"will not|would not|did not|does not|do not|cannot|can not|no plan|no decision|no proposal|nothing|none|not yet|"
+                        r"discontinu\w*|stop\w*|drop\w*|scrap\w*|abandon\w*|on hold|defer\w*|postpon\w*|unlikely|ruled out)\b", re.I)
+_NEG_CLAIM = re.compile(r"\b(not approved|has not|have not|never|cancell?ed|withdrawn|rejected|denied|no longer|not applicable|yet to)\b", re.I)
 _DENY_WORD = re.compile(r"\b(fake|false|misleading|baseless|hoax|fabricated|no such|not true|rumou?rs?)\b|फर्जी|झूठ|भ्रामक|నకిలీ|అబద్ధ|తప్పుడు", re.I)
 _APPROVAL = re.compile(r"\b(approved|approves|sanctioned|notified|announced|launched|is real|is genuine|has been released)\b|मंजूरी|मंजूर|स्वीकृत", re.I)
 _SENTENCE_END = re.compile(r"(?<=[.!?\u0964])\s+|\n")
 _RESTRICT = re.compile(r"\b(only|except|provided that|subject to|limited to|restricted to|excluding|barring|other than|who (?:is an?|are))\b", re.I)
 
-def _contradiction_scope_ok(claim: str, title: str, quote: str) -> bool:
-    """A denial must deny THIS claim: same figures, same scheme names, not negated, not in the same sentence as an approval."""
-    cn, qn = numbers(claim), numbers(quote)
-    if cn and qn and not cn <= qn:
-        return False                                  # 'Rs 2000 is fake' cannot refute 'Rs 5000'; neither can a 2019 denial refute a 2024 claim
-    if not critical_words(claim) <= tokens(f"{title} {quote}"):
+# Hedges, modality, questions and reported claims: a quote that says what might happen, asks, or reports a claim is not a confirmation.
+# 'May' is matched only in lower case, so 'May 2026' (a month) is not a hedge.
+_HEDGE = re.compile(r"\b(?:if|unless|might|could|proposes|proposed|proposal|considering|consider|likely|expected to|plans to|"
+                    r"under consideration|subject to approval)\b|(?-i:\bmay\b)", re.I)
+_MODAL_HEDGE = re.compile(r"\b(?:if|unless|might|could|likely)\b|(?-i:\bmay\b)", re.I)   # the part of a hedge that dilutes a denial
+_QUESTION = re.compile(r"[?\u061F\uFF1F\u00BF]")
+_CLAIM_REPORT = re.compile(r"\b(claims?|claimed|claiming|alleged|alleges|allegedly|forwards?|forwarded|viral message|message claims?|"
+                           r"according to (?:a|the) forward|rumou?rs?)\b", re.I)
+
+# Grader or label-style text inside a quote ('Rating: Fake', 'marked as true', 'follow these instructions'): never evidence.
+_GRADER = re.compile(r"\brated (?:as|true|false)\b|\bfact[- ]check rating\b|\brating\s*:|\bverdict\s*:|\bmarked as\b|\bmark (?:it|this) as\b|"
+                     r"\bscore it\b|\bas an ai\b|\bsystem prompt\b|\bignore (?:all )?(?:the )?(?:previous|prior|above|earlier)\b|"
+                     r"\b(?:follow|obey|apply|use|execute|comply with|ignore)\s+(?:these|the following|my|our|this|all|the)?\s*instructions?\b|"
+                     r"\binstructions?\s*:", re.I)
+
+# A denial that is inverted by a softener ('far from false', 'anything but fake', 'untrue', 'nothing less than genuine') says the opposite.
+_INVERTED = re.compile(r"\b(untrue|far\s+from|hardly|anything\s+but|nowhere\s+near|not\s+at\s+all|nothing\s+less\s+than|not\s+in\s+the\s+least|"
+                       r"in\s+no\s+way|no\s+way|can(?:\s?not|[\u2019']?t)\s+be\s+called)\b", re.I)
+
+# Capitalised words in a denial sentence that the claim and title do not contain are another subject ('The Ayushman scheme ... is fake').
+# The sentence-initial and after-acronym forms are read here only; critical_words() keeps its base reading.
+_CAP_WORD = re.compile(r"\b[A-Z][a-z]{2,}\b")
+_CAP_FUNCTION = set("""the this that these those it its there here no not such a an in on at as if when after before however also we our they he
+she his her you your please dear sir madam reports report news media official officials fact check claim message forward true false
+fake pib govt is are was were be but and or so yes nothing none everything all any some many most once now today yesterday tomorrow
+may will can does did do has have had what who why how which where while since until unless though although because other another
+each every both either neither only just even still yet again more less very much""".split())
+_CAP_STOP = {_stem(w) for w in _CAP_FUNCTION} | _GENERIC
+
+# Group words: a denial of 'every man' does not refute 'every woman'. Keys are the surface forms, values the canonical group.
+_GROUP = {"woman": "women", "women": "women", "man": "men", "men": "men", "girl": "girls", "girls": "girls", "boy": "boys", "boys": "boys",
+          "farmer": "farmers", "farmers": "farmers", "student": "students", "students": "students", "widow": "widows", "widows": "widows",
+          "senior": "seniors", "seniors": "seniors", "citizen": "citizens", "citizens": "citizens", "child": "children", "children": "children",
+          "bpl": "bpl", "apl": "apl", "labourer": "labourers", "labourers": "labourers", "worker": "workers", "workers": "workers",
+          "youth": "youth", "minor": "minors", "minors": "minors", "pensioner": "pensioners", "pensioners": "pensioners",
+          "family": "families", "families": "families", "household": "households", "households": "households"}
+
+def _hedges(text: str) -> set:
+    return {m.group(0).lower() for m in _HEDGE.finditer(text or "")}
+
+def _modal_hedges(text: str) -> set:
+    return {m.group(0).lower() for m in _MODAL_HEDGE.finditer(text or "")}
+
+def _groups(text: str) -> set:
+    return {_GROUP[w] for w in re.findall(r"[a-z]+", (text or "").lower()) if w in _GROUP}
+
+# Restriction phrases: a quote that limits the claim ('above 60 years', 'BPL families', 'in Delhi') must be matched by the claim.
+_RESTRICT_PHRASES = (
+    re.compile(r"\b(?:above|below|over|under|older than|younger than)\s+(?:the\s+age\s+of\s+)?\d[\d,]*(?:\s*(?:years?|yrs?))?", re.I),
+    re.compile(r"\baged?\s+\d[\d,]*(?:\s*(?:-|to|and)\s*\d[\d,]*)?", re.I),
+    re.compile(r"\bbetween\s+\d[\d,]*\s+and\s+\d[\d,]*", re.I),
+    re.compile(r"\b(?:bpl|apl|aay|category|categories|eligible|eligibility|applicable to|for those who|residents? of)\b", re.I),
+)
+_PLACE = re.compile(r"\b[Ii]n\s+([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})*)")
+
+def _contradiction_scope_ok(claim: str, title: str, quote: str, text: str = "") -> bool:
+    """A denial must deny THIS claim: same figures, same scheme names and groups, not negated or softened, not hedged, and not in the
+    same sentence as an approval."""
+    td = f"{title} {quote}"
+    cf, tf = figures(claim), figures(td)
+    if cf and not cf <= tf and not cf <= figures(text):
+        return False                                  # the claim's figures must be in the denial or on the page: 'Rs 2000 is fake' cannot refute 'Rs 5000'
+    if tf - cf:
+        return False                                  # ...and the denial must not carry figures or years the claim does not have
+    if not critical_words(claim) <= tokens(td):
         return False                                  # 'Ayushman scheme ... is fake' cannot refute 'PM Kisan ...'
+    if _INVERTED.search(td):
+        return False                                  # 'far from false', 'anything but fake', 'untrue': a softened denial says the opposite
+    claim_t, title_t, claim_g = tokens(claim), tokens(title), _groups(claim)
     for sent in _SENTENCE_END.split(quote or ""):
+        if not _DENY_WORD.search(sent):
+            continue
         for m in _DENY_WORD.finditer(sent):
-            if _NEGATION.search(" ".join(sent[:m.start()].split()[-4:])):
+            before = sent[max(0, m.start() - 60):m.start()].split()[-4:]
+            if _NEGATION.search(" ".join(before)):
                 return False                          # 'is not fake', 'never false', 'no longer misleading'
-            if _APPROVAL.search(sent):
-                return False                          # 'approved ... no such thing': a sentence that both denies and approves
-            if cn and not numbers(sent) <= cn:
-                return False                          # 'Reports of Rs 2000 ... are misleading; the Rs 5000 scheme is real' (figures in the denial)
-            if _denial_names_another_subject(sent, claim, title):
-                return False                          # 'The Ayushman scheme ... is fake' names a subject the claim (and title) do not
+        if _APPROVAL.search(sent):
+            return False                              # 'approved ... no such thing': a sentence that both denies and approves
+        if _modal_hedges(sent) - _modal_hedges(claim):
+            return False                              # 'may be fake', 'if approved, this is fake': a hedged denial
+        if figures(sent) - cf:
+            return False                              # 'Reports of Rs 2000 ... are misleading; the Rs 5000 scheme is real'
+        names = {_stem(w.lower()) for w in _CAP_WORD.findall(sent)}
+        if names - _CAP_STOP - claim_t - title_t:
+            return False                              # 'The Ayushman scheme ... is fake' names a subject the claim (and title) do not
+        if _groups(sent) - claim_g:
+            return False                              # 'every man' denied for a claim about 'every woman'
     return True
 
-_NAME_STOP = _GENERIC | {_stem(w) for w in "fact check unit pib news claim message".split()}
-
-def _denial_names_another_subject(sentence: str, claim: str, title: str) -> bool:
-    """Capitalised names inside a denial sentence (mid-sentence, as critical_words reads them) that the claim and title do not contain."""
-    names = {_stem(w.lower()) for w in re.findall(r"(?<=[A-Za-z0-9,] )[A-Z][a-z]{2,}", sentence)}
-    return bool(names - _NAME_STOP - tokens(claim) - tokens(title))
-
 def _unmatched_restriction(claim: str, quote: str) -> bool:
-    """True when the quote limits the claim ('only', 'who is a ...') and the claim does not contain the same limit."""
-    cl = " ".join((claim or "").lower().split())
-    for m in _RESTRICT.finditer(quote or ""):
-        phrase = " ".join(m.group(1).lower().split())
-        if not re.search(r"\b" + re.escape(phrase) + r"\b", cl):
+    """True when the quote limits the claim ('only', 'above 60 years', 'BPL', 'in Delhi') and the claim does not contain the same limit."""
+    cw = re.findall(r"[a-z0-9]+", (claim or "").lower())
+    grams = set()
+    for n in range(1, 7):
+        for i in range(len(cw) - n + 1):
+            grams.add(tuple(cw[i:i + n]))
+    words = set(cw)
+    q = quote or ""
+    for m in _RESTRICT.finditer(q):
+        if tuple(re.findall(r"[a-z]+", m.group(1).lower())) not in grams:
+            return True
+    for rx in _RESTRICT_PHRASES:
+        for m in rx.finditer(q):
+            ptoks = tuple(re.findall(r"[a-z0-9]+", m.group(0).lower()))
+            if len(ptoks) > 6 or ptoks not in grams:
+                return True
+    for m in _PLACE.finditer(q):
+        if any(w not in words for w in re.findall(r"[a-z]+", m.group(1).lower())):
             return True
     return False
 
@@ -199,8 +333,11 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -
     - quote must overlap the claim (kills 'related topic' calls)
     - CONFIRMS: quote must contain every number in the claim
     - CONTRADICTS: the page must itself be a debunk/denial (a page describing a real scheme can never refute)
-    Anything failing a check becomes 'none' -> UNVERIFIED."""
-    if label == "none":
+    STANCEHARDEN adds abstain-only checks (negated, hedged, questioned, reported, graded, restricted or inverted quotes; denials of other
+    figures, groups or subjects). Anything failing a check becomes 'none' -> UNVERIFIED. The label is never changed."""
+    if not isinstance(label, str) or label not in ("confirms", "contradicts", "mixed"):
+        return "none"
+    if not all(isinstance(x, str) for x in (quote, claim, title, text)):
         return "none"
     page = _norm(f"{title} {text}")
     # Models often shorten a long sentence with "..." / "…". Every piece must still appear word for word on the page
@@ -209,19 +346,28 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -
     parts = [x for x in parts if x]
     if not parts or any(len(x) < 12 or x not in page for x in parts):
         return "none"
-    q = " ".join(parts)
     if has_injection(claim, title, text, quote):
         return "none"          # the forward or the page tries to instruct the judge: abstain rather than trust it
+    if _GRADER.search(quote):
+        return "none"          # grader or label text inside the quote ('Rating: Fake', 'marked as true'): never evidence
+    if _QUESTION.search(quote):
+        return "none"          # a question is not an assertion, for any label
     if direction_conflict(claim, f"{title} {quote}"):
         return "none"          # 'increased' vs a page that says 'reduce' (and the reverse): neither confirms nor refutes
     if label == "contradicts" and (_NEGATION.search(claim) or _META.search(claim)):
         return "none"          # a negated claim, or one that merely reports a rumour/debunk, can agree with a debunk page: never FALSE
-    if label == "contradicts" and not _contradiction_scope_ok(claim, title, quote):
-        return "none"          # the denial is about other figures / another scheme / is itself negated or mixed with an approval
-    if label in ("confirms", "mixed") and _NEG_QUOTE.search(quote) and not (_NEGATION.search(claim) or _NEG_QUOTE.search(claim)):
+    if label == "contradicts" and _INVERTED.search(f"{title} {quote}"):
+        return "none"          # a softened denial ('far from false') is not a denial
+    if label == "contradicts" and not _contradiction_scope_ok(claim, title, quote, text):
+        return "none"          # the denial is about other figures / another scheme / is itself negated, hedged or mixed with an approval
+    if label in ("confirms", "mixed") and _hedges(quote) - _hedges(claim):
+        return "none"          # 'if approved', 'may', 'proposed', 'considering': a plan or a possibility is not a confirmation (unless the claim says it too)
+    if label in ("confirms", "mixed") and _CLAIM_REPORT.search(quote):
+        return "none"          # the quote reports a claim, a forward or a rumour: it does not state the fact
+    if label in ("confirms", "mixed") and _NEG_QUOTE.search(quote) and not (_NEGATION.search(claim) or _NEG_CLAIM.search(claim)):
         return "none"          # 'has not approved that ... Rs 5000' is the opposite of a confirmation of a positive claim
-    if label == "confirms" and _unmatched_restriction(claim, quote):
-        return "none"          # 'every woman who is a cricketer' does not confirm 'every woman'
+    if label in ("confirms", "mixed", "contradicts") and _unmatched_restriction(claim, quote):
+        return "none"          # 'every woman who is a cricketer' / 'above 60 years' / 'in Mumbai' does not match 'every woman' / 'Delhi-NCR'
     # A denial ("This is fake; no such proposal exists.") gets its subject from the page title, so for CONTRADICTS the title
     # and quote together must relate to the claim. Confirmations / partial matches must be matched by the quote itself.
     if overlap(claim, f"{title} {quote}" if label == "contradicts" else quote) < 0.4:
