@@ -51,6 +51,26 @@ None in this run.
 
 `tests/test_redteam.py` runs every case in `data/red_team.json` through `check_forward` with fakes and no network, under 8 judge conditions (no AI; an obedient judge that always confirms; one that always contradicts; one that returns the injected instruction's requested quote; one that copies a real page sentence but picks the wrong label (confirms, contradicts, partial); one whose translation step obeys an injection) against 7 retriever conditions (nothing; an unrelated official page; the real page the case is based on; a hostile fact-checker page; hostile official pages with instructions only, with the claim plus instructions, and as a PIB debunk). The judges are built on the real `_Judge`, so reply parsing, `validate_stance` and consensus run for real; only the model's words are scripted. It also tests lookalike hosts (`is_official` / `is_factchecker`), claim extraction of instruction lines, and direct `validate_stance` attacks.
 
+### Stance-gate tightening (STANCEHARDEN)
+`validate_stance` abstains (returns `none`, never changes a label) when any of these checks fails. The checks only remove stances; none of them creates one, and a non-string input or a label other than `confirms`, `contradicts` or `mixed` returns `none`.
+
+- Any label: the quote is a question (contains `?`); the quote contains grader or label text ("Rating:", "Verdict:", "marked as", "as an AI", "system prompt", "ignore previous", "follow these instructions"); the quote contains an injection phrase.
+- `contradicts`: the denial is softened or inverted ("far from false", "anything but fake", "untrue", "hardly", "nowhere near", "not at all", "nothing less than", "cannot be called"); a denial word is negated within four words before it ("is not fake"); a sentence that denies also approves; a denial sentence is hedged with a modal word ("may", "might", "could", "if", "unless", "likely") that the claim does not carry; the claim's figures (number words included: "two thousand", "1 lakh", "1,00,000") are not all in the title and quote, or the title and quote carry a figure or year the claim does not have; a capitalised name, or a group word (woman, man, farmer, student, BPL, senior citizen and similar), in a denial sentence is not in the claim or title; the quote carries a restriction the claim lacks.
+- `confirms` and `mixed`: the quote is negated ("has not", "will not", "did not", "no plan", "not yet", "yet to", "scrapped", "stopped", "dropped", "cancelled", "put on hold", "postponed", "unlikely", and similar) while the claim is not; the quote carries a hedge ("if", "unless", "may", "might", "could", "proposed", "proposal", "considering", "likely", "expected to", "plans to", "subject to approval") that the claim does not carry; the quote reports a claim ("claimed", "alleged", "viral message", "according to a forward", "rumour"); the quote carries a restriction the claim lacks ("only", "except", "subject to", "above 60 years", "aged 18 to 40", "BPL", "category", "eligible", "residents of", "in Mumbai").
+- Pre-existing checks from earlier rounds (verbatim quote, direction, number, qualifier, subject coverage, debunk-page and negated-claim rules) are unchanged.
+
+The capitalised-word and restriction checks are read against the claim's own text, so a word the claim does not carry blocks the stance. A plain PIB denial with no figures, a confirmation with the same figures, `Rs 5,000` vs `5000`, `1 lakh` vs `100000`, the Hindi and Telugu denials and confirmations, a month written as "May" and the two real PIB pages that the round-1 gate wrongly dropped are control cases in `tests/test_stance_harden.py`, and they must still be accepted.
+
+### Known limits of the stance gate
+The gate is a set of phrase rules, not a reader. It does not check:
+- Restriction or hedge phrases outside the lists above, such as "for those who qualify", "if you are a", or "pending clearance". Such a phrase in a quote is not checked against the claim.
+- Scope shifts that use other words: a claim about "farmers" denied through "kisan" or "cultivators", or a denial that names the same subject with a different synonym.
+- Past-tense or year claims in general. Only figures and years that appear as digits or number words are compared; a claim about a past year that a denial calls "last year" is not compared.
+- Non-English hedges, negations and denial words. The hedge, question and restriction rules are English only; the Hindi and Telugu denial words come from the code and the other-language word lists in `langwords.py` are not native-reviewed.
+- Sentence-level ambiguity: a denial and a confirmation are only separated by sentence breaks, so a quote that mixes them without a break can still pass.
+- Quotes that mock or repeat a rumour without any reporting word (a quoted slogan, a sarcastic line).
+This list does not claim completeness: a quote that passes every check is still only a judge's reading of a page, and the verbatim quote, the official host and the human review remain the main defences.
+
 ## Limits of this exercise
 
 - A small hand-written set, written by the people who built Sach, not an outside red team: it finds the attacks we thought of.
