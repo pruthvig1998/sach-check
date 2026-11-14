@@ -208,12 +208,16 @@ def judge(tweet: dict) -> tuple[dict | None, str]:
 _MEDIA_ONLY_INDIC = re.compile(r"वीडियो|फोटो|तस्वीर|क्लिप|वायरल\s+वीडियो|వీడియో|ఫోటో|చిత్రం|ভিডিও|ছবি|வீடியோ|புகைப்படம்|વિડિઓ|ફોટો")   # Hindi, Telugu, Bengali, Tamil, Gujarati
 
 
-def judge_telegram(post_id, text: str, date_iso: str) -> tuple[dict | None, str]:
+def judge_telegram(post_id, text: str, date_iso: str, forwarded: bool = False, reply: bool = False) -> tuple[dict | None, str]:
     """The same acceptance rules as `judge`, for a post on PIB Fact Check's own Telegram channel (https://t.me/PIB_FactCheck/<id>).
     -> (record fields incl. source='telegram', '') or (None, reason). Pure: the caller fetched and parsed the page."""
     pid = str(post_id or "")
     if not re.fullmatch(r"\d{1,9}", pid):
         return None, "bad Telegram post id"
+    if forwarded:
+        return None, "is forwarded from another channel (whose claim is judged is unclear)"
+    if reply:
+        return None, "is a reply (not a stand-alone debunk)"
     t = strip_trailing_links(str(text or ""))
     if not _HASHTAG.search(t):
         return None, "no #PIBFactCheck marker"

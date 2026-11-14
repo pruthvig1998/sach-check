@@ -8,7 +8,7 @@ root = pathlib.Path(__file__).resolve().parents[1]; sys.path.insert(0, str(root)
 from sach import pibposts
 
 URL = "https://t.me/s/" + pibposts.TG_CHANNEL
-UA = "SachFactCheckBot/1.0 (+https://sachcheck.in; reads one public channel, 1 request per second)"
+UA = "SachFactCheckBot/1.0 (+https://sachcheck.in; reads one public channel, 1 request every 2 seconds)"
 IST = timezone(timedelta(hours=5, minutes=30))
 _POST = re.compile(r'data-post="' + pibposts.TG_CHANNEL + r'/(\d+)"')
 
@@ -28,7 +28,8 @@ def parse(page: str) -> list[dict]:
             day = datetime.fromisoformat(d.group(1)).astimezone(IST).date().isoformat()
         except ValueError:
             continue
-        out.append({"id": m.group(1), "text": body, "date_iso": day})
+        out.append({"id": m.group(1), "text": body, "date_iso": day,
+                    "forwarded": "tgme_widget_message_forwarded_from" in block, "reply": "tgme_widget_message_reply" in block})
     return out
 
 def fetch(url: str) -> str:
@@ -44,7 +45,8 @@ def main():
     have = {str(r["id"]) for r in pibposts.load()}
     claims_have = {" ".join(r["claim"].lower().split()) for r in pibposts.load()}
     new, seen, url = [], 0, URL
-    for _ in range(max(1, min(a.pages, 20))):
+    pages = max(1, min(a.pages, 20))
+    for page_no in range(pages):
         try:
             posts = parse(open(a.from_file, encoding="utf-8", errors="replace").read() if a.from_file else fetch(url)); seen += len(posts)
         except Exception as e:                           # a reset or a block: stop politely, keep what was read, never retry in a loop
@@ -52,7 +54,7 @@ def main():
         if not posts:
             break
         for p in posts:
-            rec, why = pibposts.judge_telegram(p["id"], p["text"], p["date_iso"])
+            rec, why = pibposts.judge_telegram(p["id"], p["text"], p["date_iso"], p.get("forwarded", False), p.get("reply", False))
             if rec is None or rec["id"] in have:
                 continue
             if " ".join(rec["claim"].lower().split()) in claims_have:
@@ -61,8 +63,9 @@ def main():
             new.append(rec); have.add(rec["id"]); claims_have.add(" ".join(rec["claim"].lower().split()))
         if a.from_file:
             break
-        url = URL + "?before=" + min(int(p["id"]) for p in posts).__str__()
-        time.sleep(2.0)
+        url = URL + "?before=" + str(min(int(p["id"]) for p in posts))
+        if page_no < pages - 1:
+            time.sleep(2.0)
     print(f"read {seen} posts; {len(new)} new debunk records accepted")
     for r in new:
         print("  +", r["date"], r["verdict"], r["claim"][:90])

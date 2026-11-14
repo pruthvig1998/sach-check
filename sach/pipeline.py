@@ -138,7 +138,7 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
     ext = {}
     claims = extract_claims(text, max_claims=MAX_CLAIMS, report=ext)     # ext: what was not checked (display only)
     if use and not force_live and claims:       # L0: same checked claims under different wrapper text (greeting, 'forwarded', emoji)
-        chit = cache.lookup_by_claims([c.text for c in claims], rl)
+        chit = cache.lookup_by_claims([c.text for c in claims], rl, lang)
         if chit is not None:
             out = dict(chit)
             out["first_checked_at"] = chit.get("first_checked_at") or chit.get("checked_at")

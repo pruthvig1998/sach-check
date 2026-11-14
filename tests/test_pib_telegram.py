@@ -58,3 +58,19 @@ def test_the_match_layer_labels_a_telegram_debunk_and_requires_near_identical_wo
     assert hit and hit[0]["checker"] == match.PIB_TG_NAME == "PIB Fact Check (on Telegram)" and hit[0]["source"] == "pib_tg_post"
     assert match.PIB_TG_NAME in match.PIB_NAMES
     assert not match._pib_candidates(["Several social media posts claim that a new 2,000 note has been issued."], rows)     # one figure differs
+
+
+FWD_PAGE = '''<div class="tgme_widget_message_wrap" data-post="PIB_FactCheck/3001"><div class="tgme_widget_message_forwarded_from">Forwarded from Some Other Channel</div>
+<div class="tgme_widget_message_text js-message_text">Several social media posts claim that a new Rs 500 coin has been issued by the government today.<br/>#PIBFactCheck This claim is fake.</div>
+<a class="tgme_widget_message_date"><time datetime="2026-10-27T09:00:00+00:00">x</time></a></div>
+<div class="tgme_widget_message_wrap" data-post="PIB_FactCheck/3002"><a class="tgme_widget_message_reply" href="x">reply</a>
+<div class="tgme_widget_message_text js-message_text">Several social media posts claim that a new Rs 500 coin has been issued by the government today.<br/>#PIBFactCheck This claim is fake.</div>
+<a class="tgme_widget_message_date"><time datetime="2026-10-27T09:00:00+00:00">x</time></a></div>'''
+
+
+def test_forwarded_and_reply_posts_are_rejected_like_the_x_rules_reject_replies_and_quotes():
+    posts = ing.parse(FWD_PAGE)
+    assert [(p["forwarded"], p["reply"]) for p in posts] == [(True, False), (False, True)]
+    for p in posts:
+        assert pibposts.judge_telegram(p["id"], p["text"], p["date_iso"], p["forwarded"], p["reply"])[0] is None
+    assert pibposts.judge_telegram("3001", posts[0]["text"], posts[0]["date_iso"])[0] is not None       # the same text stand-alone is accepted

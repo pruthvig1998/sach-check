@@ -42,21 +42,22 @@ def claim_cache_enabled() -> bool:
     return os.environ.get("SACH_CLAIM_CACHE", "1") != "0"
 
 def _claim_norm(t: str) -> str:
-    return re.sub(r"[\s.!?।॥]+$", "", normalise(t))
+    return re.sub(r"[\s.।॥]+$", "", normalise(t))          # only a trailing full stop is ignored: '?' and '!' change what is being said
 
-def claim_key(claim_texts, reply_lang: str | None) -> str | None:
-    """Cache key for the set of checked claims (their order kept, light punctuation ignored). None when there is nothing to key on."""
+def claim_key(claim_texts, reply_lang: str | None, input_lang: str | None = None) -> str | None:
+    """Cache key for the set of checked claims (their order kept, a trailing full stop ignored). The INPUT language is part of the key: search and
+    translation run in it, and the card follows it when no reply language is chosen. None when there is nothing to key on."""
     parts = [_claim_norm(c) for c in claim_texts if c and c.strip()]
     if not parts:
         return None
     rl = reply_lang if reply_lang else "auto"
-    return "cacheC:" + hashlib.sha256(("\x1f".join(parts) + "\x00" + rl).encode("utf-8")).hexdigest()
+    return "cacheC:" + hashlib.sha256(("\x1f".join(parts) + "\x00" + rl + "\x00" + (input_lang or "")).encode("utf-8")).hexdigest()
 
 def lookup(text: str, reply_lang: str | None):
     return lookup_key(key(text, reply_lang))
 
-def lookup_by_claims(claim_texts, reply_lang: str | None):
-    k = claim_key(claim_texts, reply_lang) if claim_cache_enabled() else None
+def lookup_by_claims(claim_texts, reply_lang: str | None, input_lang: str | None = None):
+    k = claim_key(claim_texts, reply_lang, input_lang) if claim_cache_enabled() else None
     return lookup_key(k) if k else None
 
 def lookup_key(k: str):
@@ -77,8 +78,8 @@ def save(text: str, reply_lang: str | None, out: dict) -> None:
         if storable(out):
             value, ttl = {**out, "_verdict_policy": _VERDICT_POLICY}, ttl_for(out)
             store.get_store().set(key(text, reply_lang), value, ttl_s=ttl)
-            ck = claim_key([(c.get("claim") or {}).get("text", "") for c in out.get("claims", []) if isinstance(c, dict)], reply_lang) \
-                if claim_cache_enabled() else None
+            ck = claim_key([(c.get("claim") or {}).get("text", "") for c in out.get("claims", []) if isinstance(c, dict)], reply_lang,
+                           out.get("input_language")) if claim_cache_enabled() else None
             if ck:
                 store.get_store().set(ck, value, ttl_s=ttl)
     except Exception:

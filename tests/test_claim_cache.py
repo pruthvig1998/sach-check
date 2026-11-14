@@ -5,7 +5,8 @@ import pytest
 from test_cache_trace import run, FALSE_TEXT, _fresh_store      # noqa: F401  (autouse fixture re-exported)
 from sach import cache
 
-WRAPPED = "Good morning! 🌹🌹 Forwarded many times\nGovernment will give Rs 5000 to every woman.\nShare with all your groups 🙏 जय हिंद"
+WRAPPED = "Good morning! 🌹🌹 Forwarded many times\nGovernment will give Rs 5000 to every woman.\nShare with all your groups 🙏"
+HINDI_WRAPPED = "नमस्ते दोस्तों, सुप्रभात\nGovernment will give Rs 5000 to every woman.\nसभी ग्रुप में शेयर करें"
 
 
 def test_wrapper_text_reuses_the_checked_answer_without_a_new_search():
@@ -49,3 +50,16 @@ def test_claim_key_ignores_light_punctuation_and_case_only():
     assert k(["Government will give Rs 5000 to every woman."], None) == k(["government will give rs 5000 to every woman"], None)
     assert k(["Government will give Rs 5000 to every woman"], None) != k(["Government will give Rs 5001 to every woman"], None)
     assert k([], None) is None and k(["", "  "], None) is None
+
+
+def test_a_wrapper_in_another_language_is_not_served_the_first_users_card():
+    first, _ = run(FALSE_TEXT)
+    second, r = run(HINDI_WRAPPED)
+    assert not second.get("cached") and r.calls == 1                       # the input language is part of the key: search and card follow it
+
+
+def test_a_question_and_a_statement_are_different_claims_but_a_trailing_full_stop_is_ignored():
+    k = cache.claim_key
+    assert k(["Government will give Rs 5000 to every woman?"], None, "en") != k(["Government will give Rs 5000 to every woman."], None, "en")
+    assert k(["Government will give Rs 5000 to every woman."], None, "en") == k(["Government will give Rs 5000 to every woman"], None, "en")
+    assert k(["x y z w"], None, "en") != k(["x y z w"], None, "hi")
