@@ -37,7 +37,19 @@ def main():
               ("...of which absent from the new database", lambda x: not x["known_before"] and not x["harvested_new"])]
     for name, sel in groups:
         L.append(f"| {name} | {rate(sel, 'off')} | {rate(sel, 'on')} |")
-    L += ["", "A release can only be retrieved from the index if it was harvested, so the rows 'present' and 'absent' show the ceiling: this index helps for recent releases it holds and cannot help for pages it never saw. The window harvested was fixed before looking at these claims (the newest 1,500 press-release numbers)."]
+    L += ["", "A release can only be retrieved from the index if it was harvested, so the rows 'present' and 'absent' show the ceiling: this index helps for recent releases it holds and cannot help for pages it never saw. The window was fixed before looking at these claims (the newest press-release numbers, walked downwards). The harvest was stopped after 372 of a planned 1,500 because 81% of those pages were not in English, and the live pipeline translates non-English claims to English before searching PIB."]
+    # Capability probe (NOT an accuracy measure): for English releases harvested after the seed, use the first sentence of the release text as a claim and
+    # ask whether the page is among the candidates. A recent announcement that no other list knows about can only be found through this index.
+    probe = []
+    for prid, excerpt in con.execute("select prid, excerpt from releases where fetched != 'seed' and lang = 'en'"):
+        first = re.split(r"(?<=[.!?])\s+", (excerpt or "").strip())[0]
+        if len(first.split()) >= 8:
+            probe.append((prid, first[:300]))
+    po = pn = 0
+    for prid, claim in probe:
+        os.environ["SACH_PIB_FTS"] = "0"; po += prid in ret.candidate_prids(claim)
+        os.environ["SACH_PIB_FTS"] = "1"; pn += prid in ret.candidate_prids(claim)
+    L += ["", f"Capability probe (not an accuracy measure): {len(probe)} recent English releases harvested after the seed, each queried with its own first sentence: page among the candidates **{po}/{len(probe)} with the switch off, {pn}/{len(probe)} on**. This shows the mechanism works for a recent announcement no other list contains; it says nothing about how often real forwards concern such announcements."]
     text = "\n".join(L); print(text)
     if a.write:
         pathlib.Path(a.write).write_text(text + "\n", encoding="utf-8"); print("wrote", a.write)

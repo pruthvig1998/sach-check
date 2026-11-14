@@ -49,3 +49,12 @@ My earlier plan was to crawl the publishers. The research says that is the weake
 - **[you]** Email Alt News, Vishvas News and NewsMeter for permission to read their ClaimReview markup?
 - **[you]** Weekly manual deploy, or connect the repository to Vercel auto-deploy for data refreshes?
 - **[you]** Is a 60 MB data file acceptable in the bundle?
+
+
+## L4 status (14 Nov 2026): built, switch off, findings
+Built and reviewed: `sach/pibfts.py` (FTS5, read-only, Hindi-safe tokenizer, same gates as the old index), `PibRetriever.candidate_prids` (existing list kept in order, at most 2 full-text hits appended), `scripts/harvest_pib_feeds.py` (polite, resumable, stops on a block, `--reindex`), `scripts/measure_pib_retrieval.py`. Switch `SACH_PIB_FTS` defaults to off.
+Findings that change the plan:
+- Walking press-release numbers is a poor harvest: 81% of the 372 pages fetched were not English, and the pipeline translates non-English claims to English before searching PIB. The one-off backfill was stopped at 372.
+- PIB offers no cheap English listing: `allRel.aspx` shows about 15 of the day's releases and going back needs a form submission.
+- Realistic design: a small **daily harvest of the English RSS feed** (about 20 releases a day), which grows the index slowly. It needs a scheduler and a redeploy to ship the new file.
+- On the existing evaluation set nothing changes (its unseen source pages predate the harvest); a capability probe shows recent English releases go from 0 of 65 findable to 65 of 65. See `docs/research/l4-retrieval-measurement.md`.
