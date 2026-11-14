@@ -81,3 +81,29 @@ Then every number in section 6 can be replaced with a measured one.
 - Are you open to a "not checked yet, queued" answer for rare claims, instead of always trying a full check?
 - Who could fund or host this at scale (a foundation, a ministry, a platform), and should the plan be written for that audience?
 - May I add the privacy-safe counters now so real numbers replace my assumptions?
+
+
+## 11. Build status (updated 14 Nov 2026)
+**Done and live**
+- Claim canonicalisation, exact form (L0): wrapper text no longer creates a new claim.
+- Free layers: PIB Telegram debunks, official-pages panel, scam-reporting references; the match layer.
+- Privacy-safe counters: per-day ask counts by anonymous fingerprint, the layer that answered, repeat share, ask-count thresholds (2, 5, 50, 500, 5,000). Status page and status JSON show aggregates.
+- Live cap raised from 300 to 500 fresh checks a day (14 Nov), after checking that the AI judge cap (4,000 calls) and the search path allow it.
+
+**Built in this step (phase 1), awaiting deploy**
+- **Single-flight:** the first ask of a new claim runs the check; others wait up to 10 s for its stored answer, then are told the claim is being checked. A viral burst on one new claim costs one paid check, not one per person.
+- **Claim-cache hits no longer reserve a live slot** (a flaw in the first version of L0).
+- **A busy reply that helps:** when the budget is used up, the page shows up to three related PIB pages from the local indexes (title and link, not a verdict), and the ask is counted as unchecked demand.
+- Not done on purpose: **edge caching of shared answers.** Share pages carry the user's pasted text and were deliberately made no-store; caching them at a CDN trades privacy for speed. The right home for edge caching is a separate public claim page (phase 2).
+
+**Next (phase 2)**
+- Permanent registry store for decisive verdicts, with versions and review dates.
+- Near-duplicate clustering with guards.
+- The demand-driven priority queue that works through unchecked claims by ask count, within a daily budget.
+- One-call judge and batch mode, each measured against the red team and evaluation sets before use.
+- Public claim pages with CDN caching; daily PIB English harvest.
+
+**Later (phase 3)**
+- Edge-first serving; trend discovery; WhatsApp and Telegram front doors; a human review workflow for head claims; funding and governance.
+
+**Capacity today (production):** 500 fresh checks a day, 6 a minute; repeats and known debunks answered from the cache and match layers without a cap in the app, bounded by the free plans of Vercel and Upstash.
