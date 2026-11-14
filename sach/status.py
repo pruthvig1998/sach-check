@@ -6,7 +6,7 @@ The status page labels multiple judges of the same provider by position ("gemini
 from __future__ import annotations
 import time
 from . import timefmt
-from . import gtranslate, ledger, limits, store, vertex, gateway
+from . import gtranslate, ledger, limits, popularity, store, vertex, gateway
 
 _AI = [("vertex", "GOOGLE_SA_JSON"), ("groq", "GROQ_API_KEY"), ("gateway", "AI_GATEWAY_API_KEY"), ("gemini", "GEMINI_API_KEY"), ("openrouter", "OPENROUTER_API_KEY"), ("mistral", "MISTRAL_API_KEY"),
        ("cloudflare", "CLOUDFLARE_API_TOKEN"), ("claude", "ANTHROPIC_API_KEY")]
@@ -96,6 +96,7 @@ def status_data(llm=None, retrievers=None, st=None, now=None) -> dict:
                         "refused_busy_today": use["busy_today"], "shared_store": use["shared_store"],
                         "note": "Fixed windows (the minute, the UTC day). A max of 0 means no limit. Cache and match answers are not counted."},
         "google_translation": gtranslate.usage(st, now),
+        "reuse": popularity.summary(st),
         "checks": {"total_all_time": total, "cache_hits_all_time": hits, "live_all_time": max(total - hits, 0),
                    "counting_since": c.get("first_event_at"),
                    "note": "All-time counters from the same store as the impact page (cache hits cost nothing). Matches are included in the live figure until they have their own counter."},
@@ -136,6 +137,15 @@ def status_page(d: dict) -> bytes:
         esc(timefmt.fmt_ist(d["generated_at"])), esc(d["scope_note"]), ai, se, esc(lim(b["minute"])), esc(lim(b["day_utc"])),
         b["refused_busy_today"], esc(b["note"]), "yes" if g["configured"] else "no", esc(gt_used), g["skipped_over_budget_today"], ck["total_all_time"], ck["cache_hits_all_time"], ck["live_all_time"],
         esc(timefmt.fmt_ist(ck["counting_since"]) if ck["counting_since"] else "not available"), esc(ck["note"]))
+    r = d.get("reuse") or {}
+    if r.get("requests"):
+        pct = lambda x: "n/a" if x is None else "%.0f%%" % (100 * x)
+        body = body.replace('<p class="note"><a href="/?view=status&amp;format=json">', (
+            '<h2 style="margin-top:28px">Reuse today (UTC day %s)</h2><ul><li>Requests: <b>%s</b> for <b>%s</b> different claims</li>'
+            '<li>Repeats of a claim already asked today: <b>%s</b></li><li>Answered without a paid check (cache, match, no claim): <b>%s</b></li>'
+            '<li>Claims asked at least 2 / 5 / 50 times: <b>%s</b> / <b>%s</b> / <b>%s</b></li></ul><p class="note">%s</p>'
+            '<p class="note"><a href="/?view=status&amp;format=json">') % (esc(r["day_utc"]), r["requests"], r["distinct_claims"], esc(pct(r.get("repeat_share"))),
+            esc(pct(r.get("answered_without_paid_check"))), *[r["claims_asked_at_least"][k] for k in ("2", "5", "50")], esc(r["note"])), 1)
     return layout(body, "Status — Sach", path="/?view=status", noindex=True)
 
 

@@ -65,6 +65,11 @@ def record_check(out: dict, cached: bool = False) -> None:
             s.set("first_event_at", now())
     except Exception:
         pass
+    try:
+        from . import popularity                       # per-claim ask counts by anonymous fingerprint (no text, no identity)
+        popularity.record(out, cached)
+    except Exception:
+        pass
 
 def stats() -> dict:
     s = store.get_store()
