@@ -1,6 +1,6 @@
 # Problem evidence for Sach (Code for a Billion, Governance track)
 
-**DRAFT: figures require the owner's approval before use.**
+**Approved by the owner on 14 November 2026 for use in the submission.** The confidence ratings below still apply.
 
 Research date: 13 November 2026. No code was changed. Every figure below was read by the researcher on the page or document named, unless the "How verified" column says otherwise. Where a primary government page refused access (HTTP 403), the figure is rated medium and the secondary outlet that quoted it is named.
 

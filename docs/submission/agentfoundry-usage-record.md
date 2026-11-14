@@ -1,6 +1,6 @@
 # AgentFoundry usage record (append real entries only; never backfill)
 
-**Status on 2026-11-14: no AgentFoundry use is recorded for Sach.** The repository's history (first commit 2026-11-12) was built with
+**Status on 2026-11-14: AgentFoundry was installed and tried, but it produced no code or commit in this repository (see entry below).** The repository's history (first commit 2026-11-12) was built with
 other tools. Any AgentFoundry claim in the submission must match an entry below, and every entry needs evidence a judge could check.
 
 Rules for this file:
@@ -21,7 +21,10 @@ Rules for this file:
 - What was NOT done in AgentFoundry:
 
 ## Entries
-(none yet)
+- **13-14 Nov 2026 (IST), owner-reported, no technical evidence stored.** Owner installed the AgentFoundry IDE and tried to use it on Sach.
+  The IDE's Claude Code tab returned HTTP 403 and the IDE then reported the monthly usage quota as reached. Commit produced: none. Tests: n/a.
+  What was NOT done in AgentFoundry: no feature, fix or file in this repository was written by an AgentFoundry agent. The owner states that some
+  other work was done in the IDE; no details or evidence have been provided, so none is claimed. Add a dated entry with evidence if any exists.
 
 ## Wording for the submission, depending on what is true on the day
 - If an entry exists: "On <date> we used the AgentFoundry IDE to implement <feature> (commit <hash>; tests <result>). The rest of the
