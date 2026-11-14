@@ -7,7 +7,7 @@ Status: proposed 14 Nov 2026, nothing built. **[you]** marks a decision for the 
 |---|---|---|
 | PIB RSS feed | Works through our own fetcher: 200 and 20 items a feed. The same URL returned **403** to a custom-named client. | The feed is reachable but fragile: a firewall is sensitive to the client. Keep using `sach/fetch.py`; do not change its identity. |
 | PIB API | None. Feeds exist by region, module and language; an archive exists at archive.pib.gov.in with no documented API. | Daily feeds give only the newest items. A backfill needs a polite crawler of the archive. |
-| SQLite full-text search (FTS5) | Available in the local Python (SQLite 3.54). **Not yet confirmed on Vercel's runtime.** | First task is a preview deployment that checks it. If it is missing, fall back to a plain inverted index in a JSON file. |
+| SQLite full-text search (FTS5) | **Confirmed on Vercel** (14 Nov, preview deployment): Python 3.12.16, SQLite 3.40.0 with ENABLE_FTS5, Amazon Linux. A bundled read-only 48.1 MB database of 20,000 rows opened and counted in 267 ms cold, queries took 13 to 71 ms (first 71 ms, then 13 to 26 ms), peak memory 36.5 MB, and all three planted rows ranked in the top five. | The SQLite design is viable. No JSON fallback needed. Memory stays small because the file is read lazily. |
 | Deployment | `vercel.json` bundles `{sach,data}/**` into the function. Our PIB data is 0.66 MB today and `index.load` reads the whole file into memory. | A 50,000-record JSONL would cost roughly 90 MB of memory per instance. Use a read-only SQLite file instead (reads lazily from disk). |
 | ClaimReview markup on publisher pages | Article pages from **Alt News, Vishvas News and NewsMeter** contain ClaimReview JSON-LD and loaded with our normal client. Factly's sample article had none. **BOOM and Factly returned 403** to a non-browser client. Newschecker's robots file mentions bots by name (not fully read). | Crawling works for three outlets, is blocked for two, and is unclear for one. Do not try to get around a block. |
 | Google Fact Check API | Already returns these same records (claim, rating, publisher, URL), English only. Its storage terms I could not confirm (it points to Google's general API terms). | The cheapest corpus is not a crawl but **keeping what the API already returns**, once someone has read the terms. |
@@ -20,7 +20,7 @@ Status: proposed 14 Nov 2026, nothing built. **[you]** marks a decision for the 
 2. **File:** table `releases(prid, date, lang, title, excerpt, url)` plus an FTS5 table over title and excerpt, ranked with BM25. Excerpt capped near 1,200 characters (title and first paragraphs), as the current index does.
 3. **Build:** `scripts/harvest_pib_feeds.py` reads the RSS feeds (English, Hindi, regional), then fetches each release once through `sach/fetch.py` at one request every two seconds, and writes the file. A separate backfill pass walks the archive by month, resumable and capped per run.
 4. **Use:** `PibRetriever.search` asks the SQLite file for candidate release numbers (replacing the word-overlap score), then fetches the live pages as it does today. Judging, stance checks and verdict rules are untouched.
-5. **Size gate:** budget 60 MB for the file (about the latest 12 to 18 months of English and Hindi). If the first build exceeds it, shrink the window, not the safeguards.
+5. **Size gate:** budget 60 MB for the file. The spike's 20,000-row test file with about 1.4 KB of text per row came to 48 MB (text plus search index), so a 60 MB budget holds roughly 25,000 releases at that size. Cap each excerpt near 600 characters to fit more, and shrink the date window before shrinking any safeguard.
 6. **Refresh:** weekly rebuild and a commit only when the file changed. Because data is bundled, a new file needs a deploy. **[you]** choose: manual weekly deploy, or connect the repository to Vercel's auto-deploy.
 
 **Measure:** run `scripts/eval_retrieval.py` before and after. Baseline: expected page retrieved for 18 of 39 unseeded claims. Target: at least 60% unseeded retrieval with no change to red-team results (53 cases, 0 overclaims) and no new wrong answers in the evaluation.
@@ -39,7 +39,7 @@ My earlier plan was to crawl the publishers. The research says that is the weake
 **Size and risk:** L3a small (1 day). L3b medium (2 days plus outreach), higher risk. Switches: `SACH_CR_STORE=0`.
 
 ## Order
-1. Preview deployment that proves FTS5 on Vercel (a one-hour spike). If it fails, change the L4 design before writing it.
+1. ~~Preview deployment that proves FTS5 on Vercel~~ Done 14 Nov: it works (see the table above).
 2. L3a, once the terms are read.
 3. L4 feeds first (small, daily), then the SQLite file, then the archive backfill.
 4. L3b only after replies from the outlets.
