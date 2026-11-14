@@ -78,3 +78,16 @@ def test_scam_box_points_to_the_official_reporting_pages_in_en_hi_te():
     assert scamsigns.signs_html([], "en") == ""                       # no signs, no box, no references
     box_en = scamsigns.signs_html(signs, "en").lower()
     assert "safe" not in box_en.replace("unsafe", "")                  # the box never says a message is safe
+
+
+def test_snippets_drop_pib_dateline_skip_links_and_unrendered_pages():
+    from sach.models import _snippet
+    claim = "Taxpayers receive SMS asking them to submit a refund request."
+    pib = Evidence("PIB (Press Information Bureau)", "https://pib.gov.in/x", TIER_PIB, TS, "Beware of fake refund SMS",
+                   "PIB Backgrounder PRESS RELEASE Posted On: 08 MAY 2019 3:09PM by PIB Chennai It has been brought to the notice of the department that certain emails and SMS are being received by taxpayers asking them to submit a refund request.")
+    s = _snippet(claim, pib)
+    assert s.startswith("It has been brought to the notice") and "Posted On" not in s and "PRESS RELEASE" not in s
+    sbi = Evidence("State Bank of India", "https://onlinesbi.sbi.bank.in/", TIER_OFFICIAL, TS, "SBI", "Skip to main content SBI never asks for confidential information such as PIN and OTP from customers.")
+    assert _snippet("SBI asks for PIN and OTP", sbi).startswith("SBI never asks")
+    broken = Evidence("PIB", "https://pib.gov.in/y", TIER_PIB, TS, "Factsheet", "Factsheet Details | PIB JavaScript must be enabled in order for you to use the Site in standard view.")
+    assert _snippet("factsheet details", broken) == ""

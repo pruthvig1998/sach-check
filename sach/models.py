@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 from dataclasses import dataclass, field, asdict
 
 TIER_PIB = "pib_debunk"
@@ -70,6 +71,8 @@ def localized_rule_text(ct: dict, lang: str) -> str:
         return RULE_TEXT_TIMED_OUT.get(lang) or RULE_TEXT_TIMED_OUT["en"]
     return ct.get("rule_text", "")
 
+_BOILER_PREFIX = re.compile(r"^.{0,120}?\bPosted On:?\s*\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}\s+\d{1,2}:\d{2}\s*[AP]M\s+by\s+PIB\s+(?:New\s+Delhi|\w+)\s*", re.I)   # PIB dateline
+
 def _snippet(claim: str, e) -> str:
     """The sentences of an official page closest to the claim, at most ~260 characters, for the 'official pages' panel. Empty for fact-checkers
     (never shown there) and when nothing can be extracted. Display only: never an input to a verdict."""
@@ -80,6 +83,10 @@ def _snippet(claim: str, e) -> str:
         s = " ".join(excerpt(claim, e.title or "", e.text, e.tier).split())
     except Exception:
         return ""
+    if re.search(r"javascript must be enabled|enable javascript", s, re.I):
+        return ""                                   # a page that did not render: its text is a browser notice, not content
+    s = _BOILER_PREFIX.sub("", s).strip()
+    s = re.sub(r"^(?:Skip to main content|Skip to content)\s*", "", s, flags=re.I)
     return s if len(s) <= 260 else s[:257].rsplit(" ", 1)[0] + "..."
 
 def build_trace(searched_as: str, evidence: list, reason_code: str, translator: str | None = None) -> dict:
