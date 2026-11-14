@@ -63,3 +63,14 @@ def test_a_question_and_a_statement_are_different_claims_but_a_trailing_full_sto
     assert k(["Government will give Rs 5000 to every woman?"], None, "en") != k(["Government will give Rs 5000 to every woman."], None, "en")
     assert k(["Government will give Rs 5000 to every woman."], None, "en") == k(["Government will give Rs 5000 to every woman"], None, "en")
     assert k(["x y z w"], None, "en") != k(["x y z w"], None, "hi")
+
+
+def test_the_stored_claim_key_is_exactly_the_key_the_next_lookup_computes_even_for_indic_text():
+    from sach import store
+    from sach.extract import extract_claims
+    from sach.lang import detect_language
+    for text in ("नमस्ते\nGovernment will give Rs 5000 to every woman.\nसभी ग्रुप में शेयर करें", WRAPPED):
+        store.reset()
+        run(text)
+        k = cache.claim_key([c.text for c in extract_claims(text, 8)], None, detect_language(text))
+        assert k and store.get_store().get(k) is not None

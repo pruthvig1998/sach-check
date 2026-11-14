@@ -53,6 +53,11 @@ def claim_key(claim_texts, reply_lang: str | None, input_lang: str | None = None
     rl = reply_lang if reply_lang else "auto"
     return "cacheC:" + hashlib.sha256(("\x1f".join(parts) + "\x00" + rl + "\x00" + (input_lang or "")).encode("utf-8")).hexdigest()
 
+def _input_lang(text: str) -> str:
+    """The same first-pass language the pipeline uses for the lookup (before refinement), so a stored claim key is reachable by the next lookup."""
+    from .lang import detect_language
+    return detect_language(text)
+
 def lookup(text: str, reply_lang: str | None):
     return lookup_key(key(text, reply_lang))
 
@@ -79,7 +84,7 @@ def save(text: str, reply_lang: str | None, out: dict) -> None:
             value, ttl = {**out, "_verdict_policy": _VERDICT_POLICY}, ttl_for(out)
             store.get_store().set(key(text, reply_lang), value, ttl_s=ttl)
             ck = claim_key([(c.get("claim") or {}).get("text", "") for c in out.get("claims", []) if isinstance(c, dict)], reply_lang,
-                           out.get("input_language")) if claim_cache_enabled() else None
+                           _input_lang(text)) if claim_cache_enabled() else None
             if ck:
                 store.get_store().set(ck, value, ttl_s=ttl)
     except Exception:
