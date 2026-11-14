@@ -320,7 +320,10 @@ def handle_update(update: dict, retrievers, llm, send=None, bot_id=None, usernam
         if adm.busy:
             say(_limits.busy_text(adm.reason)); return {"ok": True, "action": "busy"}
         send("sendChatAction", {"chat_id": chat_id, "action": "typing"})
-        res = check_forward(claim, retrievers, llm, reply_lang=lang)
+        try:
+            res = check_forward(claim, retrievers, llm, reply_lang=lang)
+        finally:
+            _limits.release(adm)                     # the claim is stored (or the check failed): the next ask may be served or start a check
         _limits.refund(adm, res)
         say(format_reply(res))
         return {"ok": True, "action": "checked", "verdict": res.get("verdict")}

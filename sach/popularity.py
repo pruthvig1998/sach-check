@@ -68,14 +68,36 @@ def record(out: dict, cached: bool = False, now: float | None = None, st=None) -
         fp = fingerprint(texts)
         if not fp:
             return
-        n = _bump(s, f"pop:{d}:{fp}")
-        if n == 1:
-            _bump(s, f"d:{d}:distinct")
-        for t in THRESHOLDS:
-            if n == t:
-                _bump(s, f"d:{d}:ge{t}")        # this claim reached t asks today: counted once per claim
-            if n >= t:
-                _bump(s, f"d:{d}:reqs_ge{t}")   # this request was the t-th or a later ask of its claim
+        _count_claim(s, d, fp)
+    except Exception:
+        pass
+
+
+def _count_claim(s, d: str, fp: str) -> None:
+    n = _bump(s, f"pop:{d}:{fp}")
+    if n == 1:
+        _bump(s, f"d:{d}:distinct")
+    for t in THRESHOLDS:
+        if n == t:
+            _bump(s, f"d:{d}:ge{t}")            # this claim reached t asks today: counted once per claim
+        if n >= t:
+            _bump(s, f"d:{d}:reqs_ge{t}")       # this request was the t-th or a later ask of its claim
+
+
+def record_unchecked(text: str, reason: str = "busy", now: float | None = None, st=None) -> None:
+    """A request that could NOT be checked (the live budget was used up). It still counts as demand for that claim, so we can see which claims we
+    were unable to check and how many people asked. Never raises."""
+    try:
+        if not enabled():
+            return
+        from .limits import _claims_and_lang
+        s = st or store.get_store()
+        d = day(now)
+        _bump(s, f"d:{d}:unchecked")
+        _bump(s, f"d:{d}:unchecked:{reason}")
+        fp = fingerprint(_claims_and_lang(text)[0])
+        if fp:
+            _count_claim(s, d, fp)
     except Exception:
         pass
 
@@ -86,13 +108,13 @@ def summary(st=None, now: float | None = None) -> dict:
     try:
         s = st or store.get_store()
         d = day(now)
-        names = [f"d:{d}:total", f"d:{d}:distinct"] + [f"d:{d}:layer:{x}" for x in LAYERS] + \
+        names = [f"d:{d}:total", f"d:{d}:distinct", f"d:{d}:unchecked"] + [f"d:{d}:layer:{x}" for x in LAYERS] + \
                 [f"d:{d}:ge{t}" for t in THRESHOLDS] + [f"d:{d}:reqs_ge{t}" for t in THRESHOLDS]
         c = s.counters(names)
         total, distinct = c[f"d:{d}:total"], c[f"d:{d}:distinct"]
         layers = {x: c[f"d:{d}:layer:{x}"] for x in LAYERS}
         free = sum(layers[x] for x in FREE_LAYERS)
-        return {"day_utc": d, "requests": total, "distinct_claims": distinct, "by_layer": layers,
+        return {"day_utc": d, "requests": total, "distinct_claims": distinct, "by_layer": layers, "unchecked_requests": c[f"d:{d}:unchecked"],
                 "repeat_share": round(1 - distinct / total, 4) if total else None,
                 "answered_without_paid_check": round(free / total, 4) if total else None,
                 "claims_asked_at_least": {str(t): c[f"d:{d}:ge{t}"] for t in THRESHOLDS},

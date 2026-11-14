@@ -88,8 +88,8 @@ def ip_limited(ip: str, fallback, kind: str = "check", limit: int = PER_IP_PER_M
 # ---------------------------------------------------------------- global live budget
 class Admission:
     """kind: 'free' (cache or match: costs nothing), 'live' (a slot was reserved) or 'busy' (budget gone, do not run live)."""
-    def __init__(self, kind: str, reason: str = "", retry_after: int = 0, keys=()):
-        self.kind, self.reason, self.retry_after, self.keys = kind, reason, retry_after, tuple(keys)
+    def __init__(self, kind: str, reason: str = "", retry_after: int = 0, keys=(), flight: str = ""):
+        self.kind, self.reason, self.retry_after, self.keys, self.flight = kind, reason, retry_after, tuple(keys), flight
     @property
     def busy(self) -> bool:
         return self.kind == "busy"
@@ -102,9 +102,24 @@ def register_free_probe(fn) -> None:
     if fn not in _free_probes:
         _free_probes.append(fn)
 
+def _claims_and_lang(text: str):
+    """The checked claims and input language the pipeline would derive from this text (same functions, same limit), for the claim-keyed cache and the flight key."""
+    from .extract import clean_text, extract_claims
+    from .lang import detect_language
+    from .pipeline import MAX_CLAIMS
+    t = clean_text(text)
+    return [c.text for c in extract_claims(t, max_claims=MAX_CLAIMS)], detect_language(t)
+
 def _is_free(text: str, rl) -> bool:
     if cache.enabled() and cache.lookup(text, rl) is not None:
         return True
+    if cache.enabled():
+        try:
+            texts, lang = _claims_and_lang(text)
+            if texts and cache.lookup_by_claims(texts, rl, lang) is not None:
+                return True                      # the same claims under different wrapper text: answered from the cache, so no live slot
+        except Exception:
+            pass
     for fn in list(_free_probes):
         try:
             if fn(text, rl):
@@ -113,35 +128,83 @@ def _is_free(text: str, rl) -> bool:
             continue
     return False
 
+# ---------------------------------------------------------------- single-flight: one live check per new claim at a time
+FLIGHT_TTL_S = 90                                  # a crashed leader frees the claim after this
+_sleep = time.sleep                                # replaced in tests
+
+def flight_enabled() -> bool:
+    return os.environ.get("SACH_SINGLE_FLIGHT", "1") != "0"
+
+def flight_wait_s() -> int:
+    return min(25, max(0, _env_int("SACH_FLIGHT_WAIT_S", 10)))
+
+def _flight_key(text: str, rl) -> str:
+    try:
+        texts, lang = _claims_and_lang(text)
+        k = cache.claim_key(texts, rl, lang) if texts else None
+    except Exception:
+        k = None
+    return "sf:" + (k or cache.key(text, rl))
+
+def _await_answer(text: str, rl, st, fk: str):
+    """Another request is already checking this claim. Wait a few seconds for its stored answer; if it appears this request is free, otherwise it is
+    told plainly that the claim is being checked (no second paid check, no verdict). Always gives its own place back."""
+    deadline = time.time() + flight_wait_s()
+    try:
+        while time.time() < deadline:
+            _sleep(2.5)
+            if _is_free(text, rl):
+                return Admission("free")
+    finally:
+        _decr(st, fk)
+    return Admission("busy", "flight", 20)
+
+def release(adm, st=None) -> None:
+    """The leader of a flight is done (answered, failed or refunded): the next ask of this claim may start a check."""
+    try:
+        if adm is not None and getattr(adm, "flight", ""):
+            _decr(st or store.get_store(), adm.flight)
+    except Exception:
+        pass
+
 def _windows(now: float):
     m, d = int(now // 60), int(now // 86400)
     return ("lv:m:%d" % m, 60 - int(now % 60)), ("lv:d:%d" % d, 86400 - int(now % 86400))
 
 def admit(text: str, reply_lang=None, st=None, now=None) -> Admission:
     """Decide whether a check of `text` may run. Never raises."""
+    flight = ""
     try:
         rl = reply_lang if reply_lang in SUPPORTED else None
         if _is_free(text, rl):
             return Admission("free")
         pm, pd = max_per_min(), max_per_day()
         if pm <= 0 and pd <= 0:
-            return Admission("live")
+            return Admission("live")                             # no budget configured: the limiter does nothing, not even touch the store
         st = st or store.get_store()
+        if flight_enabled():
+            fk = _flight_key(text, rl)
+            n, _ = _incr(st, fk, FLIGHT_TTL_S)
+            if n > 1:
+                return _await_answer(text, rl, st, fk)           # someone is already checking this exact claim
+            flight = fk
         now = time.time() if now is None else now
         (km, wait_m), (kd, wait_d) = _windows(now)
         nm = _incr(st, km, 120)[0] if pm > 0 else 0
         nd = _incr(st, kd, 2 * 86400)[0] if pd > 0 else 0
         if pm > 0 and nm > pm:
             _give_back(st, km if pm > 0 else None, kd if pd > 0 else None)
+            _decr(st, flight) if flight else None
             _count_busy(st, now)
             return Admission("busy", "minute", max(wait_m, 5))
         if pd > 0 and nd > pd:
             _give_back(st, km if pm > 0 else None, kd)
+            _decr(st, flight) if flight else None
             _count_busy(st, now)
             return Admission("busy", "day", min(wait_d, 3600))
-        return Admission("live", keys=[k for k, on in ((km, pm > 0), (kd, pd > 0)) if on])
+        return Admission("live", keys=[k for k, on in ((km, pm > 0), (kd, pd > 0)) if on], flight=flight)
     except Exception:
-        return Admission("live")                     # never block a check because the limiter itself broke
+        return Admission("live", flight=flight)          # never block a check because the limiter itself broke
 
 def _decr(st, key: str) -> None:
     try:
@@ -197,24 +260,63 @@ BUSY_TITLE = "Sach is very busy right now"
 PIB_PORTAL = "https://factcheck.pib.gov.in/"
 PIB_WHATSAPP = "https://wa.me/918799711259"
 
+FLIGHT_TITLE = "This message is being checked right now"
+
+def busy_title(reason: str = "minute") -> str:
+    return FLIGHT_TITLE if reason == "flight" else BUSY_TITLE
+
+def related_pages(text: str, n: int = 3) -> list:
+    """Up to n PIB releases from the LOCAL indexes that mention things related to the claim (title and link only; no network, no AI). Show-only: a
+    reference for the reader, never a verdict. Same word-coverage gates as retrieval."""
+    try:
+        from . import index as pib_index, pibfts
+        texts, _ = _claims_and_lang(text)
+        hits = []
+        for t in texts[:2]:
+            hits += list(pib_index.search(t, top_n=n))
+            if pibfts.enabled():
+                hits += pibfts.search(t, top_n=n)
+        out, seen = [], set()
+        for h in sorted(hits, key=lambda h: -h.get("score", 0)):
+            prid = str(h.get("prid") or "")
+            if prid.isdigit() and prid not in seen:
+                seen.add(prid)
+                out.append({"title": " ".join(str(h.get("title") or "").split())[:160], "url": f"https://pib.gov.in/PressReleasePage.aspx?PRID={prid}"})
+        return out[:n]
+    except Exception:
+        return []
+
 def busy_message(reason: str = "minute") -> str:
+    if reason == "flight":
+        return ("Someone asked about this same message a moment ago, so Sach is already checking it and we do not give a second, duplicate check. "
+                "Please try again in about 20 seconds: the answer will then be shown instantly. We have not given a verdict yet.")
     when = "in a few minutes" if reason != "day" else "in a few hours (our free daily capacity is used up)"
     return ("Sach is very busy right now, so we have not checked this message and we are not giving a verdict. "
             f"Please try again {when}. Messages Sach has already checked are still answered instantly. "
             "To check something now, you can send it to PIB Fact Check yourself.")
 
-def busy_result(reason: str = "minute", retry_after: int = 60) -> dict:
+def busy_result(reason: str = "minute", retry_after: int = 60, text: str = "") -> dict:
     """JSON body for the API. There is deliberately NO 'verdict' key: nothing was checked."""
-    return {"busy": True, "checked": False, "reason": reason, "retry_after_s": int(retry_after), "title": BUSY_TITLE,
-            "message": busy_message(reason),
-            "links": {"pib_fact_check_portal": PIB_PORTAL, "pib_fact_check_whatsapp": PIB_WHATSAPP}}
+    out = {"busy": True, "checked": False, "reason": reason, "retry_after_s": int(retry_after), "title": busy_title(reason),
+           "message": busy_message(reason),
+           "links": {"pib_fact_check_portal": PIB_PORTAL, "pib_fact_check_whatsapp": PIB_WHATSAPP}}
+    rel = related_pages(text) if text and reason != "flight" else []
+    if rel:
+        out["related_official_pages"] = rel
+        out["related_note"] = "These PIB releases mention things related to your message. This is not a verdict."
+    return out
 
-def busy_block(reason: str = "minute") -> str:
+def busy_block(reason: str = "minute", text: str = "") -> str:
     from .site import esc
+    rel = related_pages(text) if text and reason != "flight" else []
+    related = ""
+    if rel:
+        related = ('<p style="margin:10px 0 4px"><b>Official pages that mention related things (not a verdict):</b></p><ul style="margin:0;padding-left:18px">'
+                   + "".join(f'<li><a href="{esc(r["url"])}" rel="noopener" target="_blank">{esc(r["title"])}</a></li>' for r in rel) + "</ul>")
     return ('<div class="honest" style="margin-top:18px" role="status" id="busy-notice"><b>%s.</b> %s '
-            '<a href="%s" rel="noopener">PIB Fact Check portal</a> &middot; <a href="%s" rel="noopener">PIB Fact Check on WhatsApp (+91 87997 11259)</a></div>'
-            % (esc(BUSY_TITLE), esc(busy_message(reason)), PIB_PORTAL, PIB_WHATSAPP))
+            '<a href="%s" rel="noopener">PIB Fact Check portal</a> &middot; <a href="%s" rel="noopener">PIB Fact Check on WhatsApp (+91 87997 11259)</a>%s</div>'
+            % (esc(busy_title(reason)), esc(busy_message(reason)), PIB_PORTAL, PIB_WHATSAPP, related))
 
 def busy_text(reason: str = "minute") -> str:
     """Plain text for the Telegram bot."""
-    return f"{BUSY_TITLE}.\n{busy_message(reason)}\nPIB Fact Check: {PIB_PORTAL} or WhatsApp +91 87997 11259 ({PIB_WHATSAPP})"
+    return f"{busy_title(reason)}.\n{busy_message(reason)}\nPIB Fact Check: {PIB_PORTAL} or WhatsApp +91 87997 11259 ({PIB_WHATSAPP})"

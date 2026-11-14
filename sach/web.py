@@ -10,7 +10,7 @@ from .retrieve import default_retrievers
 from . import razorpay_pay as rzp
 from . import telegram_bot as tg
 from . import ocr
-from . import match, pwa, share, claimreview, trending, linkcheck
+from . import match, popularity, pwa, share, claimreview, trending, linkcheck
 from . import siteurl
 from .i18n import incomplete
 from . import limits
@@ -60,9 +60,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _busy(self, adm, want_json, text, lang_choice):
         """Global live-check budget is used up: no check, no verdict, an honest notice (JSON: 503 + Retry-After)."""
+        if adm.reason != "flight":
+            popularity.record_unchecked(text, adm.reason)         # demand we could not serve: counted by anonymous fingerprint, never stored as text
         if want_json:
-            return self._json(limits.busy_result(adm.reason, adm.retry_after), 503, extra={"Retry-After": str(adm.retry_after)})
-        self._send(home(result=limits.busy_block(adm.reason), prefill=text, reply=lang_choice, noindex=True))
+            return self._json(limits.busy_result(adm.reason, adm.retry_after, text), 503, extra={"Retry-After": str(adm.retry_after)})
+        self._send(home(result=limits.busy_block(adm.reason, text), prefill=text, reply=lang_choice, noindex=True))
 
     def _redirect_home_tip(self):
         self.send_response(302)
@@ -407,7 +409,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             res = check_forward(text, Handler.retrievers, Handler.llm, reply_lang=None if lang_choice == "auto" else lang_choice, force_live=force_live)
         except Exception:
+            limits.release(adm)
             return fail(500, "Something went wrong while checking. Nothing was recorded. Please try again.")
+        limits.release(adm)                                     # the claim is stored (or failed): the next ask is served or may start a check
         limits.refund(adm, res)
         res = dict(res); res["warning_signs"] = scam_signs(text)   # advice only: from THIS request's text, never cached or stored
         if want_json:
