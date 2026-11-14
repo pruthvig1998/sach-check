@@ -182,6 +182,22 @@ UI = {
            "advice": "OTP లేదా PIN ఎవరికీ చెప్పకండి. తెలియని లింక్‌లను క్లిక్ చేయకండి. అధికారిక వెబ్‌సైట్ అడ్రస్‌ను మీరే టైప్ చేసి సరిచూడండి.",
            "more": "ఇంకా {n}", "count1": "1 హెచ్చరిక సంకేతం", "countn": "{n} హెచ్చరిక సంకేతాలు", "all": "మొత్తం {n} సంకేతాలు చూడండి"},
 }
+# L5: official places to report a scam, shown under the warning signs. Reference only, never a verdict. Each fact was read on the official page on
+# 14 Nov 2026: cybercrime.gov.in ("Any victim of financial cyber fraud can dial helpline number 1930") and sancharsaathi.gov.in ("Chakshu - Report
+# Suspected Fraud Communication"). NOT NATIVE-REVIEWED (hi, te).
+OFFICIAL_HELP = {
+    "en": [("Lost money to a cyber fraud? The official Cybercrime Portal says you can call the helpline 1930.", "https://cybercrime.gov.in/", "cybercrime.gov.in"),
+           ("Got a suspected fraud call or message? You can report it on Sanchar Saathi (Chakshu).", "https://sancharsaathi.gov.in/", "sancharsaathi.gov.in")],
+    "hi": [("साइबर ठगी में पैसे गए? आधिकारिक साइबर क्राइम पोर्टल के अनुसार आप हेल्पलाइन 1930 पर कॉल कर सकते हैं।", "https://cybercrime.gov.in/", "cybercrime.gov.in"),
+           ("ठगी वाला कॉल या संदेश मिला? आप उसकी शिकायत संचार साथी (चक्षु) पर कर सकते हैं।", "https://sancharsaathi.gov.in/", "sancharsaathi.gov.in")],
+    "te": [("సైబర్ మోసంలో డబ్బు పోయిందా? అధికారిక సైబర్ క్రైమ్ పోర్టల్ ప్రకారం మీరు హెల్ప్‌లైన్ 1930కి కాల్ చేయవచ్చు.", "https://cybercrime.gov.in/", "cybercrime.gov.in"),
+           ("మోసపూరిత కాల్ లేదా సందేశం వచ్చిందా? మీరు దానిని సంచార్ సాథీ (చక్షు)లో ఫిర్యాదు చేయవచ్చు.", "https://sancharsaathi.gov.in/", "sancharsaathi.gov.in")],
+}
+
+def _help_html(lang: str) -> str:
+    rows = OFFICIAL_HELP.get(lang) or OFFICIAL_HELP["en"]
+    return "".join(f'<p class="note sg-help">{html.escape(t)} <a href="{html.escape(u)}" rel="noopener" target="_blank">{html.escape(d)}</a></p>' for t, u, d in rows)
+
 # A few words per sign for the one-line summary. NOT NATIVE-REVIEWED (hi, te).
 SHORT = {
     "en": {"asks_secret": "asks for OTP or PIN", "upi_trap": "asks you to pay first", "claim_prize": "promises a prize",
@@ -352,4 +368,4 @@ def signs_html(signs, lang: str = "en") -> str:
                 f'<ul>{"".join(_item(s, tx) for s in ordered[VISIBLE:])}</ul></details>')
     return (f'<section class="signs" id="signs" lang="{lang}" aria-labelledby="signs-h"><h3 id="signs-h">{html.escape(ui["title"])}</h3>'
             f'<p class="sg-sum">{html.escape(_summary(ordered, lang))}</p><ul>{first}</ul>{rest}'
-            f'<p class="sg-intro">{html.escape(ui["intro"])}</p><p class="sg-adv">{html.escape(ui["advice"])}</p></section>')
+            f'<p class="sg-intro">{html.escape(ui["intro"])}</p><p class="sg-adv">{html.escape(ui["advice"])}</p>{_help_html(lang)}</section>')

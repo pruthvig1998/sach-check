@@ -36,9 +36,32 @@ def _poisoned(v: dict) -> bool:
     claims = v.get("claims") or []
     return bool(claims) and not any((c.get("trace") or {}).get("timing_ms") for c in claims if isinstance(c, dict))
 
+def claim_cache_enabled() -> bool:
+    """L0: also key the cache by the extracted claims, so a forward that differs only by greetings, 'forwarded' lines or emoji reuses the
+    same checked answer. Switch off with SACH_CLAIM_CACHE=0."""
+    return os.environ.get("SACH_CLAIM_CACHE", "1") != "0"
+
+def _claim_norm(t: str) -> str:
+    return re.sub(r"[\s.!?।॥]+$", "", normalise(t))
+
+def claim_key(claim_texts, reply_lang: str | None) -> str | None:
+    """Cache key for the set of checked claims (their order kept, light punctuation ignored). None when there is nothing to key on."""
+    parts = [_claim_norm(c) for c in claim_texts if c and c.strip()]
+    if not parts:
+        return None
+    rl = reply_lang if reply_lang else "auto"
+    return "cacheC:" + hashlib.sha256(("\x1f".join(parts) + "\x00" + rl).encode("utf-8")).hexdigest()
+
 def lookup(text: str, reply_lang: str | None):
+    return lookup_key(key(text, reply_lang))
+
+def lookup_by_claims(claim_texts, reply_lang: str | None):
+    k = claim_key(claim_texts, reply_lang) if claim_cache_enabled() else None
+    return lookup_key(k) if k else None
+
+def lookup_key(k: str):
     try:
-        v = store.get_store().get(key(text, reply_lang))
+        v = store.get_store().get(k)
         if not (isinstance(v, dict) and v.get("verdict") and "claims" in v):
             return None
         if v.get("layer") != "match" and v.get("_verdict_policy") != _VERDICT_POLICY:
@@ -52,6 +75,11 @@ def lookup(text: str, reply_lang: str | None):
 def save(text: str, reply_lang: str | None, out: dict) -> None:
     try:
         if storable(out):
-            store.get_store().set(key(text, reply_lang), {**out, "_verdict_policy": _VERDICT_POLICY}, ttl_s=ttl_for(out))
+            value, ttl = {**out, "_verdict_policy": _VERDICT_POLICY}, ttl_for(out)
+            store.get_store().set(key(text, reply_lang), value, ttl_s=ttl)
+            ck = claim_key([(c.get("claim") or {}).get("text", "") for c in out.get("claims", []) if isinstance(c, dict)], reply_lang) \
+                if claim_cache_enabled() else None
+            if ck:
+                store.get_store().set(ck, value, ttl_s=ttl)
     except Exception:
         pass

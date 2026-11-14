@@ -26,7 +26,8 @@ def test_there_are_post_records_and_all_are_valid():
     assert len(raw) == len(RECS)
     for r in raw:
         assert pibposts.valid(r)
-        assert re.fullmatch(r"https://x\.com/PIBFactCheck/status/\d{15,20}", r["url"]) and r["url"].endswith(r["id"])
+        pat = r"https://t\.me/PIB_FactCheck/\d{1,9}" if r.get("source") == "telegram" else r"https://x\.com/PIBFactCheck/status/\d{15,20}"
+        assert re.fullmatch(pat, r["url"]) and r["url"].endswith(r["id"])
         assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", r["date"]) and r["verdict"] in ("FALSE", "MISLEADING") and r["kind"] == "post"
         assert len(r["claim"].split()) >= 6
 
@@ -38,7 +39,8 @@ def test_no_duplicate_ids_or_urls():
 
 def test_a_post_is_never_listed_as_a_press_release():
     for r in RECS:
-        assert r["prid"] == "" and "pib.gov.in" not in r["url"] and r["url"].startswith("https://x.com/PIBFactCheck/status/")
+        assert r["prid"] == "" and "pib.gov.in" not in r["url"]
+        assert r["url"].startswith("https://t.me/PIB_FactCheck/" if r.get("source") == "telegram" else "https://x.com/PIBFactCheck/status/")
 
 
 # ---- ingest rules -------------------------------------------------------------------------------------------------------------

@@ -300,7 +300,7 @@ def test_trace_lists_every_judged_source_including_uncited():
     c = out["claims"][0]
     srcs = c["trace"]["sources"]
     assert len(srcs) == 2
-    assert all({"source", "url", "tier", "fetched_at", "title", "stance"} <= set(s) <= {"source", "url", "tier", "fetched_at", "title", "stance", "judged"} for s in srcs)
+    assert all({"source", "url", "tier", "fetched_at", "title", "stance"} <= set(s) <= {"source", "url", "tier", "fetched_at", "title", "stance", "judged", "snippet"} for s in srcs)
     by = {s["url"]: s for s in srcs}
     assert by[PIB.url]["stance"] == "contradicts" and by[OFFICIAL.url]["stance"] == "none"
     assert {x["url"] for x in c["citations"]} == {PIB.url}          # the second source was judged but not cited

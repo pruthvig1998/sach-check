@@ -137,6 +137,20 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
     out_lang = reply_lang if reply_lang in SUPPORTED else lang          # reply language
     ext = {}
     claims = extract_claims(text, max_claims=MAX_CLAIMS, report=ext)     # ext: what was not checked (display only)
+    if use and not force_live and claims:       # L0: same checked claims under different wrapper text (greeting, 'forwarded', emoji)
+        chit = cache.lookup_by_claims([c.text for c in claims], rl)
+        if chit is not None:
+            out = dict(chit)
+            out["first_checked_at"] = chit.get("first_checked_at") or chit.get("checked_at")
+            out["cached"], out["cache_kind"], out["served_at"] = True, "claims", ledger.now()
+            out.pop("extraction", None)         # the stored one lists the FIRST user's skipped sentences: never show it to another user
+            if ext.get("sentences") is not None:
+                out["extraction"] = {"sentences": ext["sentences"], "checked": len(claims),
+                                     "skipped": [x if len(x) <= 120 else x[:117] + "..." for x in ext["skipped"][:3]]}
+            ot = dict(chit.get("trace") or {})
+            out["trace"] = {**ot, "layer": "CACHE", "original_layer": ot.get("original_layer") if ot.get("layer") == "CACHE" else ot.get("layer", "LIVE")}
+            ledger.record_check(out, cached=True)
+            return out
     if not claims:        # greeting, emoji, bare URL, numbers: nothing checkable. Say so instead of implying a search failed.
         out = {"language": out_lang, "input_language": lang, "verdict": "UNVERIFIED", "no_claims": True, "claims": [],
                "checked_at": ledger.now(), "card": f"{tr(NOCLAIM_LABEL, out_lang)}\n{tr(NOCLAIM, out_lang)}"}

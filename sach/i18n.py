@@ -229,6 +229,20 @@ TG_DEGRADED_NOTE = {  # the Telegram reply note when the AI check was unavailabl
 }
 
 
+# L2: official pages Sach read that mention related things, shown under an UNVERIFIED result. NOT a verdict. NOT NATIVE-REVIEWED (hi, te).
+OFFICIAL_PAGES = {
+ "en": {"title": "Official pages that mention related things",
+        "note": "This is not a verdict. Sach could not confirm or deny your claim from these pages. Read them yourself before you decide.",
+        "closest": "Closest sentences"},
+ "hi": {"title": "आधिकारिक पेज जिनमें मिलती-जुलती बातें हैं",
+        "note": "यह नतीजा नहीं है। इन पेजों से Sach दावे की न पुष्टि कर सका, न खंडन। फ़ैसला करने से पहले इन्हें खुद पढ़ें।",
+        "closest": "सबसे मिलते-जुलते वाक्य"},
+ "te": {"title": "సంబంధిత విషయాలు ఉన్న అధికారిక పేజీలు",
+        "note": "ఇది తీర్పు కాదు. ఈ పేజీల నుండి Sach ఆ ప్రకటనను ధృవీకరించలేకపోయింది, ఖండించలేకపోయింది. నిర్ణయం తీసుకునే ముందు వీటిని మీరే చదవండి.",
+        "closest": "అత్యంత దగ్గరి వాక్యాలు"},
+}
+
+
 def incomplete(res) -> bool:
     """True when the overall verdict is UNVERIFIED and the check could not run fully: the AI judge failed or was unavailable (degraded),
     or web search was down or partial. A decisive verdict (TRUE, FALSE, MISLEADING) stands on its cited source, so it is never incomplete.

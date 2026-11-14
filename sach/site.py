@@ -633,7 +633,7 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
     if incomplete(res):             # shown first, above the card and its buttons: the check did not finish, which is not "nothing found"
         inc_html = (f'<div class="honest incomplete" role="status" style="margin:0 0 14px"><p style="margin:0">'
                     f'<b>{esc(i18n_tr(INCOMPLETE_NOTICE, text_lang(res.get("language", "en"))))}</b></p></div>')
-    unv, oldnote, extract = honesty.unverified_panel(res), honesty.old_debunk_notice(res), honesty.extraction_html(res)
+    unv, oldnote, extract = honesty.unverified_panel(res) + honesty.official_pages_html(res), honesty.old_debunk_notice(res), honesty.extraction_html(res)
     notice = ""
     if res.get("degraded"):
         notice = ('<div class="honest" style="margin-top:18px" role="status">'

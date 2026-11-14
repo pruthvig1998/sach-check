@@ -49,7 +49,8 @@ DEFAULT_MAX_AGE_YEARS = 5.0  # third-party reviews older than this are not used 
 
 PIB_NAME = "PIB Fact Check"
 PIB_X_NAME = "PIB Fact Check (on X)"        # a debunk PIB published as a post on X (data/pib_posts.jsonl), never a pib.gov.in release
-PIB_NAMES = (PIB_NAME, PIB_X_NAME)
+PIB_TG_NAME = "PIB Fact Check (on Telegram)"   # the same kind of debunk, published on PIB Fact Check's own Telegram channel
+PIB_NAMES = (PIB_NAME, PIB_X_NAME, PIB_TG_NAME)
 POST_MIN_JACCARD = 0.9    # a post's claim is short and specific, so the wording must be (near) identical on top of every check_pair rule
 PIB_HOSTS = ("pib.gov.in", "factcheck.pib.gov.in")
 
@@ -167,7 +168,7 @@ def load_pib_records() -> list[dict]:
                      "text": str(r.get("excerpt") or "")})
     for r in pibposts.load():                  # PIB Fact Check posts on X (separate file; every record validated by sach.pibposts.valid)
         rows.append({"title": r["claim"], "claim": r["claim"], "review_date": r["date"], "url": r["url"], "prid": "", "post_id": r["id"],
-                     "kind": "post", "verdict": r["verdict"], "text": ""})      # no page_text: numbers must match exactly
+                     "kind": "post", "verdict": r["verdict"], "text": "", "source": r.get("source", "x")})      # no page_text: numbers must match exactly
     return rows
 
 # ------------------------------------------------------------------------------------------------ candidates
@@ -201,8 +202,10 @@ def _pib_candidates(claim_texts: list[str], records: list[dict]) -> list[dict]:
                 best = (ct, res)
         if best:
             if post:
-                out.append(_cand(PIB_X_NAME, "https://x.com/PIBFactCheck", r["url"], r["review_date"],
-                                 "Misleading" if r["verdict"] == "MISLEADING" else "Fake", r["title"], "pib_x_post", best[0], reviewed, best[1]))
+                tg = r.get("source") == "telegram"
+                out.append(_cand(PIB_TG_NAME if tg else PIB_X_NAME, "https://t.me/PIB_FactCheck" if tg else "https://x.com/PIBFactCheck",
+                                 r["url"], r["review_date"], "Misleading" if r["verdict"] == "MISLEADING" else "Fake", r["title"],
+                                 "pib_tg_post" if tg else "pib_x_post", best[0], reviewed, best[1]))
                 continue
             rating = "Misleading" if re.search(r"\bmisleading\b", r["title"], re.I) else "Fake"
             out.append(_cand(PIB_NAME, "https://factcheck.pib.gov.in/", r["url"], r["review_date"], rating, r["title"], "pib_archive",

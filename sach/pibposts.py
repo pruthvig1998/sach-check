@@ -25,6 +25,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 POSTS_PATH = os.path.join(ROOT, "data", "pib_posts.jsonl")
 AUTHOR = "PIBFactCheck"
 URL_RE = re.compile(r"^https://x\.com/PIBFactCheck/status/(\d{15,20})$")
+TG_CHANNEL = "PIB_FactCheck"                                    # PIB Fact Check's public Telegram channel
+TG_URL_RE = re.compile(r"^https://t\.me/PIB_FactCheck/(\d{1,9})$")
 IST = timezone(timedelta(hours=5, minutes=30), "IST")
 VERDICTS = ("FALSE", "MISLEADING")
 
@@ -203,11 +205,46 @@ def judge(tweet: dict) -> tuple[dict | None, str]:
             "verdict": "FALSE" if strong else "MISLEADING", "kind": "post"}, ""
 
 
+_MEDIA_ONLY_INDIC = re.compile(r"वीडियो|फोटो|तस्वीर|क्लिप|वायरल\s+वीडियो|వీడియో|ఫోటో|చిత్రం|ভিডিও|ছবি|வீடியோ|புகைப்படம்|વિડિઓ|ફોટો")   # Hindi, Telugu, Bengali, Tamil, Gujarati
+
+
+def judge_telegram(post_id, text: str, date_iso: str) -> tuple[dict | None, str]:
+    """The same acceptance rules as `judge`, for a post on PIB Fact Check's own Telegram channel (https://t.me/PIB_FactCheck/<id>).
+    -> (record fields incl. source='telegram', '') or (None, reason). Pure: the caller fetched and parsed the page."""
+    pid = str(post_id or "")
+    if not re.fullmatch(r"\d{1,9}", pid):
+        return None, "bad Telegram post id"
+    t = strip_trailing_links(str(text or ""))
+    if not _HASHTAG.search(t):
+        return None, "no #PIBFactCheck marker"
+    strong, mislead = bool(_STRONG.search(t)), bool(_MISLEAD.search(t))
+    if not (strong or mislead):
+        return None, "no debunk marker (FAKE/FALSE/MISLEADING/not announced/baseless)"
+    if _CONFIRMS_TRUE.search(t):
+        return None, "ambiguous or confirms the claim (true / partly true / genuine)"
+    claim = extract_claim(t)
+    if _MEDIA_ONLY.search(claim) or _MEDIA_ONLY_INDIC.search(claim):
+        return None, "claim is about a video/image, not a text claim"
+    why = garbled(claim, t)
+    if why:
+        return None, why
+    if len(re.findall(r"[A-Za-z\u0900-\u0dff0-9]+", claim)) < 6:
+        return None, "no concrete text claim"
+    try:
+        d = date.fromisoformat(str(date_iso))
+    except ValueError:
+        return None, "post date unreadable"
+    if d > datetime.now(IST).date():
+        return None, "post date is in the future"
+    return {"id": pid, "url": f"https://t.me/{TG_CHANNEL}/{pid}", "date": d.isoformat(), "text": t, "claim": claim,
+            "verdict": "FALSE" if strong else "MISLEADING", "kind": "post", "source": "telegram"}, ""
+
+
 # ------------------------------------------------------------------------------------------------ loading
 def valid(r: dict) -> bool:
     """A stored record is usable only with every field in shape: canonical x.com URL whose id equals `id`, a date, a claim, a verdict."""
     try:
-        m = URL_RE.match(str(r.get("url") or ""))
+        m = (TG_URL_RE if r.get("source") == "telegram" else URL_RE).match(str(r.get("url") or ""))
         return bool(m and m.group(1) == str(r.get("id")) and r.get("kind") == "post" and r.get("verdict") in VERDICTS
                     and str(r.get("claim") or "").strip() and str(r.get("text") or "").strip()
                     and date.fromisoformat(str(r.get("date"))))

@@ -91,7 +91,7 @@ def test_pib_archive_match_is_instant_attributed_and_skips_live():
 def test_real_archive_record_matches_locally():
     recs = match.load_pib_records()
     # press releases are pib.gov.in pages; PIB Fact Check posts on X (data/pib_posts.jsonl, kind "post") are canonical x.com/PIBFactCheck links
-    assert recs and all(r["review_date"] and (r["url"].startswith("https://x.com/PIBFactCheck/status/") if r.get("kind") == "post"
+    assert recs and all(r["review_date"] and (r["url"].startswith("https://t.me/PIB_FactCheck/" if r.get("source") == "telegram" else "https://x.com/PIBFactCheck/status/") if r.get("kind") == "post"
                                               else r["url"].startswith("https://pib.gov.in/")) for r in recs)
     res = check_forward("Retirement age of Central Government employees has been reduced.", [Retr()], LLM(), matcher=match.Matcher(pib_records=recs))
     assert res["layer"] == "match" and res["match"]["checker"] == "PIB Fact Check"

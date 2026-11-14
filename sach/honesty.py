@@ -8,7 +8,7 @@ import html
 from datetime import date, datetime
 
 from . import timefmt
-from .i18n import UNVERIFIED_PANEL, tr
+from .i18n import OFFICIAL_PAGES, UNVERIFIED_PANEL, tr
 from .models import TIER_OFFICIAL, TIER_PIB, UNVERIFIED
 
 _MON = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
@@ -60,6 +60,35 @@ def unverified_panel(res: dict) -> str:
             f'<p style="margin:0 0 4px"><b>{_e(t["meaning_title"])}</b></p><p class="note" style="margin:0 0 12px">{_e(t["meaning"])}</p>'
             f'<p style="margin:0 0 4px"><b>{_e(t["next_title"])}</b></p><p class="note" style="margin:0 0 4px">{_e(t["next"])}</p>'
             f'<p class="note" style="margin:0">{_e(t["scope"])}</p></section>')
+
+
+def official_pages_html(res: dict) -> str:
+    """L2: up to three official pages that mention things related to the claim, with the closest sentences, under a complete UNVERIFIED result.
+    Show-only: no stance, no label, never a verdict. Off with SACH_SHOW_PAGES=0."""
+    import os
+    from .stance import overlap
+    if os.environ.get("SACH_SHOW_PAGES", "1") == "0" or not _live_unverified(res):
+        return ""
+    picks, seen = [], set()
+    for c in res.get("claims") or []:
+        tr_ = c.get("trace") or {}
+        q = tr_.get("searched_as") or (c.get("claim") or {}).get("text", "")
+        for s in tr_.get("sources") or []:
+            url, snip = str(s.get("url") or ""), str(s.get("snippet") or "").strip()
+            if s.get("tier") not in (TIER_OFFICIAL, TIER_PIB) or not snip or url in seen or not url.startswith(("http://", "https://")):
+                continue
+            score = overlap(q, snip)
+            if score >= 0.2:
+                seen.add(url); picks.append((score, s, snip))
+    if not picks:
+        return ""
+    picks.sort(key=lambda x: -x[0])
+    t = tr(OFFICIAL_PAGES, res.get("language", "en"))
+    items = "".join(f'<li style="margin:0 0 10px"><a href="{_e(s["url"])}" rel="noopener" target="_blank"><b>{_e(s.get("source") or s["url"])}</b></a>'
+                    f'<br><span class="note">{_e(t["closest"])}: “{_e(snip)}”</span></li>' for _, s, snip in picks[:3])
+    return (f'<section class="official-pages" aria-labelledby="op-h" style="{_NEUTRAL}">'
+            f'<p id="op-h" style="margin:0 0 6px"><b>{_e(t["title"])}</b></p><p class="note" style="margin:0 0 10px">{_e(t["note"])}</p>'
+            f'<ul style="margin:0;padding-left:18px">{items}</ul></section>')
 
 
 # ------------------------------------------------------------------ 2. old matched debunk, and the citation word

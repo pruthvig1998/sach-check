@@ -11,7 +11,7 @@ def clean_text(t: str) -> str:
 
 # Sentence ends: . ! ? and the Devanagari/Bengali/Odia danda । and double danda ॥, the Urdu full stop ۔ and question mark ؟, the Meitei cheikhei ꯫
 _SPLIT = re.compile(r"(?<=[.!?।॥۔؟\uabeb])\s+|\n+|\s*[|•▪●]\s*")
-_BOILER = re.compile(r"forward|share (this|kar)|भेजें|शेयर|ఫార్వర్డ్|షేర్|please|plz|\bgroup\b|जल्दी|త్వరగా|"
+_BOILER = re.compile(r"forward|share (this|kar|with (?:all|your|every|everyone))|भेजें|शेयर|ఫార్వర్డ్|షేర్|please|plz|\bgroup\b|जल्दी|త్వరగా|"
                      r"good (morning|night|evening|afternoon)|blessed|have a (nice|great|good|happy)|namaste|सुप्रभात|शुभ|శుభోదయం|శుభ|"
                      r"\bclick\b|\blink\b|\bregister\b|\bhurry\b|\bapply now\b|\bvisit\b|\bdownload\b|\bsubscribe\b|\bwhatsapp\b|क्लिक|लिंक|रजिस्टर|క్లిక్|లింక్|నమోదు|"
                      # NOT NATIVE-REVIEWED: share / forward / click / link in the other supported scripts (the same call-to-action filter as above)

@@ -70,10 +70,23 @@ def localized_rule_text(ct: dict, lang: str) -> str:
         return RULE_TEXT_TIMED_OUT.get(lang) or RULE_TEXT_TIMED_OUT["en"]
     return ct.get("rule_text", "")
 
+def _snippet(claim: str, e) -> str:
+    """The sentences of an official page closest to the claim, at most ~260 characters, for the 'official pages' panel. Empty for fact-checkers
+    (never shown there) and when nothing can be extracted. Display only: never an input to a verdict."""
+    if e.tier not in (TIER_PIB, TIER_OFFICIAL) or not getattr(e, "text", ""):
+        return ""
+    try:
+        from .excerpt import excerpt
+        s = " ".join(excerpt(claim, e.title or "", e.text, e.tier).split())
+    except Exception:
+        return ""
+    return s if len(s) <= 260 else s[:257].rsplit(" ", 1)[0] + "..."
+
 def build_trace(searched_as: str, evidence: list, reason_code: str, translator: str | None = None) -> dict:
     t = {"searched_as": searched_as,
          "sources": [{"source": e.source_name, "url": e.url, "tier": e.tier, "fetched_at": e.fetched_at,
                       "title": e.title, "stance": e.stance,
+                      **({"snippet": _snippet(searched_as, e)} if _snippet(searched_as, e) else {}),
                       **({"judged": e.judge_note} if getattr(e, "judge_note", None) else {})} for e in evidence[:8]],
          "rule": reason_code, "rule_text": RULE_TEXT.get(reason_code, "")}
     if translator:
