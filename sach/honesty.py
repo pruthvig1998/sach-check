@@ -78,8 +78,9 @@ def official_pages_html(res: dict) -> str:
             if s.get("tier") not in (TIER_OFFICIAL, TIER_PIB) or not snip or url in seen or not url.startswith(("http://", "https://")):
                 continue
             score = overlap(q, snip)
-            if score >= 0.2:
-                seen.add(url); picks.append((score, s, snip))
+            key = " ".join(snip.lower().split())[:120]          # the same page under two URLs (PRID variants) shows once
+            if score >= 0.2 and key not in seen:
+                seen.add(url); seen.add(key); picks.append((score, s, snip))
     if not picks:
         return ""
     picks.sort(key=lambda x: -x[0])

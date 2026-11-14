@@ -86,7 +86,7 @@ def _snippet(claim: str, e) -> str:
     if re.search(r"javascript must be enabled|enable javascript", s, re.I):
         return ""                                   # a page that did not render: its text is a browser notice, not content
     s = _BOILER_PREFIX.sub("", s).strip()
-    s = re.sub(r"^(?:Skip to main content|Skip to content)\s*", "", s, flags=re.I)
+    s = re.sub(r"\bSkip to (?:main )?content\b\s*", "", s, flags=re.I).strip()
     return s if len(s) <= 260 else s[:257].rsplit(" ", 1)[0] + "..."
 
 def build_trace(searched_as: str, evidence: list, reason_code: str, translator: str | None = None) -> dict:

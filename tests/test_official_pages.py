@@ -91,3 +91,13 @@ def test_snippets_drop_pib_dateline_skip_links_and_unrendered_pages():
     assert _snippet("SBI asks for PIN and OTP", sbi).startswith("SBI never asks")
     broken = Evidence("PIB", "https://pib.gov.in/y", TIER_PIB, TS, "Factsheet", "Factsheet Details | PIB JavaScript must be enabled in order for you to use the Site in standard view.")
     assert _snippet("factsheet details", broken) == ""
+
+
+def test_the_same_page_under_two_urls_is_listed_once_and_skip_links_are_removed_everywhere():
+    from sach.models import _snippet
+    sbi = Evidence("State Bank of India", "https://onlinesbi.sbi.bank.in/", TIER_OFFICIAL, TS, "SBI", "State Bank of India Skip to main content SBI never asks for confidential information such as PIN and OTP.")
+    assert "Skip to main content" not in _snippet("SBI asks for PIN and OTP", sbi)
+    twin_a = Evidence("Ministry X", "https://x.gov.in/a?PRID=1", TIER_OFFICIAL, TS, "Rs 5000 to every woman", "Rs 5000 to every woman under PM Mahila Yojana is not described in this notice about welfare schemes.")
+    twin_b = Evidence("Ministry X", "https://x.gov.in/b?PRID=1&lang=2", TIER_OFFICIAL, TS, "Rs 5000 to every woman", "Rs 5000 to every woman under PM Mahila Yojana is not described in this notice about welfare schemes.")
+    panel = honesty.official_pages_html(_run([twin_a, twin_b]))
+    assert panel.count("<li") == 1
