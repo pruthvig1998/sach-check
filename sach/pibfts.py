@@ -8,19 +8,22 @@ Switch: SACH_PIB_FTS=1 turns it on (default off until it has been measured). A m
 Table `releases(prid, date, lang, title, excerpt, url, fetched)` plus FTS5 table `fts` over title and excerpt (porter stemming, BM25 with the title
 weighted above the excerpt). Pure stdlib."""
 from __future__ import annotations
-import os, re, sqlite3
+import os, re, sqlite3, unicodedata
 from .stance import overlap, subject_coverage
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(ROOT, "data", "pib.sqlite")
 EXCERPT_CHARS = 600
-_WORD = re.compile(r"[^\W_]{3,}", re.UNICODE)
+# Indic vowel signs and joiners are combining marks, which Python's \w and SQLite's default tokenizer treat as separators, so Hindi words would be split
+# into fragments. Both sides use this explicit list: the regex below for queries, and the FTS5 `tokenchars` option for the index (version-proof).
+_MARKS = "".join(chr(c) for c in range(0x0900, 0x0E00) if unicodedata.category(chr(c)) in ("Mn", "Mc")) + "\u200c\u200d"
+_WORD = re.compile(r"(?:[^\W_]|[" + re.escape(_MARKS) + r"])+", re.UNICODE)
 _STOP = {"the", "and", "for", "that", "this", "with", "from", "will", "has", "have", "are", "was", "were", "been", "all", "any", "not", "its",
          "their", "they", "them", "who", "which", "under", "into", "per", "new", "government", "india", "indian", "central", "union", "ministry"}
 
 SCHEMA = """
 create table if not exists releases(prid text primary key, date text, lang text, title text, excerpt text, url text, fetched text);
-create virtual table if not exists fts using fts5(title, excerpt, content='releases', content_rowid='rowid', tokenize='porter unicode61');
+create virtual table if not exists fts using fts5(title, excerpt, content='releases', content_rowid='rowid', tokenize="porter unicode61 tokenchars '%s'");
 create trigger if not exists releases_ai after insert on releases begin
   insert into fts(rowid, title, excerpt) values (new.rowid, new.title, new.excerpt); end;
 create trigger if not exists releases_ad after delete on releases begin
@@ -45,7 +48,7 @@ def query_for(claim: str) -> str:
     in a forward can never change the query's meaning. Returns '' when there is nothing to search on."""
     seen, terms = set(), []
     for w in _WORD.findall((claim or "").lower()):
-        if w in _STOP or w in seen or w.isdigit() and len(w) < 3:
+        if len(w) < 3 or w in _STOP or w in seen or w.isdigit() and len(w) < 3:
             continue
         seen.add(w); terms.append('"' + w.replace('"', "") + '"')
         if len(terms) >= 12:
@@ -85,8 +88,22 @@ def open_rw(path: str | None = None):
     path = path or DB_PATH
     os.makedirs(os.path.dirname(path), exist_ok=True)
     con = sqlite3.connect(path)
-    con.executescript(SCHEMA)
+    con.executescript(SCHEMA % _MARKS.replace("'", ""))
     return con
+
+
+def reindex(path: str | None = None) -> int:
+    """Rebuild the full-text table from the `releases` rows with the current tokenizer (needed once when a database was built with an older one).
+    Returns the number of releases indexed."""
+    con = open_rw(path)
+    try:
+        con.execute("drop table if exists fts")
+        con.executescript(SCHEMA % _MARKS.replace("'", ""))
+        con.execute("insert into fts(fts) values('rebuild')")
+        con.commit()
+        return con.execute("select count(*) from releases").fetchone()[0]
+    finally:
+        con.close()
 
 
 def excerpt_of(title: str, body: str) -> str:

@@ -78,8 +78,8 @@ def test_switch_defaults_off_and_candidates_only_ever_grow_when_it_is_on(db, mon
     monkeypatch.setenv("SACH_PIB_FTS", "1")
     on = r.candidate_prids(CLAIM)
     assert pibfts.enabled() and "2260621" in on and "2260621" not in off
-    assert set(off) <= set(on)                                         # the new index adds candidates and never removes one
-    assert len(on) <= r.top_n + 1
+    assert on[:len(off)] == off                                        # the existing list is kept exactly, in order; the new index only appends
+    assert len(on) <= r.top_n + 1 + r.FTS_EXTRA
 
 
 # ---- the harvester
@@ -105,3 +105,37 @@ def test_harvester_stores_releases_logs_misses_and_reports_blocks(db, monkeypatc
     assert harvest.fetch_one(con, "2260624") == "miss"                  # a page that is not on PIB is never stored
     con.commit()
     assert "2260621" in harvest.known(con) and "2260622" in harvest.known(con) and "2260623" not in harvest.known(con)
+
+
+def test_full_text_hits_can_never_push_out_a_seeded_debunk(db, tmp_path, monkeypatch):
+    import json
+    seed = tmp_path / "seed.json"
+    seed.write_text(json.dumps([{"prid": 1111111, "title": "Cabinet approves coal scheme for railway tracks"}]), encoding="utf-8")
+    rows = [{"prid": str(2000000 + i), "title": "Government cabinet approves coal gasification scheme to cut gas imports", "body": "cabinet approves coal gasification scheme to cut gas imports"} for i in range(6)]
+    pibfts.upsert(rows, db)
+    r = PibRetriever(seed_path=str(seed), use_rss=False, min_overlap=0.3)
+    claim = "Government cabinet approves coal gasification scheme to cut gas imports"
+    off = r.candidate_prids(claim)
+    monkeypatch.setenv("SACH_PIB_FTS", "1")
+    on = r.candidate_prids(claim)
+    assert "1111111" in off and on[:len(off)] == off                               # the seeded debunk stays, first; nothing that was there is dropped
+    assert len(on) - len(off) <= r.FTS_EXTRA
+
+
+def test_hindi_words_stay_whole_and_hindi_releases_are_found(db):
+    assert pibfts.query_for("कोयला गैसीकरण योजना") == '"कोयला" OR "गैसीकरण" OR "योजना"'
+    pibfts.upsert([{"prid": "2336211", "title": "ओडिशा के हर गरीब को मिलेगा पक्का घर", "body": "केंद्रीय मंत्री ने ओडिशा में गरीब परिवारों को पक्का घर देने की घोषणा की।"},
+                   {"prid": "2336212", "title": "कोयला गैसीकरण योजना को मंजूरी", "body": "केंद्रीय मंत्रिमंडल ने कोयला गैसीकरण परियोजनाओं के लिए योजना को मंजूरी दी।"}], db)
+    hits = pibfts.search("केंद्रीय मंत्रिमंडल ने कोयला गैसीकरण योजना को मंजूरी दी", 5, db)
+    assert hits and hits[0]["prid"] == "2336212"
+
+
+def test_reindex_upgrades_a_database_built_with_the_older_tokenizer(tmp_path):
+    p = str(tmp_path / "old.sqlite")
+    con = sqlite3.connect(p)
+    con.executescript("""create table releases(prid text primary key, date text, lang text, title text, excerpt text, url text, fetched text);
+        create virtual table fts using fts5(title, excerpt, content='releases', content_rowid='rowid', tokenize='porter unicode61');""")
+    con.execute("insert into releases values('7','','hi','कोयला गैसीकरण योजना को मंजूरी','केंद्रीय मंत्रिमंडल ने कोयला गैसीकरण योजना को मंजूरी दी','u','x')")
+    con.commit(); con.close()
+    assert pibfts.reindex(p) == 1
+    assert pibfts.search("केंद्रीय मंत्रिमंडल ने कोयला गैसीकरण योजना को मंजूरी दी", 5, p)[0]["prid"] == "7"

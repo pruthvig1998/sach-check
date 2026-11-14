@@ -24,6 +24,7 @@ def canonical_key(url: str) -> str:
 
 class PibRetriever:
     """Looks for a PIB press release matching the claim: hand-seeded debunks + live RSS index."""
+    FTS_EXTRA = 2          # at most this many full-text candidates are appended after the existing list (two more pages fetched at most)
     def __init__(self, seed_path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "seed_debunks.json"), use_rss=True, top_n=3, min_overlap=0.3):
         self.seed_path, self.use_rss, self.top_n, self.min_overlap = seed_path, use_rss, top_n, min_overlap
 
@@ -50,10 +51,13 @@ class PibRetriever:
                 scored[p] = ov
         for h in pib_index.search(claim, top_n=self.top_n + 2):   # local index of harvested PIB releases (title + excerpt)
             scored[str(h["prid"])] = max(scored.get(str(h["prid"]), 0), h["score"])
-        if pibfts.enabled():                               # L4: read-only full-text index of many more releases; same gates, same score scale
-            for h in pibfts.search(claim, top_n=self.top_n + 2):
-                scored[h["prid"]] = max(scored.get(h["prid"], 0), h["score"])
-        return [prid for prid, _ in sorted(scored.items(), key=lambda kv: -kv[1])[: self.top_n + 1]]
+        base = [prid for prid, _ in sorted(scored.items(), key=lambda kv: -kv[1])[: self.top_n + 1]]
+        if pibfts.enabled():                               # L4: read-only full-text index of many more releases (retrieval only)
+            # The existing list is kept exactly as it was, in the same order; at most FTS_EXTRA full-text candidates are appended after it, so this
+            # can only add a page to look at and never push out a hand-seeded debunk or an index hit.
+            extra = [h["prid"] for h in pibfts.search(claim, top_n=self.top_n + 2) if h["prid"] not in base]
+            base = base + extra[: self.FTS_EXTRA]
+        return base
 
     def search(self, claim: str) -> list[Evidence]:
         out = []

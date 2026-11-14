@@ -58,9 +58,12 @@ def main():
     ap.add_argument("--seed", action="store_true"); ap.add_argument("--rss", action="store_true")
     ap.add_argument("--prids", default="", help="HIGH-LOW, walked downwards, for example 2336211-2334711")
     ap.add_argument("--max", type=int, default=200, help="hard cap on network fetches in this run")
+    ap.add_argument("--reindex", action="store_true", help="rebuild the full-text table from the stored releases (no network)")
     ap.add_argument("--sleep", type=float, default=2.0, help="seconds between requests (minimum 1.0)")
     a = ap.parse_args()
     pause = max(1.0, a.sleep)
+    if a.reindex:
+        print("reindexed", pibfts.reindex(), "releases"); return
     con = pibfts.open_rw()
     if a.seed:
         print("seeded from the existing index and seed debunks:", seed(con), "rows")
@@ -74,7 +77,8 @@ def main():
     if a.prids:
         hi, lo = (int(x) for x in a.prids.split("-"))
         have = known(con)
-        todo += [str(p) for p in range(max(hi, lo), min(hi, lo) - 1, -1) if str(p) not in have and str(p) not in todo]
+        queued = set(todo)
+        todo += [str(p) for p in range(max(hi, lo), min(hi, lo) - 1, -1) if str(p) not in have and str(p) not in queued]
     done = {"ok": 0, "miss": 0}; streak = 0
     for i, prid in enumerate(todo[: max(0, a.max)]):
         try:
