@@ -110,7 +110,7 @@ WELCOME = (
     "UNVERIFIED does not mean false. It means I could not find a clear official answer.\n"
     "Sach is not a government service. Please do not send private data such as OTPs, bank details or Aadhaar numbers.\n\n"
     "Reply language: /lang auto (match the message), or /lang with a code: " + LANG_CODES + ".\n\n"
-    "हिंदी: कोई भी फ़ॉरवर्ड यहाँ भेजें, मैं स्रोत के साथ जाँच बताऊँगा। भाषा बदलने के लिए /lang hi\n"
+    "हिंदी: यहाँ कोई भी फ़ॉरवर्ड भेजें, स्रोत के साथ जाँच मिलेगी। भाषा बदलने के लिए /lang hi\n"
     "తెలుగు: ఏదైనా ఫార్వర్డ్ ఇక్కడ పంపండి, నేను ఆధారాలతో తనిఖీ చేస్తాను. భాష మార్చడానికి /lang te")
 NOT_TEXT = "I can only read text for now. Please paste or forward the message as text."
 TOO_LONG = f"That message is too long. Please keep it under {MAX_CHARS} characters, or send just the key claim."
@@ -188,7 +188,8 @@ def format_reply(res: dict) -> str:
     if esc_text:
         parts.append(esc_text)
     if res.get("degraded"):
-        parts.append("Note: my AI checker is busy, so I only report a verdict when an official debunk clearly matches.")
+        from .i18n import TG_DEGRADED_NOTE, text_lang, tr as _tr
+        parts.append(_tr(TG_DEGRADED_NOTE, text_lang(res.get("language", "en"))))
     return "\n\n".join(p for p in parts if p)
 
 def _lang_get(chat_id):

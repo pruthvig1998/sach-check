@@ -3,9 +3,10 @@ from __future__ import annotations
 import html, json, os
 from urllib.parse import quote
 from . import ledger, match, pwa, share
-from .i18n import INCOMPLETE_NOTICE, LABEL, incomplete, text_lang, tr as i18n_tr
+from .i18n import DEGRADED_NOTICE, INCOMPLETE_NOTICE, LABEL, SEARCH_DOWN_NOTICE, incomplete, text_lang, tr as i18n_tr
 from .lang import SUPPORTED, NAMES, NATIVE, RTL, INDIAN_LANGS, html_lang
 from . import timefmt
+from .models import localized_rule_text
 from .report import display_card, report_html, card_data_script
 from .ocr import OCR_BLOCK
 from .scamsigns import CSS as SIGNS_CSS, signs_html
@@ -474,7 +475,7 @@ def trace_block(res: dict) -> str:
                          f'<a href="{esc(m["review_url"])}" rel="noopener">{esc(m["review_url"])}</a></p>'
                          f'<p class="note">What they checked: {esc(m["reviewed_claim"])}</p>'
                          f'<p class="note">Checks passed: {esc(ok)}. Similarity: {esc(", ".join(f"{k.replace(chr(95), chr(32))} {v}" for k, v in sim.items()))}.</p>'
-                         f'<p class="rule">{esc(ct.get("rule_text", ""))}</p></div>')
+                         f'<p class="rule">{esc(localized_rule_text(ct, text_lang(res.get("language", "en"))))}</p></div>')
             continue
         h = f'<div class="tc"><p><b>{esc(c["claim"]["text"])}</b></p>'
         if ct.get("searched_as") and ct["searched_as"] != c["claim"]["text"]:
@@ -495,7 +496,7 @@ def trace_block(res: dict) -> str:
         else:
             h += '<p class="note">No sources were found for this claim.</p>'
         if ct.get("rule_text"):
-            h += f'<p class="rule">{esc(ct["rule_text"])}</p>'
+            h += f'<p class="rule">{esc(localized_rule_text(ct, text_lang(res.get("language", "en"))))}</p>'
         parts.append(h + "</div>")
     if t.get("overall_rule"):
         parts.append(f'<div class="tc"><p class="note">Overall result</p><p class="rule">{esc(t["overall_rule"])}</p></div>')
@@ -635,11 +636,11 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
     unv, oldnote, extract = honesty.unverified_panel(res), honesty.old_debunk_notice(res), honesty.extraction_html(res)
     notice = ""
     if res.get("degraded"):
-        notice = ('<div class="honest" style="margin-top:18px" role="status"><b>Limited mode.</b> Part of Sach’s AI check was unavailable or at capacity, '
-                  'so some source comparisons may be missing. Check the cited sources and treat “unverified” as uncertainty, not as proof a claim is false. Try again later for a fuller check.</div>')
+        notice = ('<div class="honest" style="margin-top:18px" role="status">'
+                  f'{esc(i18n_tr(DEGRADED_NOTICE, text_lang(res.get("language", "en"))))}</div>')
     if res.get("search_status") in ("down", "partial"):
-        notice += ('<div class="honest" style="margin-top:18px" role="status"><b>Web search was unavailable.</b> Live web search was unavailable for this check, '
-                   'so Sach could only use its built-in list of PIB debunks. An UNVERIFIED result may change later.</div>')
+        notice += ('<div class="honest" style="margin-top:18px" role="status">'
+                   f'{esc(i18n_tr(SEARCH_DOWN_NOTICE, text_lang(res.get("language", "en"))))}</div>')
     english = ""
     if res.get("card_en"):
         said = "".join(f'<li><span class="note">{esc(c["claim"]["text"])}</span><br><b>{esc(c["english"])}</b></li>' for c in res["claims"] if c.get("english"))

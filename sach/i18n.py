@@ -4,7 +4,7 @@ LABEL = {
  "en": {"TRUE": "TRUE", "FALSE": "FALSE", "MISLEADING": "MISLEADING", "UNVERIFIED": "UNVERIFIED"},
  "hi": {"TRUE": "सच", "FALSE": "झूठ", "MISLEADING": "भ्रामक", "UNVERIFIED": "पुष्टि नहीं हुई"},
  "tl": {"TRUE": "NIJAM", "FALSE": "ABADDHAM", "MISLEADING": "THAPPUDARI PATTINCHEDI", "UNVERIFIED": "CONFIRM KAALEDU"},
- "te": {"TRUE": "నిజం", "FALSE": "అబద్ధం", "MISLEADING": "తప్పుదారి పట్టించేది", "UNVERIFIED": "ధృవీకరణ కాలేదు"},
+ "te": {"TRUE": "నిజం", "FALSE": "అబద్ధం", "MISLEADING": "తప్పుదారి పట్టించేది", "UNVERIFIED": "ధృవీకరించబడలేదు"},
 }
 WHY = {
  "en": {"FALSE": "{src} says this claim is false.",
@@ -14,7 +14,7 @@ WHY = {
  "hi": {"FALSE": "{src} के अनुसार यह दावा झूठ है।",
         "TRUE": "{src} ने इसकी पुष्टि की है।",
         "MISLEADING": "इसका कुछ हिस्सा सही है ({src}), पर संख्या, तारीख या बात का ढंग गलत पेश किया गया है।",
-        "UNVERIFIED": "हमें इसकी पुष्टि या खंडन करने वाला कोई सरकारी स्रोत नहीं मिला। इसे सच न मानें।"},
+        "UNVERIFIED": "हमें इसकी पुष्टि या इसका खंडन करने वाला कोई आधिकारिक स्रोत नहीं मिला। इसे सच न मानें।"},
  "tl": {"FALSE": "{src} prakaaram ee vaartha abaddham.",
         "TRUE": "{src} idi nijam ani confirm chesindi.",
         "MISLEADING": "Konta nijam undi ({src}), kaani numbers, dates leda cheppina vidhaanam tappuga undi.",
@@ -22,10 +22,10 @@ WHY = {
  "te": {"FALSE": "{src} ప్రకారం ఈ వార్త అబద్ధం.",
         "TRUE": "{src} దీనిని ధృవీకరించింది.",
         "MISLEADING": "ఇందులో కొంత నిజం ఉంది ({src}), కానీ సంఖ్యలు, తేదీలు లేదా చెప్పిన తీరు వక్రీకరించబడింది.",
-        "UNVERIFIED": "దీనిని ధృవీకరించే లేదా ఖండించే అధికారిక ఆధారం మాకు దొరకలేదు. దీన్ని నిజంగా భావించవద్దు."},
+        "UNVERIFIED": "దీనిని ధృవీకరించే లేదా ఖండించే అధికారిక మూలం మాకు దొరకలేదు. దీన్ని నిజమని నమ్మవద్దు."},
 }
 SOURCE_LABEL = {"tl": "Aadhaaram", "en": "Source", "hi": "स्रोत", "te": "ఆధారం"}
-FC_NOTE = {"tl": "Fact-checker (official kaadu)", "en": "Fact-checker (not official)", "hi": "फैक्ट-चेकर (सरकारी नहीं)", "te": "ఫ్యాక్ట్-చెకర్ (అధికారికం కాదు)"}
+FC_NOTE = {"tl": "Fact-checker (official kaadu)", "en": "Fact-checker (not official)", "hi": "फैक्ट-चेकर (आधिकारिक नहीं)", "te": "ఫ్యాక్ట్-చెకర్ (అధికారికం కాదు)"}
 EMOJI = {"TRUE": "✅", "FALSE": "❌", "MISLEADING": "⚠️", "UNVERIFIED": "❔"}
 
 NOCLAIM = {
@@ -149,9 +149,9 @@ UNVERIFIED_PANEL = {
         "scope": "PIB covers the Union Government; for a state-level matter ask that state's department."},
  # NOT NATIVE-REVIEWED
  "hi": {"title": "Sach ने क्या जाँचा", "claims": "जाँचे गए दावे: {n}",
-        "official": "सरकारी पेज जिन्हें जाँचा गया और जिनमें न पुष्टि हुई न खंडन: {n}", "pib": "जाँचे गए PIB पेज: {n}",
+        "official": "आधिकारिक पेज जिन्हें जाँचा गया और जिनमें न पुष्टि हुई न खंडन: {n}", "pib": "जाँचे गए PIB पेज: {n}",
         "meaning_title": "UNVERIFIED का मतलब",
-        "meaning": "Sach जिन सरकारी स्रोतों को पढ़ पाया, उनमें इसकी न पुष्टि हुई न खंडन। इसका मतलब यह नहीं कि यह शायद सच है, और यह भी नहीं कि यह शायद झूठ है।",
+        "meaning": "Sach जिन आधिकारिक स्रोतों को पढ़ पाया, उनमें इसकी न पुष्टि हुई न खंडन। इसका मतलब यह नहीं कि यह शायद सच है, और यह भी नहीं कि यह शायद झूठ है।",
         "next_title": "आगे क्या करें",
         "next": "जाँच होने तक इसे आगे न भेजें। नीचे के बटनों से PIB Fact Check या किसी फैक्ट-चेकर से पूछें। संदेश में कोई लिंक या UPI ID हो तो लिंक चेकर (#linkcheck) में जाँचें।",
         "scope": "PIB केंद्र सरकार को कवर करता है; राज्य से जुड़े मामले में उस राज्य के विभाग से पूछें।"},
@@ -208,6 +208,24 @@ INCOMPLETE_ESC_NOTE = {  # the note above the human fact-checker links when the 
        "then send it yourself. Sach sends nothing.",
  "hi": "Sach यह जाँच पूरी नहीं कर सका, इसलिए इस पर कोई नतीजा नहीं है। किसी नाम पर टैप करें, WhatsApp आपके सवाल के साथ खुलेगा; भेजना आपको खुद है। Sach कुछ नहीं भेजता।",   # NOT NATIVE-REVIEWED
  "te": "Sach ఈ తనిఖీని పూర్తి చేయలేకపోయింది, కాబట్టి దీనిపై ఏ నిర్ణయమూ లేదు. ఒక పేరును నొక్కితే WhatsApp మీ ప్రశ్నతో తెరుచుకుంటుంది; మీరే పంపండి. Sach ఏమీ పంపదు.",   # NOT NATIVE-REVIEWED
+}
+
+
+# Notices shown on the result page when the check was limited. NOT NATIVE-REVIEWED (hi, te). Other languages fall back to English through tr().
+DEGRADED_NOTICE = {
+ "en": "Limited check. Part of Sach's AI check was unavailable, so this check may be incomplete. If any sources are listed below, read them before you decide. UNVERIFIED here means Sach could not confirm or deny the claim - it is not proof the claim is false. Please try again later for a fuller check.",
+ "hi": "सीमित जाँच। Sach की AI जाँच का एक हिस्सा उपलब्ध नहीं था, इसलिए यह जाँच अधूरी रह सकती है। नीचे कोई स्रोत दिए गए हों तो फ़ैसला करने से पहले उन्हें पढ़ें। यहाँ पुष्टि नहीं हुई का मतलब है कि Sach दावे की न पुष्टि कर सका, न खंडन - यह सबूत नहीं है कि दावा झूठ है। पूरी जाँच के लिए कुछ देर बाद फिर कोशिश करें।",
+ "te": "పరిమిత తనిఖీ. Sach AI తనిఖీలో ఒక భాగం అందుబాటులో లేదు, కాబట్టి ఈ తనిఖీ అసంపూర్ణంగా ఉండవచ్చు. కింద ఏవైనా మూలాలు ఉంటే, నిర్ణయం తీసుకునే ముందు వాటిని చదవండి. ఇక్కడ ధృవీకరించబడలేదు అంటే Sach ఆ ప్రకటనను ధృవీకరించలేకపోయింది, ఖండించలేకపోయింది - ఆ ప్రకటన అబద్ధం అనడానికి ఇది సాక్ష్యం కాదు. పూర్తి తనిఖీ కోసం కొంతసేపటి తర్వాత మళ్ళీ ప్రయత్నించండి.",
+}
+SEARCH_DOWN_NOTICE = {
+ "en": "Web search was unavailable for this check, so Sach could only use its built-in list of published PIB fact-checks. An UNVERIFIED result may change later, when search is back.",
+ "hi": "इस जाँच के लिए वेब खोज उपलब्ध नहीं थी, इसलिए Sach केवल PIB की प्रकाशित फ़ैक्ट-चेक सूची का ही उपयोग कर सका। पुष्टि नहीं हुई वाला नतीजा बाद में बदल सकता है, जब खोज फिर उपलब्ध होगी।",
+ "te": "ఈ తనిఖీకి వెబ్ శోధన అందుబాటులో లేదు, కాబట్టి Sach PIB ప్రచురించిన ఫ్యాక్ట్-చెక్‌ల జాబితాను మాత్రమే ఉపయోగించగలిగింది. ధృవీకరించబడలేదు అనే ఫలితం, శోధన మళ్ళీ అందుబాటులోకి వచ్చాక మారవచ్చు.",
+}
+TG_DEGRADED_NOTE = {  # the Telegram reply note when the AI check was unavailable
+ "en": "Note: part of my AI check was unavailable for this check, so I am only giving a verdict where a published official fact-check clearly matches your message.",
+ "hi": "नोट: इस जाँच में मेरी AI जाँच का एक हिस्सा उपलब्ध नहीं था, इसलिए मैं केवल वहीं नतीजा दे रहा हूँ जहाँ PIB या किसी आधिकारिक फ़ैक्ट-चेक का प्रकाशित नतीजा आपके संदेश से साफ़ मेल खाता है।",
+ "te": "గమనిక: ఈ తనిఖీలో నా AI తనిఖీలో ఒక భాగం అందుబాటులో లేదు, కాబట్టి PIB లేదా అధికారిక ఫ్యాక్ట్-చెక్ ప్రచురించిన ఫలితం మీ సందేశానికి స్పష్టంగా సరిపోయిన చోట మాత్రమే నేను ఫలితం ఇస్తున్నాను.",
 }
 
 

@@ -12,7 +12,7 @@ from sach.site import result_block
 from test_sach import server, _post, TS            # noqa: F401  (server is a fixture)
 from test_eval_set import env, run_eval, SMALL     # noqa: F401  (env is a fixture)
 
-NOTICE = "Live web search was unavailable for this check"
+NOTICE = "Web search was unavailable for this check"
 CLAIM = "Government will give Rs 5000 to every woman under PM Mahila Yojana"
 
 
@@ -296,7 +296,7 @@ def test_check_forward_reports_search_status():
 def test_site_notice_only_for_down_and_partial():
     def block(r):
         return result_block(check_forward(CLAIM, [r], Judge(), log=False))
-    assert NOTICE in block(StatusRetriever(answered=0)) and "An UNVERIFIED result may change later." in block(StatusRetriever(answered=0))
+    assert NOTICE in block(StatusRetriever(answered=0)) and "An UNVERIFIED result may change later, when search is back." in block(StatusRetriever(answered=0))
     assert NOTICE in block(StatusRetriever(answered=1, total=2))
     assert NOTICE not in block(StatusRetriever(answered=1)) and NOTICE not in block(StatusRetriever(ok=None, total=0))
 

@@ -328,7 +328,7 @@ def test_unverified_result_is_escalated_with_every_tipline_prefilled():
         u = urlparse(o["url"])
         assert u.netloc == "wa.me" and u.path.strip("/").isdigit()
         body = parse_qs(u.query)["text"][0]
-        assert body == f"Please fact-check this message: {claim.rstrip('.')}. Checked on Sach (https://sach.example) and no official source was found."
+        assert body == f"Please fact-check this message: {claim.rstrip('.')}. I checked it on Sach (https://sach.example), but Sach found no official source for it."
         assert unquote(u.query[len("text="):]) == body                                  # percent-encoding round trip
     h = result_block(res)
     assert "Ask a human fact-checker" in h and h.count("https://wa.me/") >= 4 and "Alt News" not in h

@@ -57,6 +57,18 @@ RULE_TEXT = {
     "matched_fact_check": "A fact-checker's own published review matches this claim, so Sach shows their verdict with their name and did not run its own check.",
     "timed_out": "The check ran out of time before it finished, so the result is UNVERIFIED.",
 }
+# Hindi and Telugu wording for the one rule sentence a user can meet in any language. NOT NATIVE-REVIEWED. Other codes stay English.
+RULE_TEXT_TIMED_OUT = {
+    "en": RULE_TEXT["timed_out"],
+    "hi": "जाँच पूरी होने से पहले समय खत्म हो गया, इसलिए नतीजा पुष्टि नहीं हुई है।",
+    "te": "తనిఖీ పూర్తి కాకముందే సమయం అయిపోయింది, కాబట్టి ఫలితం ధృవీకరించబడలేదు.",
+}
+
+def localized_rule_text(ct: dict, lang: str) -> str:
+    """The trace's rule sentence in the card's language where a translation exists (timed_out today), else the stored English sentence."""
+    if ct.get("rule") == "timed_out":
+        return RULE_TEXT_TIMED_OUT.get(lang) or RULE_TEXT_TIMED_OUT["en"]
+    return ct.get("rule_text", "")
 
 def build_trace(searched_as: str, evidence: list, reason_code: str, translator: str | None = None) -> dict:
     t = {"searched_as": searched_as,

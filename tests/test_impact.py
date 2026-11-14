@@ -152,9 +152,8 @@ def test_usage_labels_and_repeat_traffic_caveat():
 def test_limited_mode_copy_covers_partial_source_judging():
     res = check_forward(FALSE_T, [FakeRetriever([PIB])], None)
     html = site.result_block(res)
-    assert "Part of Sach’s AI check was unavailable or at capacity" in html
-    assert "some source comparisons may be missing" in html
-    assert "unverified” as uncertainty, not as proof a claim is false" in html
+    assert "Limited check." in html and "this check may be incomplete" in html and "it is not proof the claim is false" in html
+    assert "Check the cited sources" not in html          # an UNVERIFIED result often has no cited sources, so the old instruction is gone
 
 
 def test_evaluation_file_missing(monkeypatch):

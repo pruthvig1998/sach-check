@@ -673,7 +673,7 @@ def test_panel_never_changes_the_verdict_or_degraded_notice():
     withl = site.result_block(dict(res), text="Government gives Rs 500 at https://sbi-kyc-update.com/x")
     assert "lc-panel" not in plain and "lc-panel" in withl
     for h in (plain, withl):
-        assert "Limited mode" in h and 'stamp big UNVERIFIED' in h
+        assert "Limited check." in h and 'stamp big UNVERIFIED' in h
     strip = lambda h: re.sub(r'<details class="lc-panel".*?</details>', "", h, flags=re.S)
     assert strip(withl) == plain
 

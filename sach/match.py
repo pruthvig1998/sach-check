@@ -445,18 +445,23 @@ TIPLINES = (
 )
 ESC_HEAD = {"en": "Ask a human fact-checker", "hi": "किसी फ़ैक्ट-चेकर से पूछें", "te": "ఫ్యాక్ట్-చెకర్‌ను అడగండి"}     # NOT NATIVE-REVIEWED
 ESC_NOTE = {"en": "We found no official source for this. Tap a name to open WhatsApp with your question filled in, then send it yourself. Sach sends nothing.",
-            "hi": "हमें इसके लिए कोई सरकारी स्रोत नहीं मिला। किसी नाम पर टैप करें, WhatsApp आपके सवाल के साथ खुलेगा; भेजना आपको खुद है। Sach कुछ नहीं भेजता।",   # NOT NATIVE-REVIEWED
-            "te": "దీనికి అధికారిక ఆధారం దొరకలేదు. ఒక పేరును నొక్కితే WhatsApp మీ ప్రశ్నతో తెరుచుకుంటుంది; మీరే పంపండి. Sach ఏమీ పంపదు."}   # NOT NATIVE-REVIEWED
+            "hi": "हमें इसके लिए कोई आधिकारिक स्रोत नहीं मिला। किसी नाम पर टैप करें - WhatsApp आपका सवाल पहले से भरा हुआ खुलेगा, फिर आपको इसे खुद भेजना होगा। Sach कुछ नहीं भेजता।",
+            "te": "దీనికి అధికారిక మూలం దొరకలేదు. ఏదైనా పేరు మీద నొక్కితే WhatsApp మీ ప్రశ్న ముందే నింపి తెరుచుకుంటుంది; ఆ సందేశాన్ని మీరే పంపాలి. Sach ఏమీ పంపదు."}   # NOT NATIVE-REVIEWED
+ESC_QUESTION = {  # the question prefilled for the human fact-checker; {claim} has its end punctuation stripped, so the template adds the full stop
+    "en": "Please fact-check this message: {claim}. I checked it on Sach ({site}), but Sach found no official source for it.",
+    "hi": "कृपया इस संदेश की जाँच करें: {claim}. मैंने इसे Sach ({site}) पर जाँचा, लेकिन Sach को इसके लिए कोई आधिकारिक स्रोत नहीं मिला।",
+    "te": "దయచేసి ఈ సందేశాన్ని తనిఖీ చేయండి: {claim}. నేను దీన్ని Sach ({site}) లో తనిఖీ చేశాను, కానీ Sach కు దీనికి అధికారిక మూలం దొరకలేదు.",
+}   # NOT NATIVE-REVIEWED
 
-def escalation_text(claim: str, site: str, incomplete: bool = False) -> str:
-    head = f"Please fact-check this message: {_clip(_clean(claim), 600).rstrip(' .!?')}."
+def escalation_text(claim: str, site: str, incomplete: bool = False, lang: str = "en") -> str:
+    clipped = _clip(_clean(claim), 600).rstrip(' .!?')
     if incomplete:            # the check did not finish: never say that no official source was found
-        return f"{head} Checked on Sach ({site}). Sach could not finish checking this."
-    return f"{head} Checked on Sach ({site}) and no official source was found."
+        return f"Please fact-check this message: {clipped}. Checked on Sach ({site}). Sach could not finish checking this."
+    return tr(ESC_QUESTION, text_lang(lang)).format(claim=clipped, site=site)
 
-def escalation_options(claim: str, site: str, incomplete: bool = False) -> list[dict]:
+def escalation_options(claim: str, site: str, incomplete: bool = False, lang: str = "en") -> list[dict]:
     """PIB Fact Check first, then each verified independent tipline. Plain wa.me links with the question prefilled; Sach sends nothing."""
-    body = quote(escalation_text(claim, site, incomplete), safe="")
+    body = quote(escalation_text(claim, site, incomplete, lang), safe="")
     opts = [{"name": PIB_NAME, "number": PIB_WHATSAPP_DISPLAY, "url": f"https://wa.me/{PIB_WHATSAPP_DIGITS}?text={body}", "source": PIB_PORTAL}]
     for name, display, digits, src in TIPLINES:
         opts.append({"name": name, "number": display, "url": f"https://wa.me/{digits}?text={body}", "source": src})
@@ -477,7 +482,7 @@ def escalation_html(res: dict, site: str) -> str:
     inc = incomplete(res)
     items = "".join(f'<li><a class="btn ghost esc-btn" href="{e(o["url"])}" target="_blank" rel="noopener">'
                     f'<b>{e(o["name"])}</b><span>{e(o["number"])}</span></a></li>'
-                    for o in escalation_options(escalation_claim(res), site, inc))
+                    for o in escalation_options(escalation_claim(res), site, inc, lang))
     note = tr(INCOMPLETE_ESC_NOTE, text_lang(lang)) if inc else tr(ESC_NOTE, lang)
     return (f'<section class="escalate" id="escalate" aria-labelledby="esc-h"><h3 id="esc-h">{e(tr(ESC_HEAD, lang))}</h3>'
             f'<p class="note">{e(note)}</p><ul class="esc-list">{items}</ul></section>')
@@ -488,7 +493,7 @@ def escalation_lines(res: dict, site: str) -> str:
         return ""
     lang = res.get("language", "en")
     rows = [f"- {o['name']} ({o['number']}): {o['url']}"
-            for o in escalation_options(escalation_claim(res), site, incomplete(res))]
+            for o in escalation_options(escalation_claim(res), site, incomplete(res), lang)]
     return tr(ESC_HEAD, lang) + ":\n" + "\n".join(rows)
 
 # ------------------------------------------------------------------------------------------------ result page pieces

@@ -347,7 +347,7 @@ def test_complete_checks_keep_the_found_nothing_wording_and_no_notice():
     assert "Sach could not finish checking" not in page
     assert 'class="btn wa" id="shareWa"' in page
     assert "We found no official source that confirms or denies this." in share.build_share_text(r, SITE)
-    assert "no official source was found" in unquote(match.escalation_lines(r, SITE))
+    assert "found no official source for it" in unquote(match.escalation_lines(r, SITE))
     _, data = share.result_share_html(r, SITE)
     assert '"quiet"' not in data
 
