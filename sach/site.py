@@ -444,7 +444,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards", path: 
 <nav aria-label="Main"><a href="/#check">Check</a><a class="opt" href="/#how">How it works</a><a class="opt" href="/#rules">Rules</a><a class="opt" href="/#faq">FAQ</a>
 <a href="/?view=ledger">Ledger</a><a class="opt" href="/?view=impact">Impact</a><a class="opt" href="{REPO}" rel="noopener">GitHub</a></nav><button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button></div></header>
 <main id="main">{body}</main>
-<footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Bharat Agentic-AI Hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
+<footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Code for a Billion hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
 <div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/?view=impact">Impact</a> · <a href="/#api">API</a> · <a href="/?view=status" rel="nofollow">Status</a>{tip_link}<br>{share.invite_link(base)}<br><a href="/?view=terms">Terms</a> · <a href="/?view=privacy">Privacy</a> · <a href="/?view=refund">Refunds</a> · <a href="/?view=contact">Contact</a></div></div></footer>
 {share.BAR_HTML}<script>{JS}{share.JS}{linkcheck.JS}</script><script>{VOICE_JS}</script>{pwa.SCRIPT}</body></html>""".encode()
 

@@ -8,7 +8,7 @@
   <a href="https://sachcheck.in"><img alt="live: sachcheck.in" src="https://img.shields.io/badge/live-sachcheck.in-c2321f"></a>
   <img alt="English + 15 Indian languages" src="https://img.shields.io/badge/languages-English%20%2B%2015%20Indian-17140f">
   <a href="EVIDENCE.md"><img alt="Recorded test evidence" src="https://img.shields.io/badge/tests-recorded%20evidence-1f7a45"></a>
-  <img alt="cost to run: 0 rupees" src="https://img.shields.io/badge/cost%20to%20run-%E2%82%B90-c9780a">
+  <img alt="runs on free tiers plus Google Cloud trial credit" src="https://img.shields.io/badge/runs%20on-free%20tiers%20%2B%20trial%20credit-c9780a">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-6b6558"></a>
 </p>
 
@@ -23,7 +23,21 @@
   <a href="docs/languages.md">Languages</a>
 </p>
 
-Built for the Bharat Agentic-AI Hackathon (Governance track). Runs on free tiers. Sach is not a government service and does not speak for PIB or any ministry.
+Built for the Code for a Billion hackathon (Governance track). Runs mostly on free tiers plus Google Cloud trial credit. Sach is not a government service and does not speak for PIB or any ministry.
+
+## For judges: five checks in about two minutes
+
+Open <https://sachcheck.in> and paste each text into the box **exactly as written**. Sach matches published fact-checks by wording, so a shortened version can honestly come back UNVERIFIED instead.
+
+| # | Paste | Expect |
+|---|---|---|
+| 1 | `The Government is accepting applications for free laptops under the 'National Student Laptop Scheme 2026'.` | **FALSE**, "Checked by PIB Fact Check", matched from a published fact-check in about a second |
+| 2 | `Government has ordered the closure of Ministries.` | **FALSE** from a live check with a PIB citation, usually 15 to 25 seconds |
+| 3 | `Central Government is giving free laptops to all students under the PM Students Laptop Scheme 2026. Register now at the link.` | **UNVERIFIED**: a near-miss Sach cannot prove, so it says so instead of guessing |
+| 4 | Link checker: `URGENT SBI KYC expired! Update at https://sbi.co.in.verify-now.xyz or bit.ly/3xYzAb. Send Rs 1 to refund@okaxis to receive.` | "3 items found: 1 imitates an official address, 2 look like a scam pattern". It never says "safe". |
+| 5 | Set the reply language to Hindi or Telugu and repeat check 3 | The label reads "पुष्टि नहीं हुई" or "ధృవీకరించబడలేదు" |
+
+Live checks depend on web search and AI providers; `/?view=status` shows whether they are ready. If one is down, Sach marks the result **Limited check** instead of guessing. Sources can change, so a result today may differ later. The evidence behind these claims: [EVIDENCE.md](EVIDENCE.md) (tests), [docs/red-team.md](docs/red-team.md) (53 adversarial cases, 0 overclaims), and [docs/evaluation-runs.md](docs/evaluation-runs.md) (the 79-claim live evaluation, with its limits stated).
 
 ## Why
 
@@ -342,6 +356,6 @@ Code map: `sach/extract.py` (claims), `sach/retrieve.py` and `sach/search.py` (r
 
 ## Credits and license
 
-Built by [pruthvig1998](https://github.com/pruthvig1998) for the Bharat Agentic-AI Hackathon, Governance track. Verdicts rest on the work of the Press Information Bureau, the ministries and regulators it cites, and the IFCN-verified fact-checkers listed in [docs/sources.md](docs/sources.md). The UPI app logos used in the optional app chooser are their owners' trademarks and are not covered by this license (see `sach/assets/app_icons/NOTICE.md`).
+Built by [pruthvig1998](https://github.com/pruthvig1998) for the Code for a Billion hackathon, Governance track. Verdicts rest on the work of the Press Information Bureau, the ministries and regulators it cites, and the IFCN-verified fact-checkers listed in [docs/sources.md](docs/sources.md). The UPI app logos used in the optional app chooser are their owners' trademarks and are not covered by this license (see `sach/assets/app_icons/NOTICE.md`).
 
 Code is released under the [MIT License](LICENSE).
