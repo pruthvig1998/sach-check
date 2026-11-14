@@ -7,6 +7,7 @@ from .fetch import fetch, http_host_of, is_official, is_factchecker, FACTCHECKER
 from .models import Evidence, TIER_PIB, TIER_OFFICIAL, TIER_FACTCHECKER
 from .pib import get_release, is_pib, parse_release, rss_index, DEBUNK_MARKERS
 from . import index as pib_index
+from . import pibfts
 from .stance import overlap, distinctive, tokens, _GENERIC
 
 def _pib_evidence(rel: dict) -> Evidence:
@@ -39,7 +40,9 @@ class PibRetriever:
                 pass
         return c
 
-    def search(self, claim: str) -> list[Evidence]:
+    def candidate_prids(self, claim: str) -> list[str]:
+        """The PIB release numbers to fetch for a claim, best first (no network except the optional RSS list). Separate from `search` so retrieval can be
+        measured without fetching pages."""
         scored = {}
         for p, t in self._candidates().items():            # hand-seeded debunks + live RSS, matched on titles
             ov = overlap(claim, t)
@@ -47,8 +50,14 @@ class PibRetriever:
                 scored[p] = ov
         for h in pib_index.search(claim, top_n=self.top_n + 2):   # local index of harvested PIB releases (title + excerpt)
             scored[str(h["prid"])] = max(scored.get(str(h["prid"]), 0), h["score"])
+        if pibfts.enabled():                               # L4: read-only full-text index of many more releases; same gates, same score scale
+            for h in pibfts.search(claim, top_n=self.top_n + 2):
+                scored[h["prid"]] = max(scored.get(h["prid"], 0), h["score"])
+        return [prid for prid, _ in sorted(scored.items(), key=lambda kv: -kv[1])[: self.top_n + 1]]
+
+    def search(self, claim: str) -> list[Evidence]:
         out = []
-        for prid, _ in sorted(scored.items(), key=lambda kv: -kv[1])[: self.top_n + 1]:
+        for prid in self.candidate_prids(claim):
             try:
                 rel = get_release(prid)
             except Exception:
