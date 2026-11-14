@@ -403,15 +403,15 @@ class Handler(BaseHTTPRequestHandler):
             return fail(429, "You're checking quickly. Please wait a minute and try again.")
         if Handler.retrievers is None:
             Handler.retrievers, Handler.llm = default_retrievers(), get_llm()   # lazy: serverless has no main()
-        adm = limits.admit(text, None if lang_choice == "auto" else lang_choice)   # cache/match answers are free; a live check needs budget
+        adm = limits.admit(text, None if lang_choice == "auto" else lang_choice, force_live=force_live)   # cache/match answers are free; a live check needs budget
         if adm.busy:
             return self._busy(adm, want_json, text, lang_choice)
         try:
             res = check_forward(text, Handler.retrievers, Handler.llm, reply_lang=None if lang_choice == "auto" else lang_choice, force_live=force_live)
         except Exception:
-            limits.release(adm)
             return fail(500, "Something went wrong while checking. Nothing was recorded. Please try again.")
-        limits.release(adm)                                     # the claim is stored (or failed): the next ask is served or may start a check
+        finally:
+            limits.release(adm)                                 # the claim is stored (or failed): the next ask is served or may start a check
         limits.refund(adm, res)
         res = dict(res); res["warning_signs"] = scam_signs(text)   # advice only: from THIS request's text, never cached or stored
         if want_json:

@@ -100,3 +100,36 @@ def test_the_busy_page_lists_related_pib_pages_records_demand_and_has_no_verdict
     s = popularity.summary(st)
     assert s["unchecked_requests"] == 1 and s["distinct_claims"] == 1
     assert "coal" not in json.dumps(s)                        # still no claim text anywhere
+
+
+def test_an_expired_flight_key_never_goes_negative_or_lets_two_checks_run():
+    st = FakeStore()
+    leader = limits.admit(FALSE_TEXT, st=st)
+    st.c.pop(leader.flight)                                  # the 90 s window expired while the leader still runs
+    limits.release(leader, st=st)
+    assert st.c.get(leader.flight, 0) >= 0                   # no negative counter left behind
+    nxt = limits.admit(FALSE_TEXT, st=st)
+    assert nxt.kind == "live" and nxt.flight
+
+
+def test_a_follower_holds_no_place_while_it_waits():
+    st = FakeStore()
+    leader = limits.admit(FALSE_TEXT, st=st)
+    follower = limits.admit(FALSE_TEXT, st=st)
+    assert follower.busy and follower.reason == "flight"
+    assert st.c[leader.flight] == 1                          # only the leader holds the claim
+
+
+def test_a_store_outage_does_not_leave_the_claim_locked_in_memory():
+    st = FakeStore(broken=True)
+    a = limits.admit(FALSE_TEXT, st=st)
+    limits.release(a, st=st)
+    b = limits.admit(FALSE_TEXT, st=st)
+    assert a.kind == "live" and b.kind == "live"             # memory place was given back in memory
+
+
+def test_force_live_is_never_free_and_needs_a_slot(monkeypatch):
+    monkeypatch.setattr(limits, "_is_free", lambda t, rl: True)
+    st = FakeStore()
+    adm = limits.admit(FALSE_TEXT, st=st, force_live=True)
+    assert adm.kind == "live" and adm.keys and adm.flight == ""

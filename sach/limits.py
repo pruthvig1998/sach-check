@@ -88,8 +88,9 @@ def ip_limited(ip: str, fallback, kind: str = "check", limit: int = PER_IP_PER_M
 # ---------------------------------------------------------------- global live budget
 class Admission:
     """kind: 'free' (cache or match: costs nothing), 'live' (a slot was reserved) or 'busy' (budget gone, do not run live)."""
-    def __init__(self, kind: str, reason: str = "", retry_after: int = 0, keys=(), flight: str = ""):
+    def __init__(self, kind: str, reason: str = "", retry_after: int = 0, keys=(), flight: str = "", flight_mem: bool = False):
         self.kind, self.reason, self.retry_after, self.keys, self.flight = kind, reason, retry_after, tuple(keys), flight
+        self.flight_mem = flight_mem               # the flight place was taken in this instance's memory, so it is given back there
     @property
     def busy(self) -> bool:
         return self.kind == "busy"
@@ -150,20 +151,33 @@ def _await_answer(text: str, rl, st, fk: str):
     """Another request is already checking this claim. Wait a few seconds for its stored answer; if it appears this request is free, otherwise it is
     told plainly that the claim is being checked (no second paid check, no verdict). Always gives its own place back."""
     deadline = time.time() + flight_wait_s()
-    try:
-        while time.time() < deadline:
-            _sleep(2.5)
-            if _is_free(text, rl):
-                return Admission("free")
-    finally:
-        _decr(st, fk)
+    while time.time() < deadline:
+        _sleep(2.5)
+        if _is_free(text, rl):
+            return Admission("free")
     return Admission("busy", "flight", 20)
 
 def release(adm, st=None) -> None:
     """The leader of a flight is done (answered, failed or refunded): the next ask of this claim may start a check."""
     try:
         if adm is not None and getattr(adm, "flight", ""):
-            _decr(st or store.get_store(), adm.flight)
+            _release_flight(st or store.get_store(), adm.flight, bool(getattr(adm, "flight_mem", False)))
+    except Exception:
+        pass
+
+def _release_flight(st, key: str, mem: bool) -> None:
+    """Give a flight place back on the backend it was taken from, and never leave a negative counter behind (an expired key would otherwise
+    go to -1 with no expiry and lock the claim, or let two checks run at once)."""
+    if mem or not getattr(st, "remote", False):
+        with _mem_lock:
+            if _mem.get(key, 0) > 0:
+                _mem[key] -= 1
+        return
+    try:
+        n = st.incr(key, -1)
+        if isinstance(n, int) and n < 0:
+            st.incr(key, -n)                          # the key had already expired: put it back to zero
+            st.expire(key, 1)
     except Exception:
         pass
 
@@ -171,40 +185,42 @@ def _windows(now: float):
     m, d = int(now // 60), int(now // 86400)
     return ("lv:m:%d" % m, 60 - int(now % 60)), ("lv:d:%d" % d, 86400 - int(now % 86400))
 
-def admit(text: str, reply_lang=None, st=None, now=None) -> Admission:
-    """Decide whether a check of `text` may run. Never raises."""
-    flight = ""
+def admit(text: str, reply_lang=None, st=None, now=None, force_live: bool = False) -> Admission:
+    """Decide whether a check of `text` may run. Never raises. `force_live` (the visitor asked for Sach's own check anyway) is never free:
+    it needs a budget slot like any live check and does not wait on another request."""
+    flight, fmem = "", False
     try:
         rl = reply_lang if reply_lang in SUPPORTED else None
-        if _is_free(text, rl):
+        if not force_live and _is_free(text, rl):
             return Admission("free")
         pm, pd = max_per_min(), max_per_day()
         if pm <= 0 and pd <= 0:
             return Admission("live")                             # no budget configured: the limiter does nothing, not even touch the store
         st = st or store.get_store()
-        if flight_enabled():
+        if flight_enabled() and not force_live:
             fk = _flight_key(text, rl)
-            n, _ = _incr(st, fk, FLIGHT_TTL_S)
+            n, from_store = _incr(st, fk, FLIGHT_TTL_S)
             if n > 1:
+                _release_flight(st, fk, not from_store)          # a follower holds no place while it waits
                 return _await_answer(text, rl, st, fk)           # someone is already checking this exact claim
-            flight = fk
+            flight, fmem = fk, not from_store
         now = time.time() if now is None else now
         (km, wait_m), (kd, wait_d) = _windows(now)
         nm = _incr(st, km, 120)[0] if pm > 0 else 0
         nd = _incr(st, kd, 2 * 86400)[0] if pd > 0 else 0
         if pm > 0 and nm > pm:
             _give_back(st, km if pm > 0 else None, kd if pd > 0 else None)
-            _decr(st, flight) if flight else None
+            _release_flight(st, flight, fmem) if flight else None
             _count_busy(st, now)
             return Admission("busy", "minute", max(wait_m, 5))
         if pd > 0 and nd > pd:
             _give_back(st, km if pm > 0 else None, kd)
-            _decr(st, flight) if flight else None
+            _release_flight(st, flight, fmem) if flight else None
             _count_busy(st, now)
             return Admission("busy", "day", min(wait_d, 3600))
-        return Admission("live", keys=[k for k, on in ((km, pm > 0), (kd, pd > 0)) if on], flight=flight)
+        return Admission("live", keys=[k for k, on in ((km, pm > 0), (kd, pd > 0)) if on], flight=flight, flight_mem=fmem)
     except Exception:
-        return Admission("live", flight=flight)          # never block a check because the limiter itself broke
+        return Admission("live", flight=flight, flight_mem=fmem)          # never block a check because the limiter itself broke
 
 def _decr(st, key: str) -> None:
     try:
@@ -289,7 +305,7 @@ def related_pages(text: str, n: int = 3) -> list:
 def busy_message(reason: str = "minute") -> str:
     if reason == "flight":
         return ("Someone asked about this same message a moment ago, so Sach is already checking it and we do not give a second, duplicate check. "
-                "Please try again in about 20 seconds: the answer will then be shown instantly. We have not given a verdict yet.")
+                "Please try again in about 20 seconds: the answer should then be ready. We have not given a verdict yet.")
     when = "in a few minutes" if reason != "day" else "in a few hours (our free daily capacity is used up)"
     return ("Sach is very busy right now, so we have not checked this message and we are not giving a verdict. "
             f"Please try again {when}. Messages Sach has already checked are still answered instantly. "
