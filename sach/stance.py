@@ -36,6 +36,8 @@ for _canon, _words in {
     "rs": "rs rupee rupees inr",
     "raise": "hike hiked hikes raise raised raises increase increased increases",
     "ban": "ban banned bans banning prohibited prohibit prohibits",
+    # Hindi transliteration vs its English translation: a Hindi forward is translated to "Corona Assistance Scheme" while PIB writes "Corona Sahayata Yojana".
+    "assistance": "assistance sahayata sahayta sahaayata",
 }.items():
     for _w in _words.split():
         _SYN[_w] = _canon
@@ -164,7 +166,7 @@ kharif rabi monsoon summer winter""".split()}
 def critical_words(claim: str) -> set:
     """Qualifier words, plus proper nouns / names (capitalised words inside the sentence: places, seasons, schemes)."""
     toks = tokens(claim)
-    caps = {_stem(w.lower()) for w in re.findall(r"(?<=[a-z0-9,] )[A-Z][a-z]{2,}", claim)}
+    caps = {_stem(_SYN.get(w.lower(), w.lower())) for w in re.findall(r"(?<=[a-z0-9,] )[A-Z][a-z]{2,}", claim)}   # same synonym table as tokens(): Assistance == Sahayata
     return (toks & _QUALIFIERS) | (caps - _GENERIC)     # generic officialese ('Union', 'Cabinet') may be dropped in a short quote
 
 _META = re.compile(r"\b(fake|false|hoax|rumou?rs?|misinformation|fact[- ]?check\w*|scam|fraud\w*|misleading)\b", re.I)
@@ -271,6 +273,20 @@ _RESTRICT_PHRASES = (
 )
 _PLACE = re.compile(r"\b[Ii]n\s+([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})*)")
 
+# "Everyone" and "anybody" are the same scope inside a DENIAL: "not giving Rs 1000 to anybody" refutes "giving Rs 1000 to everyone". Without this the
+# claim's "everyone" is a required critical word and a PIB debunk phrased with "anybody" abstains (UNVERIFIED) although the model's quote is right.
+# It is the only quantifier equivalence, it applies to CONTRADICTS only (CONFIRMS is never relaxed), and the group, figure, subject, hedge and
+# restriction checks below and in validate_stance still apply (a denial about "any woman" or "anyone above 60" stays abstained).
+_EVERYONE = _stem("everyone")
+_EVERYONE_CLAIM = re.compile(r"\bevery(?:one|body)\b", re.I)
+_ANYBODY_DENIAL = re.compile(r"\b(?:any(?:one|body)|any\s+one|every(?:one|body)|no\s?one|nobody)\b", re.I)
+
+def _everyone_denial(claim: str, quote: str, td: str) -> bool:
+    """True when the claim says 'everyone' and the denial is a NEGATIVE, unhedged statement about 'anybody/anyone/no one' ('is not giving Rs 1000 to
+    anybody'). A positive 'is giving Rs 1000 to anybody who applies' or a hedged 'may not be giving ... to anybody' is not a denial of 'everyone'."""
+    return bool(_EVERYONE_CLAIM.search(claim) and _ANYBODY_DENIAL.search(td) and _NEGATION.search(quote or "")
+                and not (_modal_hedges(quote) - _modal_hedges(claim)))
+
 def _contradiction_scope_ok(claim: str, title: str, quote: str, text: str = "") -> bool:
     """A denial must deny THIS claim: same figures, same scheme names and groups, not negated or softened, not hedged, and not in the
     same sentence as an approval."""
@@ -280,7 +296,8 @@ def _contradiction_scope_ok(claim: str, title: str, quote: str, text: str = "") 
         return False                                  # the claim's figures must be in the denial or on the page: 'Rs 2000 is fake' cannot refute 'Rs 5000'
     if tf - cf:
         return False                                  # ...and the denial must not carry figures or years the claim does not have
-    if not critical_words(claim) <= tokens(td):
+    missing = critical_words(claim) - tokens(td)
+    if missing and not (missing == {_EVERYONE} and _everyone_denial(claim, quote, td)):
         return False                                  # 'Ayushman scheme ... is fake' cannot refute 'PM Kisan ...'
     if _INVERTED.search(td):
         return False                                  # 'far from false', 'anything but fake', 'untrue': a softened denial says the opposite
