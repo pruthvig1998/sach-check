@@ -98,6 +98,8 @@ def record_unchecked(text: str, reason: str = "busy", now: float | None = None, 
         fp = fingerprint(_claims_and_lang(text)[0])
         if fp:
             _count_claim(s, d, fp)
+        from . import demandq
+        demandq.note(text, s)                   # claims asked 5+ times while we could not check them are queued (claim sentence kept 30 days)
     except Exception:
         pass
 

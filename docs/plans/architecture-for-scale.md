@@ -31,7 +31,7 @@ Everything above step 5 is cheap and fast. Step 5 never blocks: a person always 
 | Piece | What it does | Status |
 |---|---|---|
 | **Claim canonicalisation** | Greetings, "forwarded" lines and emoji no longer create a new claim. Near-duplicates (one word changed, a typo) join one cluster, with guards so a changed number or a "not" never merges. | Exact claim key is live (L0). Near-duplicate clustering is next. |
-| **Public claim registry** | One record per claim cluster: verdict, evidence, ask-count, first and last seen, who checked, review date. Also the data behind a public feed others can use. | Partly: the cache stores answers, but it is a 6 h to 7 day cache, not a permanent registry. |
+| **Public claim registry** | One record per claim cluster: verdict, evidence, ask-count, first and last seen, who checked, review date. Also the data behind a public feed others can use. | Partly: the cache stores answers, but it is a 6 h to 30 day cache, not a permanent registry. |
 | **Edge cache** | Each answer has a stable address that a CDN caches, so a million views are one computation. Shared result cards and links are the viral path, and they are already cacheable in principle. | Not yet: results carry no cache headers. |
 | **Priority queue** | Spends the AI budget on the claims the most people are asking about, using cheaper steps first. | Not built. |
 | **Free layers** | PIB debunks, PIB Telegram, official-pages panel, scam checks. | Live (L1, L2, L5). |

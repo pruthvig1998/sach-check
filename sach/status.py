@@ -6,7 +6,7 @@ The status page labels multiple judges of the same provider by position ("gemini
 from __future__ import annotations
 import time
 from . import timefmt
-from . import gtranslate, ledger, limits, popularity, store, vertex, gateway
+from . import demandq, gtranslate, ledger, limits, popularity, store, vertex, gateway
 
 _AI = [("vertex", "GOOGLE_SA_JSON"), ("groq", "GROQ_API_KEY"), ("gateway", "AI_GATEWAY_API_KEY"), ("gemini", "GEMINI_API_KEY"), ("openrouter", "OPENROUTER_API_KEY"), ("mistral", "MISTRAL_API_KEY"),
        ("cloudflare", "CLOUDFLARE_API_TOKEN"), ("claude", "ANTHROPIC_API_KEY")]
@@ -97,6 +97,7 @@ def status_data(llm=None, retrievers=None, st=None, now=None) -> dict:
                         "note": "Fixed windows (the minute, the UTC day). A max of 0 means no limit. Cache and match answers are not counted."},
         "google_translation": gtranslate.usage(st, now),
         "reuse": popularity.summary(st),
+        "demand_queue": {"waiting": demandq.size(st)},
         "checks": {"total_all_time": total, "cache_hits_all_time": hits, "live_all_time": max(total - hits, 0),
                    "counting_since": c.get("first_event_at"),
                    "note": "All-time counters from the same store as the impact page (cache hits cost nothing). Matches are included in the live figure until they have their own counter."},

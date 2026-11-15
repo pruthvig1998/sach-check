@@ -18,6 +18,8 @@ from .lang import SUPPORTED
 from .report import _clean, _clip, display_card, driver_claim, driver_index
 from .models import AUTHORITATIVE
 
+SHARE_MAX_TTL_S = 7 * 24 * 3600                      # share links keep their 7 day life even though verdicts are now reused for 30
+
 esc = html.escape
 ID_RE = re.compile(r"[0-9a-f]{12}")
 SHARE_MAX = 900                                   # characters in the WhatsApp message
@@ -71,7 +73,7 @@ def ensure_share(text: str, reply_lang, out: dict, max_chars: int = 4000):
         cur = st.get("share:" + rid)
         if isinstance(cur, dict):
             return rid if cur.get("key") == k else None
-        ttl = max(60, int(cache.ttl_for(out) - _age_s(out)))              # same expiry as the cache entry, not longer
+        ttl = max(60, int(min(cache.ttl_for(out), SHARE_MAX_TTL_S) - _age_s(out)))   # never longer than the cache entry, and never more than 7 days (the privacy text promises that)
         keep = {x: v for x, v in out.items() if x not in ("warning_signs", "cached", "served_at", "extraction")}   # extraction = the user's skipped sentences: private
         ex = out.get("extraction")
         if isinstance(ex, dict) and isinstance(ex.get("sentences"), int) and isinstance(ex.get("checked"), int):

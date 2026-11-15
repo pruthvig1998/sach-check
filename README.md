@@ -231,7 +231,7 @@ For a whole forward: any FALSE claim makes it **FALSE**; otherwise any MISLEADIN
 - **Report to PIB Fact Check:** opens PIB's own channels with the claim ready to send. Sach never sends anything for you.
 - **Shareable verdict image** and a WhatsApp-ready text reply with a permanent "Full evidence" link.
 - **Verdict trace:** per claim, up to eight retrieved sources, their titles and stances, and the deterministic rule that decided it. Displaying the exact validated source sentence is a planned improvement; the current trace does not preserve that quote.
-- **Public evidence ledger** of every check, and a **verdict cache** (7 days for TRUE, FALSE and MISLEADING; 6 hours for UNVERIFIED, because an official source may appear later).
+- **Public evidence ledger** of every check, and a **verdict cache** (30 days for TRUE, FALSE and MISLEADING; 6 hours for UNVERIFIED, because an official source may appear later).
 - **Installable app** with a WhatsApp share target, offline shell and private on-device history.
 - **Telegram bot:** forward a message to the bot, get the same card. Free to run: [docs/telegram-bot.md](docs/telegram-bot.md).
 - **[Impact page](https://sachcheck.in/impact):** live usage numbers and a JSON endpoint; `scripts/snapshot_impact.py` freezes them into `evidence/` so they can be cited later.

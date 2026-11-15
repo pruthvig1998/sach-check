@@ -22,7 +22,7 @@ Freeze target: evening of 14 Nov. Everything stays at $0. The hard verdict rules
 Each package is built by a Sonnet 5.5 agent in its own git worktree, with its own files, then reviewed and merged.
 
 ### Wave 1 (parallel)
-- **A. Cache, trace, storage.** `sach/store.py`, `sach/cache.py`, `sach/pipeline.py`, `sach/ledger.py`, `sach/models.py`, trace UI in `sach/site.py`. Repeat forwards return the stored verdict with a "first checked on" date. Decisive verdicts are kept 7 days, UNVERIFIED 6 hours, limited-mode and timed-out results never. Cache hits are counted separately.
+- **A. Cache, trace, storage.** `sach/store.py`, `sach/cache.py`, `sach/pipeline.py`, `sach/ledger.py`, `sach/models.py`, trace UI in `sach/site.py`. Repeat forwards return the stored verdict with a "first checked on" date. Decisive verdicts were kept 7 days (30 days from 14 Nov 2026), UNVERIFIED 6 hours, limited-mode and timed-out results never. Cache hits are counted separately.
 - **B. Evaluation v2.** `data/eval_set.json`, `scripts/run_eval.py`. Every new claim is verified against a page fetched during the work. Per-language breakdown, commit hash, resume after a quota stop, earlier run archived as superseded.
 - **C. Red team.** `data/red_team.json`, `tests/test_redteam.py`, `scripts/red_team.py`, `docs/red-team.md`. Embedded instructions, fabricated PIB quote, altered amount, Telugu and Hindi forwards with injected English, lookalike domains, a malicious judge model.
 - **D. Sources.** `sach/fetch.py`, `sach/retrieve.py`, `sach/factcheck_api.py`, `docs/sources.md`. Verified official additions, IFCN fact-checker list, optional Fact Check Tools retriever.

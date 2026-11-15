@@ -4,7 +4,7 @@ import hashlib, os, re, unicodedata
 from .extract import clean_text
 from . import store
 
-TTL_DECISIVE_S = int(os.environ.get("SACH_CACHE_TTL_DECISIVE_S", 7 * 24 * 3600))   # TRUE / FALSE / MISLEADING
+TTL_DECISIVE_S = int(os.environ.get("SACH_CACHE_TTL_DECISIVE_S", 30 * 24 * 3600))  # TRUE / FALSE / MISLEADING
 TTL_UNVERIFIED_S = int(os.environ.get("SACH_CACHE_TTL_UNVERIFIED_S", 6 * 3600))    # an official source may appear later
 _VERDICT_POLICY = 1  # requires final source URLs, fetched citations and independent model confirmation
 

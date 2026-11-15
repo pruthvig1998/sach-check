@@ -87,7 +87,7 @@ three times the input. The excerpt measurement is in section 6.
 | `SACH_<PROVIDER>_MODELS` | Models per provider, e.g. `SACH_GROQ_MODELS` |
 | `SACH_LLM_MAX_CONCURRENT` | AI calls in flight at once (default 8) |
 | `SACH_SEARCH_ORDER` | Search provider order |
-| `SACH_CACHE_TTL_DECISIVE_S`, `SACH_CACHE_TTL_UNVERIFIED_S` | How long answers stay cached (7 days, 6 hours). Longer means fewer live checks |
+| `SACH_CACHE_TTL_DECISIVE_S`, `SACH_CACHE_TTL_UNVERIFIED_S` | How long answers stay cached (30 days, 6 hours). Longer means fewer live checks |
 | more keys | `GEMINI_API_KEY=k1,k2` (different Google projects), `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` |
 
 Per-IP limit: 8 checks a minute per person; in the shared store when Upstash is set, otherwise per server instance.
