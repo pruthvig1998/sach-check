@@ -291,6 +291,7 @@ class ClaudeJudge:
 
 
 import threading as _threading
+_PROVIDER = _threading.local()      # which judge answered the stance call running in THIS thread (judging is parallel, so never a shared field)
 LLM_MAX_CONCURRENT = int(os.environ.get("SACH_LLM_MAX_CONCURRENT", "8"))   # one per source of a claim
 _LLM_SLOTS = _threading.BoundedSemaphore(max(1, LLM_MAX_CONCURRENT))
 
@@ -317,6 +318,8 @@ class FailoverJudge:
             try:
                 out = getattr(j, method)(*args, **kw)
                 self._last_used = j
+                if method == "stance":
+                    _PROVIDER.name = getattr(j, "name", None)
                 return out
             except TypeError:
                 if method == "stance" and "tier" in kw:
@@ -341,6 +344,7 @@ class FailoverJudge:
         with _LLM_SLOTS:
             used = getattr(self, "_last_used", None)
             for j in [j for j in self.judges if j.available() and j is not used][:1]:
+                _PROVIDER.name = "%s+%s" % (getattr(used, "name", "?"), getattr(j, "name", "?"))      # the trace names both judges consulted
                 try:
                     try:
                         second = j.stance(claim, title, text, tier=tier)
@@ -350,6 +354,13 @@ class FailoverJudge:
                 except Exception:
                     return first
         return first
+
+    def reset_provider(self):
+        _PROVIDER.name = None
+
+    def last_provider(self):
+        """Name of the judge provider that answered the last stance call made in this thread (None when none did, e.g. the rules-only fallback)."""
+        return getattr(_PROVIDER, "name", None)
 
     def translate(self, text):
         return self._run("translate", text)

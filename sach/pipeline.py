@@ -81,7 +81,12 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
     def _judge_timed(e):
         t = time.monotonic()
         try:
-            return judge(q, e, llm), int((time.monotonic() - t) * 1000)
+            rp = getattr(llm, "reset_provider", None)
+            if rp:
+                rp()
+            res = judge(q, e, llm)
+            lp = getattr(llm, "last_provider", None)
+            return res, int((time.monotonic() - t) * 1000), (lp() if lp else None)
         except Exception as exc:                        # judge() already swallows provider errors; anything raised here is a bug: say so
             raise _JudgeError(type(exc).__name__, int((time.monotonic() - t) * 1000))
     futs = [ex.submit(_judge_timed, e) for e in evidence]
@@ -91,8 +96,8 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
     for e, f in zip(evidence, futs):
         try:
             if f.done():
-                e.stance, ms = f.result(timeout=0)
-                e.judge_note = {"outcome": "answered", "ms": ms}
+                e.stance, ms, prov = f.result(timeout=0)
+                e.judge_note = {"outcome": "answered", "ms": ms, **({"provider": prov} if prov else {})}
             else:
                 e.stance = "none"                       # still running at the deadline: the AI did not answer in time
                 e.judge_note = {"outcome": "timeout", "ms": int(window * 1000)}
