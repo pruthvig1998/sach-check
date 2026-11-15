@@ -147,6 +147,11 @@ def status_page(d: dict) -> bytes:
             '<li>Claims asked at least 2 / 5 / 50 times: <b>%s</b> / <b>%s</b> / <b>%s</b></li></ul><p class="note">%s</p>'
             '<p class="note"><a href="/?view=status&amp;format=json">') % (esc(r["day_utc"]), r["requests"], r["distinct_claims"], esc(pct(r.get("repeat_share"))),
             esc(pct(r.get("answered_without_paid_check"))), *[r["claims_asked_at_least"][k] for k in ("2", "5", "50")], esc(r["note"])), 1)
+    w = (d.get("demand_queue") or {}).get("waiting", 0)
+    body = body.replace('<p class="note"><a href="/?view=status&amp;format=json">', (
+        '<h2 style="margin-top:28px">Claims waiting to be checked</h2><ul><li>Asked 5 or more times while Sach was too busy to check: <b>%s</b></li></ul>'
+        '<p class="note">Worked through most-asked first, within a share of the daily budget. Only the claim sentence is kept, for 30 days.</p>'
+        '<p class="note"><a href="/?view=status&amp;format=json">') % int(w), 1)
     return layout(body, "Status — Sach", path="/?view=status", noindex=True)
 
 
