@@ -359,3 +359,7 @@ Code map: `sach/extract.py` (claims), `sach/retrieve.py` and `sach/search.py` (r
 Built by [pruthvig1998](https://github.com/pruthvig1998) for the Code for a Billion hackathon, Governance track. Verdicts rest on the work of the Press Information Bureau, the ministries and regulators it cites, and the IFCN-verified fact-checkers listed in [docs/sources.md](docs/sources.md). The UPI app logos used in the optional app chooser are their owners' trademarks and are not covered by this license (see `sach/assets/app_icons/NOTICE.md`).
 
 Code is released under the [MIT License](LICENSE).
+
+---
+
+Built by **Pruthvi Garlapati** - Senior GCP DevOps Engineer at UKG (GKE - Terraform - Argo CD - AI agent systems). Full profile and flagship work: [github.com/pruthvig1998](https://github.com/pruthvig1998) - [LinkedIn](https://www.linkedin.com/in/pruthvi-garlapati/)
