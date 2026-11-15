@@ -362,4 +362,4 @@ Code is released under the [MIT License](LICENSE).
 
 ---
 
-Built by **Pruthvi Garlapati** - Senior GCP DevOps Engineer at UKG (GKE - Terraform - Argo CD - AI agent systems). Full profile and flagship work: [github.com/pruthvig1998](https://github.com/pruthvig1998) - [LinkedIn](https://www.linkedin.com/in/pruthvi-garlapati/)
+Built by **Pruthvi Garlapati** - Senior GCP DevOps Engineer at UKG (GKE - Terraform - Argo CD - AI agent systems). Full profile and flagship work: [github.com/pruthvig1998](https://github.com/pruthvig1998) - [LinkedIn](https://www.linkedin.com/in/pruthvi-g/)
