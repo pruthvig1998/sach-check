@@ -1,0 +1,687 @@
+{
+"sources": {
+"dopt2026": {
+"name": "Government of India holiday list 2026 (DoPT O.M. F.No.12/2/2023-JCA dated 03.07.2025, as circulated by Survey of India)",
+"url": "https://surveyofindia.gov.in/documents/circulars/document-38128-Delhi%20GD-RO-22-01-2026.pdf",
+"read_on": "2026-11-18"
+},
+"dopt2026_bakrid": {
+"name": "Change of date of the Id-u-Zuha (Bakrid) holiday to 28 May 2026 for central government offices in Delhi (circulated by ICMR, 25.05.2026)",
+"url": "https://www.icmr.gov.in/icmrobject/uploads/Circular/1779704410_changeofdateofholidayonaccountofid-u-zuha.pdf",
+"read_on": "2026-11-18"
+},
+"dopt2027": {
+"name": "Government of India holiday list 2027 (DoPT O.M. No.12/2/2023-JCA dated 16.07.2026, as circulated by the Department of Posts)",
+"url": "https://utilities.cept.gov.in/dop/pdfbind.ashx?id=15435",
+"read_on": "2026-11-18"
+}
+},
+"holidays": [
+{
+"id": "republic_day",
+"name": "Republic Day",
+"kind": "gazetted",
+"date": "2026-01-26",
+"source": "dopt2026"
+},
+{
+"id": "republic_day",
+"name": "Republic Day",
+"kind": "gazetted",
+"date": "2027-01-26",
+"source": "dopt2027"
+},
+{
+"id": "holi",
+"name": "Holi",
+"kind": "gazetted",
+"date": "2026-03-04",
+"source": "dopt2026"
+},
+{
+"id": "holi",
+"name": "Holi",
+"kind": "gazetted",
+"date": "2027-03-23",
+"source": "dopt2027"
+},
+{
+"id": "id_ul_fitr",
+"name": "Id-ul-Fitr (Eid)",
+"kind": "gazetted",
+"date": "2026-03-21",
+"source": "dopt2026",
+"note": "This date can change with the sighting of the Moon."
+},
+{
+"id": "id_ul_fitr",
+"name": "Id-ul-Fitr (Eid)",
+"kind": "gazetted",
+"date": "2027-03-10",
+"source": "dopt2027",
+"note": "This date can change with the sighting of the Moon."
+},
+{
+"id": "ram_navami",
+"name": "Ram Navami",
+"kind": "gazetted",
+"date": "2026-03-26",
+"source": "dopt2026"
+},
+{
+"id": "ram_navami",
+"name": "Ram Navami",
+"kind": "gazetted",
+"date": "2027-04-15",
+"source": "dopt2027"
+},
+{
+"id": "mahavir_jayanti",
+"name": "Mahavir Jayanti",
+"kind": "gazetted",
+"date": "2026-03-31",
+"source": "dopt2026"
+},
+{
+"id": "mahavir_jayanti",
+"name": "Mahavir Jayanti",
+"kind": "gazetted",
+"date": "2027-04-19",
+"source": "dopt2027"
+},
+{
+"id": "good_friday",
+"name": "Good Friday",
+"kind": "gazetted",
+"date": "2026-04-03",
+"source": "dopt2026"
+},
+{
+"id": "good_friday",
+"name": "Good Friday",
+"kind": "gazetted",
+"date": "2027-03-26",
+"source": "dopt2027"
+},
+{
+"id": "buddha_purnima",
+"name": "Buddha Purnima",
+"kind": "gazetted",
+"date": "2026-05-01",
+"source": "dopt2026"
+},
+{
+"id": "buddha_purnima",
+"name": "Buddha Purnima",
+"kind": "gazetted",
+"date": "2027-05-20",
+"source": "dopt2027"
+},
+{
+"id": "bakrid",
+"name": "Id-ul-Zuha (Bakrid)",
+"kind": "gazetted",
+"date": "2026-05-28",
+"source": "dopt2026_bakrid",
+"note": "Moved from 27 May to 28 May 2026 for offices in Delhi; other states could decide their own date."
+},
+{
+"id": "bakrid",
+"name": "Id-ul-Zuha (Bakrid)",
+"kind": "gazetted",
+"date": "2027-05-17",
+"source": "dopt2027",
+"note": "This date can change with the sighting of the Moon."
+},
+{
+"id": "muharram",
+"name": "Muharram",
+"kind": "gazetted",
+"date": "2026-06-26",
+"source": "dopt2026",
+"note": "This date can change with the sighting of the Moon."
+},
+{
+"id": "muharram",
+"name": "Muharram",
+"kind": "gazetted",
+"date": "2027-06-16",
+"source": "dopt2027",
+"note": "This date can change with the sighting of the Moon."
+},
+{
+"id": "independence_day",
+"name": "Independence Day",
+"kind": "gazetted",
+"date": "2026-08-15",
+"source": "dopt2026"
+},
+{
+"id": "independence_day",
+"name": "Independence Day",
+"kind": "gazetted",
+"date": "2027-08-15",
+"source": "dopt2027"
+},
+{
+"id": "id_e_milad",
+"name": "Milad-un-Nabi (Id-e-Milad)",
+"kind": "gazetted",
+"date": "2026-08-26",
+"source": "dopt2026",
+"note": "This date can change with the sighting of the Moon."
+},
+{
+"id": "id_e_milad",
+"name": "Milad-un-Nabi (Id-e-Milad)",
+"kind": "gazetted",
+"date": "2027-08-15",
+"source": "dopt2027",
+"note": "This date can change with the sighting of the Moon."
+},
+{
+"id": "janmashtami",
+"name": "Janmashtami",
+"kind": "gazetted",
+"date": "2026-09-04",
+"source": "dopt2026"
+},
+{
+"id": "janmashtami",
+"name": "Janmashtami",
+"kind": "gazetted",
+"date": "2027-08-25",
+"source": "dopt2027"
+},
+{
+"id": "gandhi_jayanti",
+"name": "Mahatma Gandhi's Birthday (Gandhi Jayanti)",
+"kind": "gazetted",
+"date": "2026-10-02",
+"source": "dopt2026"
+},
+{
+"id": "gandhi_jayanti",
+"name": "Mahatma Gandhi's Birthday (Gandhi Jayanti)",
+"kind": "gazetted",
+"date": "2027-10-02",
+"source": "dopt2027"
+},
+{
+"id": "dussehra",
+"name": "Dussehra (Vijaya Dashami)",
+"kind": "gazetted",
+"date": "2026-10-20",
+"source": "dopt2026"
+},
+{
+"id": "dussehra",
+"name": "Dussehra (Vijaya Dashami)",
+"kind": "gazetted",
+"date": "2027-10-09",
+"source": "dopt2027"
+},
+{
+"id": "diwali",
+"name": "Diwali (Deepavali)",
+"kind": "gazetted",
+"date": "2026-11-08",
+"source": "dopt2026"
+},
+{
+"id": "diwali",
+"name": "Diwali (Deepavali)",
+"kind": "gazetted",
+"date": "2027-10-29",
+"source": "dopt2027"
+},
+{
+"id": "guru_nanak_jayanti",
+"name": "Guru Nanak's Birthday",
+"kind": "gazetted",
+"date": "2026-11-24",
+"source": "dopt2026"
+},
+{
+"id": "guru_nanak_jayanti",
+"name": "Guru Nanak's Birthday",
+"kind": "gazetted",
+"date": "2027-11-14",
+"source": "dopt2027"
+},
+{
+"id": "christmas",
+"name": "Christmas Day",
+"kind": "gazetted",
+"date": "2026-12-25",
+"source": "dopt2026"
+},
+{
+"id": "christmas",
+"name": "Christmas Day",
+"kind": "gazetted",
+"date": "2027-12-25",
+"source": "dopt2027"
+},
+{
+"id": "new_year",
+"name": "New Year's Day",
+"kind": "restricted",
+"date": "2026-01-01",
+"source": "dopt2026"
+},
+{
+"id": "new_year",
+"name": "New Year's Day",
+"kind": "restricted",
+"date": "2027-01-01",
+"source": "dopt2027"
+},
+{
+"id": "makar_sankranti",
+"name": "Makar Sankranti",
+"kind": "restricted",
+"date": "2026-01-14",
+"source": "dopt2026"
+},
+{
+"id": "makar_sankranti",
+"name": "Makar Sankranti",
+"kind": "restricted",
+"date": "2027-01-14",
+"source": "dopt2027"
+},
+{
+"id": "pongal",
+"name": "Pongal",
+"kind": "restricted",
+"date": "2026-01-14",
+"source": "dopt2026"
+},
+{
+"id": "pongal",
+"name": "Pongal",
+"kind": "restricted",
+"date": "2027-01-15",
+"source": "dopt2027"
+},
+{
+"id": "basant_panchami",
+"name": "Basant Panchami (Sri Panchami)",
+"kind": "restricted",
+"date": "2026-01-23",
+"source": "dopt2026"
+},
+{
+"id": "basant_panchami",
+"name": "Basant Panchami (Sri Panchami)",
+"kind": "restricted",
+"date": "2027-02-11",
+"source": "dopt2027"
+},
+{
+"id": "guru_ravidas_jayanti",
+"name": "Guru Ravidas's Birthday",
+"kind": "restricted",
+"date": "2026-02-01",
+"source": "dopt2026"
+},
+{
+"id": "guru_ravidas_jayanti",
+"name": "Guru Ravidas's Birthday",
+"kind": "restricted",
+"date": "2027-02-20",
+"source": "dopt2027"
+},
+{
+"id": "dayanand_jayanti",
+"name": "Swami Dayananda Saraswati Jayanti",
+"kind": "restricted",
+"date": "2026-02-12",
+"source": "dopt2026"
+},
+{
+"id": "dayanand_jayanti",
+"name": "Swami Dayananda Saraswati Jayanti",
+"kind": "restricted",
+"date": "2027-03-02",
+"source": "dopt2027"
+},
+{
+"id": "maha_shivratri",
+"name": "Maha Shivratri",
+"kind": "restricted",
+"date": "2026-02-15",
+"source": "dopt2026"
+},
+{
+"id": "maha_shivratri",
+"name": "Maha Shivratri",
+"kind": "restricted",
+"date": "2027-03-06",
+"source": "dopt2027"
+},
+{
+"id": "shivaji_jayanti",
+"name": "Shivaji Jayanti",
+"kind": "restricted",
+"date": "2026-02-19",
+"source": "dopt2026"
+},
+{
+"id": "shivaji_jayanti",
+"name": "Shivaji Jayanti",
+"kind": "restricted",
+"date": "2027-02-19",
+"source": "dopt2027"
+},
+{
+"id": "holika_dahan",
+"name": "Holika Dahan (Dolyatra)",
+"kind": "restricted",
+"date": "2026-03-03",
+"source": "dopt2026"
+},
+{
+"id": "holika_dahan",
+"name": "Holika Dahan (Dolyatra)",
+"kind": "restricted",
+"date": "2027-03-22",
+"source": "dopt2027"
+},
+{
+"id": "ugadi",
+"name": "Ugadi / Gudi Padwa / Cheti Chand (Chaitra Sukladi)",
+"kind": "restricted",
+"date": "2026-03-19",
+"source": "dopt2026"
+},
+{
+"id": "ugadi",
+"name": "Ugadi / Gudi Padwa / Cheti Chand (Chaitra Sukladi)",
+"kind": "restricted",
+"date": "2027-04-07",
+"source": "dopt2027"
+},
+{
+"id": "jamat_ul_vida",
+"name": "Jamat-ul-Vida",
+"kind": "restricted",
+"date": "2026-03-20",
+"source": "dopt2026"
+},
+{
+"id": "jamat_ul_vida",
+"name": "Jamat-ul-Vida",
+"kind": "restricted",
+"date": "2027-03-05",
+"source": "dopt2027"
+},
+{
+"id": "easter",
+"name": "Easter Sunday",
+"kind": "restricted",
+"date": "2026-04-05",
+"source": "dopt2026"
+},
+{
+"id": "easter",
+"name": "Easter Sunday",
+"kind": "restricted",
+"date": "2027-03-28",
+"source": "dopt2027"
+},
+{
+"id": "vaisakhi",
+"name": "Vaisakhi / Vishu / Tamil New Year's Day",
+"kind": "restricted",
+"date": "2026-04-14",
+"source": "dopt2026"
+},
+{
+"id": "vaisakhi",
+"name": "Vaisakhi / Vishu / Tamil New Year's Day",
+"kind": "restricted",
+"date": "2027-04-14",
+"source": "dopt2027"
+},
+{
+"id": "bohag_bihu",
+"name": "Vaisakhadi (Bengal) / Bohag Bihu (Assam)",
+"kind": "restricted",
+"date": "2026-04-15",
+"source": "dopt2026"
+},
+{
+"id": "bohag_bihu",
+"name": "Vaisakhadi (Bengal) / Bohag Bihu (Assam)",
+"kind": "restricted",
+"date": "2027-04-15",
+"source": "dopt2027"
+},
+{
+"id": "tagore_jayanti",
+"name": "Rabindranath Tagore's Birthday",
+"kind": "restricted",
+"date": "2026-05-09",
+"source": "dopt2026"
+},
+{
+"id": "tagore_jayanti",
+"name": "Rabindranath Tagore's Birthday",
+"kind": "restricted",
+"date": "2027-05-09",
+"source": "dopt2027"
+},
+{
+"id": "rath_yatra",
+"name": "Rath Yatra",
+"kind": "restricted",
+"date": "2026-07-16",
+"source": "dopt2026"
+},
+{
+"id": "rath_yatra",
+"name": "Rath Yatra",
+"kind": "restricted",
+"date": "2027-07-05",
+"source": "dopt2027"
+},
+{
+"id": "parsi_new_year",
+"name": "Parsi New Year's Day (Navroz)",
+"kind": "restricted",
+"date": "2026-08-15",
+"source": "dopt2026"
+},
+{
+"id": "parsi_new_year",
+"name": "Parsi New Year's Day (Navroz)",
+"kind": "restricted",
+"date": "2027-08-15",
+"source": "dopt2027"
+},
+{
+"id": "onam",
+"name": "Onam (Thiru Onam)",
+"kind": "restricted",
+"date": "2026-08-26",
+"source": "dopt2026"
+},
+{
+"id": "onam",
+"name": "Onam (Thiru Onam)",
+"kind": "restricted",
+"date": "2027-09-12",
+"source": "dopt2027"
+},
+{
+"id": "raksha_bandhan",
+"name": "Raksha Bandhan",
+"kind": "restricted",
+"date": "2026-08-28",
+"source": "dopt2026"
+},
+{
+"id": "raksha_bandhan",
+"name": "Raksha Bandhan",
+"kind": "restricted",
+"date": "2027-08-17",
+"source": "dopt2027"
+},
+{
+"id": "ganesh_chaturthi",
+"name": "Ganesh Chaturthi (Vinayaka Chaturthi)",
+"kind": "restricted",
+"date": "2026-09-14",
+"source": "dopt2026"
+},
+{
+"id": "ganesh_chaturthi",
+"name": "Ganesh Chaturthi (Vinayaka Chaturthi)",
+"kind": "restricted",
+"date": "2027-09-04",
+"source": "dopt2027"
+},
+{
+"id": "maha_ashtami",
+"name": "Dussehra (Maha Ashtami)",
+"kind": "restricted",
+"date": "2026-10-19",
+"source": "dopt2026"
+},
+{
+"id": "maha_ashtami",
+"name": "Dussehra (Maha Ashtami)",
+"kind": "restricted",
+"date": "2027-10-07",
+"source": "dopt2027"
+},
+{
+"id": "maha_navami",
+"name": "Dussehra (Maha Navami)",
+"kind": "restricted",
+"date": "2026-10-20",
+"source": "dopt2026"
+},
+{
+"id": "maha_navami",
+"name": "Dussehra (Maha Navami)",
+"kind": "restricted",
+"date": "2027-10-08",
+"source": "dopt2027"
+},
+{
+"id": "valmiki_jayanti",
+"name": "Maharishi Valmiki's Birthday",
+"kind": "restricted",
+"date": "2026-10-26",
+"source": "dopt2026"
+},
+{
+"id": "valmiki_jayanti",
+"name": "Maharishi Valmiki's Birthday",
+"kind": "restricted",
+"date": "2027-10-15",
+"source": "dopt2027"
+},
+{
+"id": "karva_chauth",
+"name": "Karva Chauth",
+"kind": "restricted",
+"date": "2026-10-29",
+"source": "dopt2026"
+},
+{
+"id": "karva_chauth",
+"name": "Karva Chauth",
+"kind": "restricted",
+"date": "2027-10-18",
+"source": "dopt2027"
+},
+{
+"id": "naraka_chaturdasi",
+"name": "Naraka Chaturdasi",
+"kind": "restricted",
+"date": "2026-11-08",
+"source": "dopt2026"
+},
+{
+"id": "naraka_chaturdasi",
+"name": "Naraka Chaturdasi",
+"kind": "restricted",
+"date": "2027-10-28",
+"source": "dopt2027"
+},
+{
+"id": "govardhan_puja",
+"name": "Govardhan Puja",
+"kind": "restricted",
+"date": "2026-11-09",
+"source": "dopt2026"
+},
+{
+"id": "govardhan_puja",
+"name": "Govardhan Puja",
+"kind": "restricted",
+"date": "2027-10-30",
+"source": "dopt2027"
+},
+{
+"id": "bhai_duj",
+"name": "Bhai Duj",
+"kind": "restricted",
+"date": "2026-11-11",
+"source": "dopt2026"
+},
+{
+"id": "bhai_duj",
+"name": "Bhai Duj",
+"kind": "restricted",
+"date": "2027-10-31",
+"source": "dopt2027"
+},
+{
+"id": "chhath",
+"name": "Chhath Puja",
+"kind": "restricted",
+"date": "2026-11-15",
+"source": "dopt2026"
+},
+{
+"id": "chhath",
+"name": "Chhath Puja",
+"kind": "restricted",
+"date": "2027-11-04",
+"source": "dopt2027"
+},
+{
+"id": "guru_teg_bahadur",
+"name": "Guru Teg Bahadur's Martyrdom Day",
+"kind": "restricted",
+"date": "2026-11-24",
+"source": "dopt2026"
+},
+{
+"id": "guru_teg_bahadur",
+"name": "Guru Teg Bahadur's Martyrdom Day",
+"kind": "restricted",
+"date": "2027-11-24",
+"source": "dopt2027"
+},
+{
+"id": "christmas_eve",
+"name": "Christmas Eve",
+"kind": "restricted",
+"date": "2026-12-24",
+"source": "dopt2026"
+},
+{
+"id": "christmas_eve",
+"name": "Christmas Eve",
+"kind": "restricted",
+"date": "2027-12-24",
+"source": "dopt2027"
+}
+]
+}

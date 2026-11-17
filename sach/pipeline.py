@@ -6,7 +6,7 @@ from .card import render_card
 from .extract import clean_text, extract_claims
 from .i18n import NOCLAIM, NOCLAIM_LABEL, tr
 from .lang import SUPPORTED, detect_language
-from . import cache, gtranslate, match as _match
+from . import cache, gtranslate, match as _match, news as _news, refstore
 from .models import Claim, ClaimVerdict, UNVERIFIED, build_trace, overall_rule
 from .retrieve import canonical_key
 from .search import combine_status, DOWN
@@ -58,6 +58,7 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
     rfuts = [rex.submit(_search_one, r, q) for r in retrievers]
     wait(rfuts, timeout=left(RETRIEVE_DEADLINE_S))
     sstat, sprov = [], []
+    news_searched, social_urls = False, []
     for r, f in zip(retrievers, rfuts):                 # keep the retrievers' priority order (PIB first)
         reports = hasattr(r, "search_with_status")
         try:
@@ -65,6 +66,8 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
             evidence += ev
             if run is not None:
                 sstat.append(run.status); sprov += run.providers
+                news_searched = news_searched or (bool(getattr(run, "news", False)) and run.status == "ok")
+                social_urls += list(getattr(run, "social", None) or [])
         except Exception:
             if reports:
                 sstat.append(DOWN)                      # a hung or crashed web search is a lost search, said out loud
@@ -74,7 +77,7 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
         k = canonical_key(e.url)
         if k not in seen:
             seen.add(k); uniq.append(e)
-    evidence = uniq[:8]
+    evidence = [e for e in uniq if e.tier != _news.TIER_NEWS][:8] + [e for e in uniq if e.tier == _news.TIER_NEWS][:_news.PER_QUERY]   # news never crowds out official sources
     t_judge = time.monotonic()
     t_retrieved = t_judge
     ex = ThreadPoolExecutor(max_workers=8)              # LLM calls are slow; judge sources in parallel
@@ -116,6 +119,13 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
     v.trace = build_trace(q, evidence, v.reason_code, tinfo.get("translator") or "none")      # every judged source, cited or not
     v.detected = tinfo.get("detected")
     v.trace["layer"] = "LIVE"
+    if v.verdict == UNVERIFIED:                         # extra, separately labelled findings: they never change the verdict above
+        rep = _news.assess(q, evidence, news_searched)
+        if rep:
+            v.trace["reported"] = rep
+        soc = _news.social_signal(social_urls)
+        if soc:
+            v.trace["social"] = soc
     v.trace["timing_ms"] = {"retrieve": int((t_retrieved - t_start) * 1000), "judge": int((time.monotonic() - t_judge) * 1000), "judge_window": int(window * 1000)}
     v.judge_problems = problems                         # sources whose AI judge did not answer (timeout or error): read by check_forward
     v.search_status, v.search_provider = combine_status(sstat), ",".join(dict.fromkeys(sprov))   # not in to_dict(): read by check_forward
@@ -140,6 +150,18 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
             return out
     lang = detect_language(text)                                   # input language
     out_lang = reply_lang if reply_lang in SUPPORTED else lang          # reply language
+    if not force_live and refstore.answerable(text):    # a short question the reference store answers from an official document: no search, no AI
+        facts = refstore.lookup(text)
+        out = {"language": out_lang, "input_language": lang, "verdict": UNVERIFIED, "no_claims": True, "answer": facts, "claims": [],
+               "checked_at": ledger.now(), "card": _news.answer_card(facts, out_lang), "layer": "reference",
+               "search_status": "ok", "search_provider": "",
+               "trace": {"layer": "REFERENCE", "claims_extracted": 0, "degraded": False,
+                         "overall_rule": "Answered from an official document in Sach's reference store. This is an answer, not a verdict."}}
+        if out_lang != "en":
+            out["card_en"] = _news.answer_card(facts, "en")
+        if log:
+            ledger.record_check(out, cached=False)
+        return out
     ext = {}
     claims = extract_claims(text, max_claims=MAX_CLAIMS, report=ext)     # ext: what was not checked (display only)
     if use and not force_live and claims:       # L0: same checked claims under different wrapper text (greeting, 'forwarded', emoji)
@@ -216,6 +238,15 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
         card_en = _match.render_match_card(results, overall, "en", lcard("en")) if out_lang != "en" else ""
     out = {"language": out_lang, "input_language": lang, "verdict": overall, "layer": layer, "card": card,
            "claims": [v.to_dict() for v in results], "checked_at": now_iso}
+    if layer == "live" and overall == UNVERIFIED:
+        line = _news.card_line(results, out_lang)       # what news organisations report, as one labelled line on the card
+        if line:
+            out["card"] = card + "\n" + line
+            if card_en:
+                card_en = card_en + "\n" + _news.card_line(results, "en")
+    ref = refstore.lookup(text)
+    if ref:
+        out["reference"] = ref                          # official dates for festivals named in the text: shown beside the result, never an input to it
     if layer != "live":
         out["match"] = _match.top_match(results, overall)
     if card_en:

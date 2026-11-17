@@ -601,8 +601,15 @@ def card_attrs(code: str) -> str:
     return f' lang="{html_lang(real)}"' + (' dir="rtl"' if real in RTL else "")
 
 
+def _knowledge_panels(res: dict) -> str:
+    from . import news as _news
+    return _news.panels_html(res)
+
 def result_block(res: dict, chosen: bool = False, link: str | None = None, text: str = "", lang_choice: str = "auto") -> str:
     v = res["verdict"]
+    if res.get("answer"):                              # a question answered from the reference store: an answer, not a verdict
+        from . import news as _news
+        return _news.answer_block(res)
     if res.get("no_claims"):
         sg = signs_html(res.get("warning_signs"), res.get("language", "en"))
         scam = bool(sg)                                # scam-shaped text with no checkable claim: lead with the warning
@@ -633,7 +640,7 @@ def result_block(res: dict, chosen: bool = False, link: str | None = None, text:
     if incomplete(res):             # shown first, above the card and its buttons: the check did not finish, which is not "nothing found"
         inc_html = (f'<div class="honest incomplete" role="status" style="margin:0 0 14px"><p style="margin:0">'
                     f'<b>{esc(i18n_tr(INCOMPLETE_NOTICE, text_lang(res.get("language", "en"))))}</b></p></div>')
-    unv, oldnote, extract = honesty.unverified_panel(res) + honesty.official_pages_html(res), honesty.old_debunk_notice(res), honesty.extraction_html(res)
+    unv, oldnote, extract = honesty.unverified_panel(res) + honesty.official_pages_html(res) + _knowledge_panels(res), honesty.old_debunk_notice(res), honesty.extraction_html(res)
     notice = ""
     if res.get("degraded"):
         notice = ('<div class="honest" style="margin-top:18px" role="status">'

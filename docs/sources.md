@@ -141,3 +141,32 @@ Many of PIB Fact Check's best-known debunks (free laptop scheme, free recharge, 
 ### Excluded from the index: stale debunks (found by the 2026-11-13 evaluation)
 
 A PIB debunk of a *fake notice* is time-bound: it can stop being a contradiction once the real announcement is made. PRID 2009349 (Feb 2024, fake notification for 4,208 RPF Constable and 452 Sub-Inspector posts on RTUEXAM.NET) was indexed by the index-growth run, and the evaluation then returned FALSE for the genuinely TRUE claim "RPF has announced recruitment of 4,208 Constables and 452 Sub-Inspectors" (the real recruitment came later). That was one overclaimed FALSE, found and removed the same day; it is pinned out by `tests/test_index_growth.py`. Lesson: Sach has no notion of a debunk going stale. Until it does, prefer evergreen debunks (a scheme that does not exist, a rule that was not changed) over "fake recruitment/notice" releases.
+
+## News tier, reference store and social signal (18 Nov 2026)
+
+These three layers were added so that everyday questions and news events get an honest answer. **None of them can produce TRUE, FALSE or MISLEADING.** `sach/verdict.py` is unchanged and ignores the `news` tier; the test `tests/test_knowledge.py::test_news_evidence_can_never_decide_a_verdict` holds that line.
+
+### Reference store (`data/reference.json`, `sach/refstore.py`, on by default, off with `SACH_REFSTORE=0`)
+Dated facts copied by hand from government documents, each with its source link. Today: the central government holiday lists for 2026 and 2027.
+
+| Year | Document read | Host |
+|---|---|---|
+| 2026 | DoPT O.M. F.No.12/2/2023-JCA dated 03.07.2025, in the copy circulated by Survey of India (gazetted and restricted lists for Delhi) | `surveyofindia.gov.in` |
+| 2026 Bakrid | Change of the Id-u-Zuha holiday from 27 May to 28 May 2026 for offices in Delhi, in the copy circulated by ICMR on 25.05.2026 | `icmr.gov.in` |
+| 2027 | DoPT O.M. No.12/2/2023-JCA dated 16.07.2026, in the copy circulated by the Department of Posts on 08.09.2026 | `utilities.cept.gov.in` |
+
+Limits: the lists are for central government offices in Delhi. States choose three of their holidays locally and can move the four Moon-dependent dates, and the store says so on those rows. State holiday lists are not in the store yet. The PDFs are scans, so rows were typed by hand and checked against the text once; a wrong digit is possible and the source link is shown beside every date so a reader can check.
+
+### News tier (`sach/news.py`, off by default, on with `SACH_NEWS_TIER=1`)
+Used only when no official source was found for a claim. One extra web search, then the same fetch, quote check and AI judge as every other source.
+
+- **Outlets:** the list `NEWS_GROUPS` in `sach/news.py`: news agencies (PTI, ANI, UNI, Reuters, AP), national dailies and broadcasters, and large regional-language dailies. They are grouped by owner so two titles of one company count once (for example Times of India and The Economic Times). The list was written from general knowledge of the Indian press, not from a register; additions should name the owner.
+- **REPORTED:** two independent owners report it. For a death: three, or two when one is a news agency.
+- **Reported as not true:** two independent owners say it is not true (the usual shape of a death hoax).
+- **NO RELIABLE REPORT:** only for event-type claims (death, disaster, ban, arrest, resignation and similar), and only when the news search itself ran and answered.
+- **Known weak points:** many outlets reprint one agency story, so "two owners" can still be one original report; a news report can be wrong; an old article about an earlier event can be judged as support. The card says "reported", shows the outlets and says it is not an official confirmation.
+
+### Social signal (`sach/news.py`, off by default, on with `SACH_SOCIAL_SIGNAL=1`)
+X, Facebook and Instagram offer no free search API, and Sach does not log in to them or scrape them. One web search restricted to those three sites returns links to public posts. Sach counts the links by platform and names any that come from a short list of established accounts (`KNOWN_HANDLES`). It does not open or read the posts.
+
+The count is shown as a signal and is never evidence. How many accounts post a claim does not show whether it is true: false forwards spread precisely because many genuine people share them. A verdict from post volume would turn popularity into truth, which is the failure this project exists to prevent, so that part of the request was deliberately not built.

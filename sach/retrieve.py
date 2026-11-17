@@ -79,6 +79,7 @@ def _page_text(html: str):
     return title, re.sub(r"\s+", " ", s.get_text(" ", strip=True))[:20000]
 
 import threading, time as _time
+from . import news as _news
 from .search import (SearchChain, SearchRun, BRAVE_MIN_INTERVAL_S, _brave_last, _brave_throttle, grounded_credential_usable)   # noqa: F401 (re-exported: older tests patch them here)
 
 class BraveRetriever:
@@ -132,6 +133,11 @@ class BraveRetriever:
             return None
         if is_factchecker(url):
             tier = TIER_FACTCHECKER
+        elif tier == _news.TIER_NEWS:                # the news query: an official page keeps its official tier, anything else must be a listed outlet
+            if is_official(url):
+                tier = TIER_OFFICIAL
+            elif not _news.is_news(url):
+                return None
         elif tier != TIER_OFFICIAL or not is_official(url):
             return None
         if is_pib(url) and re.search(r"PRID=\d+", url, re.I):
@@ -189,6 +195,14 @@ class BraveRetriever:
         add([u for u in self._urls(f"{kw} {self.OFFICIAL_Q}", is_official, self.per_query + 2) if not is_pib(u)][: self.per_query], TIER_OFFICIAL)
         if not any(e.tier in (TIER_PIB, TIER_OFFICIAL) for e in out):
             add(self._urls(f"{short} {self.FC_Q}", is_factchecker, self.per_query), TIER_FACTCHECKER)
+        run = getattr(self._tls, "run", None)
+        if not any(e.tier in (TIER_PIB, TIER_OFFICIAL) for e in out):       # nothing official: see what established news organisations report
+            if _news.news_enabled():
+                add(self._urls(f"{kw} news", lambda u: _news.is_news(u) or is_official(u), _news.PER_QUERY), _news.TIER_NEWS)
+                if run is not None:
+                    run.news = True                  # the news search was attempted for this claim (read by the pipeline)
+            if _news.social_enabled() and run is not None:
+                run.social = self._urls(f"{kw} {_news.SOCIAL_Q}", _news.is_social, 10)   # links only: posts are never fetched or read
         return out
 
 def default_retrievers():
