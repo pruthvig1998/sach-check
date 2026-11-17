@@ -138,6 +138,19 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
     text = clean_text(text)
     rl = reply_lang if reply_lang in SUPPORTED else None
     use = cache.enabled(use_cache, log)
+    if not force_live and refstore.answerable(text):    # a short question the reference store answers from an official document: no search, no AI
+        facts, lang = refstore.lookup(text), detect_language(text)
+        out_lang = reply_lang if reply_lang in SUPPORTED else lang
+        out = {"language": out_lang, "input_language": lang, "verdict": UNVERIFIED, "no_claims": True, "answer": facts, "claims": [],
+               "checked_at": ledger.now(), "card": _news.answer_card(facts, out_lang), "layer": "reference",
+               "search_status": "ok", "search_provider": "",
+               "trace": {"layer": "REFERENCE", "claims_extracted": 0, "degraded": False,
+                         "overall_rule": "Answered from an official document in Sach's reference store. This is an answer, not a verdict."}}
+        if out_lang != "en":
+            out["card_en"] = _news.answer_card(facts, "en")
+        if log:
+            ledger.record_check(out, cached=False)
+        return out
     if use and not force_live:       # "run Sach's own check anyway" must not be answered by a cached match
         hit = cache.lookup(text, rl)
         if hit is not None:
@@ -150,18 +163,6 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
             return out
     lang = detect_language(text)                                   # input language
     out_lang = reply_lang if reply_lang in SUPPORTED else lang          # reply language
-    if not force_live and refstore.answerable(text):    # a short question the reference store answers from an official document: no search, no AI
-        facts = refstore.lookup(text)
-        out = {"language": out_lang, "input_language": lang, "verdict": UNVERIFIED, "no_claims": True, "answer": facts, "claims": [],
-               "checked_at": ledger.now(), "card": _news.answer_card(facts, out_lang), "layer": "reference",
-               "search_status": "ok", "search_provider": "",
-               "trace": {"layer": "REFERENCE", "claims_extracted": 0, "degraded": False,
-                         "overall_rule": "Answered from an official document in Sach's reference store. This is an answer, not a verdict."}}
-        if out_lang != "en":
-            out["card_en"] = _news.answer_card(facts, "en")
-        if log:
-            ledger.record_check(out, cached=False)
-        return out
     ext = {}
     claims = extract_claims(text, max_claims=MAX_CLAIMS, report=ext)     # ext: what was not checked (display only)
     if use and not force_live and claims:       # L0: same checked claims under different wrapper text (greeting, 'forwarded', emoji)

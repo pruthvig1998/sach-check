@@ -68,7 +68,10 @@ def test_dates_copied_from_the_official_lists():
 
 
 def test_only_short_questions_are_answered_by_the_store():
-    assert refstore.answerable("When is Diwali in 2026?") and refstore.answerable("diwali date")
+    assert refstore.answerable("When is Diwali in 2026?") and refstore.answerable("diwali date") and refstore.answerable("होली 2027 कब है")
+    for claim in ("Rakhi Sawant passed away", "When did Rakhi Sawant die?", "Holi special train cancelled", "Onam bumper lottery winner announced",
+                  "Diwali bonus of Rs 5000", "Is Christmas a holiday?", "Christmas Kumar arrested", "diwali", "When is the Diwali bank strike?"):
+        assert not refstore.answerable(claim), claim                     # says more than "when is X": goes through the normal check
     assert not refstore.answerable("Did the actor Giri Babu pass away?")              # nothing in the store
     assert not refstore.answerable("Government will give Rs 5000 to every woman on Diwali 2026 under a new scheme, apply before the festival ends "
                                    "and share with every family group you know right now today")
@@ -80,6 +83,14 @@ def test_a_question_gets_an_answer_without_any_search_or_verdict():
     assert "Sunday, 8 November 2026" in res["card"] and "gov.in" in res["card"] and "TRUE" not in res["card"] and "FALSE" not in res["card"]
     html = result_block(res)
     assert "ANSWER" in html and "8 November 2026" in html and "No claim" not in html
+
+
+def test_the_answer_comes_before_the_cache():
+    from sach import cache
+    q = "When is Holi in 2027?"
+    cache.save(q, None, {"verdict": "FALSE", "claims": [{"claim": {"text": q}}], "layer": "live", "_verdict_policy": 1})
+    res, _ = check(q, [])
+    assert res.get("answer") and res["verdict"] == UNVERIFIED
 
 
 def test_the_store_can_be_switched_off(monkeypatch):
@@ -133,6 +144,10 @@ def test_denials_conflicts_and_silence():
     assert news.assess(DEATH, _ev(("thehindu.com", "confirms"), ("ndtv.com", "contradicts")), True)["status"] == "conflicting"
     assert news.assess(DEATH, [], True)["status"] == "no_reliable_report"
     assert news.assess(DEATH, [], False) is None                         # the news search did not run or failed: silence means nothing
+    for not_recent in ("Mahatma Gandhi died in 1948", "Actor Example Kumar killed it at the box office", "This phone is a rip off, buy the other one",
+                       "There is no more time to submit the form", "Mobile phones will be banned in schools from next month",
+                       "Free crash course for students this Sunday", "वह मौतों का सौदागर है", "मृत्युंजय नाम का लड़का जीता"):
+        assert news.assess(not_recent, [], True) is None, not_recent      # silence says nothing about these
     official = Evidence("x", "https://example.gov.in/a", TIER_OFFICIAL, TS, "t", "t"); official.stance = "confirms"
     unlisted = Evidence("x", "https://random-blog.example/a", news.TIER_NEWS, TS, "t", "t"); unlisted.stance = "confirms"
     assert news.assess("Example Motors has launched a scooter this week.", [official, unlisted], True) is None    # only listed outlets count
@@ -192,10 +207,12 @@ def test_both_layers_are_off_by_default_and_the_retriever_then_sends_no_extra_qu
 def test_the_news_query_only_keeps_listed_outlets_and_official_pages(monkeypatch):
     from sach import retrieve
     r = retrieve.BraveRetriever(key="k", chain=type("C", (), {"configured": True})())
-    pages = {"https://www.thehindu.com/a": "ok", "https://random-blog.example/a": "ok", "https://newsonair.gov.in/a": "ok"}
-    monkeypatch.setattr(retrieve, "fetch", lambda u: {"status": 200, "final_url": u, "body": "<title>T</title><p>text</p>", "fetched_at": TS})
+    pages = ("https://www.thehindu.com/a", "https://random-blog.example/a", "https://newsonair.gov.in/a",
+             "https://pib.gov.in/PressReleasePage.aspx?PRID=999", "https://www.indiatoday.in/fact-check/story/x", "https://www.ptinews.com/factcheck/x")
+    monkeypatch.setattr(retrieve, "fetch", lambda u: {"status": 200, "final_url": u, "body": "<title>Fake claim</title><p>text</p>", "fetched_at": TS})
     tiers = {u: getattr(r._evidence(u, news.TIER_NEWS), "tier", None) for u in pages}
-    assert tiers == {"https://www.thehindu.com/a": "news", "https://random-blog.example/a": None, "https://newsonair.gov.in/a": TIER_OFFICIAL}
+    # the news query can only yield news-tier evidence: an official or fact-checker page found by it is dropped, so it opens no route to a verdict or a citation
+    assert tiers == {pages[0]: "news", pages[1]: None, pages[2]: None, pages[3]: None, pages[4]: None, pages[5]: None}
     assert r._evidence("https://www.thehindu.com/a", TIER_OFFICIAL) is None      # a news page can never arrive as official
 
 

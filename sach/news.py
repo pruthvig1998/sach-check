@@ -4,7 +4,7 @@ Why: no government page records an actor's death, a match result or a film relea
 What this adds, WITHOUT a new route to TRUE or FALSE (sach/verdict.py ignores the news tier):
   REPORTED             at least two independent established news organisations report it (three for a death, unless one is a news agency)
   DENIED BY NEWS       at least two report that it is not true (for example a death hoax)
-  NO RELIABLE REPORT   an event that would be widely reported if real, and none of the outlets searched reports it
+  NO RELIABLE REPORT   a claim that a person has died, and none of the outlets searched reports it
 The machine verdict stays UNVERIFIED; these are a separate, clearly labelled finding in the claim's trace ("reported").
 
 The social signal counts public posts a web search finds on X, Facebook and Instagram and names established accounts among them. Sach cannot
@@ -44,12 +44,19 @@ NEWS_GROUPS = {
 WIRES = {"PTI", "ANI", "UNI", "Reuters", "AP"}
 PER_QUERY = 4
 
-_DEATH = re.compile(r"\b(died|dies|dead|death|passed away|passes away|pass away|no more|demise|rip|funeral|killed)\b|निधन|मृत्यु|मौत|देहांत|नहीं रहे|"
-                    r"మృతి|మరణ|కన్నుమూ|చనిపో|ఇకలేరు", re.I)
-# Events that established outlets report within hours when they are real. Only for these does silence mean anything.
-_EVENT = re.compile(_DEATH.pattern + r"|\b(earthquake|cyclone|flood|blast|explosion|crash|accident|riot|curfew|lockdown|arrested|resign|resigned|"
-                    r"banned|ban on|shut down|collapsed|attack|won the|wins the|elected|sworn in)\b|भूकंप|चक्रवात|बाढ़|विस्फोट|गिरफ्तार|इस्तीफा|"
-                    r"భూకంపం|తుఫాను|వరద|పేలుడు|అరెస్ట్|రాజీనామా", re.I)
+# Broad: any wording that may be about a death. Used only to RAISE the number of outlets needed, so a false hit is harmless.
+_DEATH = re.compile(r"\b(died|dies|dead|death|passed away|passes away|pass away|is no more|demise|demised|funeral|killed|murdered|succumbed|"
+                    r"lost (?:his|her|their) life)\b|निधन|मृत्यु|मौत|देहांत|नहीं रहे|మృతి|మరణ|కన్నుమూ|చనిపో|ఇకలేరు", re.I)
+# Narrow: a plain statement or question that a person has died. Only for this does finding no report mean anything, and only when the text
+# names no past year (silence about "X died in 1948" says nothing). Other events are left out on purpose: the search is too shallow.
+_DEATH_NOW = re.compile(r"\b(died|passed away|passes away|pass away|succumbed|lost (?:his|her|their) life)\b|"
+                        r"का निधन|निधन हो|देहांत हो|की मृत्यु हो|నిధనం|కన్నుమూశ|మృతి చెంద|మరణించ|చనిపోయ", re.I)
+
+
+def _recent_death_claim(text: str) -> bool:
+    import time
+    years = [int(y) for y in re.findall(r"(?<!\d)((?:18|19|20)\d\d)(?!\d)", text or "")]
+    return bool(_DEATH_NOW.search(text or "")) and not any(y < time.gmtime().tm_year for y in years)
 
 
 def news_enabled() -> bool:
@@ -99,7 +106,7 @@ def assess(claim: str, evidence: list, searched: bool) -> dict | None:
         status = "denied"
     elif conf or den:
         status = "single_report"
-    elif searched and _EVENT.search(claim or ""):
+    elif searched and _recent_death_claim(claim):
         status = "no_reliable_report"
     else:
         return None
@@ -148,7 +155,7 @@ REPORTED_TEXT = {
     "en": {"reported": "REPORTED by news outlets", "denied": "News outlets report this is NOT true", "conflicting": "News outlets disagree",
            "single_report": "One news outlet reports on this", "no_reliable_report": "NO RELIABLE REPORT found",
            "note": "This is what news organisations report. It is not an official confirmation, and news reports can be wrong.",
-           "none_note": "Sach searched established news organisations and found no report of this. A real event of this kind is normally reported within hours. This is not proof that it is false.",
+           "none_note": "Sach searched established news organisations and found no report of this. The death of a public figure is normally reported within hours. This is not proof that it is false: the search is limited.",
            "answer": "ANSWER", "source": "Source", "dates_title": "Official dates",
            "social_title": "Posts on social media", "social_found": "Public posts found", "social_known": "From established accounts",
            "social_note": "Sach could not read these posts, so they are not evidence. Many posts do not make a claim true: false claims also spread through many genuine accounts."},

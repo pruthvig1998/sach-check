@@ -49,7 +49,7 @@ ALIASES = {
     "naraka_chaturdasi": ("naraka chaturdasi", "naraka chaturdashi", "narak chaturdashi", "నరక చతుర్దశి"),
     "govardhan_puja": ("govardhan puja", "गोवर्धन पूजा"),
     "bhai_duj": ("bhai duj", "bhai dooj", "bhaiya dooj", "भाई दूज"),
-    "chhath": ("chhath", "chhath puja", "छठ"),
+    "chhath": ("chhath", "chhath puja", "छठ पूजा", "छठ पर्व"),
     "christmas_eve": ("christmas eve",),
 }
 _QUESTION = re.compile(r"[?？؟]|^\s*(when|what|which|is|are|was|did|does|do|will|who|where|how|kab|kya|kaun)\b|\b(date|kab hai|kab h)\b|"
@@ -111,10 +111,28 @@ def lookup(text: str, today: date | None = None) -> list:
     return out
 
 
+# Words that may surround a festival name in a pure date question. Anything else left over means the text says more than "when is X",
+# and it then goes through the normal check (so "Rakhi Sawant passed away" or "Holi special train cancelled" is never answered with a date).
+_FILLER = set("when what which is are was will be the a an in on of for this next year date day dates festival holiday holidays falls fall "
+              "celebrated observed does do did india indian tell me please kab hai h ka ki ke ko kya kis din tarikh".split())
+_FILLER_OTHER = ("कब", "है", "क्या", "किस", "दिन", "तारीख", "को", "का", "की", "में", "इस", "साल", "ఎప్పుడు", "ఏ", "రోజు", "తేదీ", "ఈ", "సంవత్సరం", "పండుగ")
+_DATE_INTENT = re.compile(r"\b(when|date|dates|which day|what day|kab|tarikh)\b|कब|किस दिन|तारीख|ఎప్పుడు|ఏ రోజు|తేదీ", re.I)
+
+
 def answerable(text: str) -> bool:
-    """True when `text` is a short question the store can answer by itself (so no live check is needed)."""
-    t = (text or "").strip()
-    return bool(t) and len(t.split()) <= 25 and "\n" not in t and (is_question(t) or len(t.split()) <= 5) and bool(lookup(t))
+    """True only for a short question that asks nothing but the date of a festival or holiday the store knows. Such a question is answered
+    from the store with no live check; everything else is checked normally."""
+    t = " ".join((text or "").lower().split())
+    if not t or len(t.split()) > 12 or not enabled() or not _DATE_INTENT.search(t) or not _ids(t):
+        return False
+    rest = t
+    for names in ALIASES.values():
+        for n in sorted(names, key=len, reverse=True):
+            rest = rest.replace(n, " ")
+    for w in _FILLER_OTHER:
+        rest = rest.replace(w, " ")
+    left = [w for w in re.findall(r"[^\W\d_]+", rest) if w not in _FILLER]
+    return not left and bool(lookup(text))
 
 
 def fmt_date(iso: str) -> str:

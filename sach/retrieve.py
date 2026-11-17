@@ -131,13 +131,11 @@ class BraveRetriever:
         host = http_host_of(url)
         if not host:
             return None
-        if is_factchecker(url):
-            tier = TIER_FACTCHECKER
-        elif tier == _news.TIER_NEWS:                # the news query: an official page keeps its official tier, anything else must be a listed outlet
-            if is_official(url):
-                tier = TIER_OFFICIAL
-            elif not _news.is_news(url):
+        if tier == _news.TIER_NEWS:                  # the news query yields news-tier evidence only: never official, never a fact-checker citation
+            if not _news.is_news(url) or is_official(url) or is_factchecker(url):
                 return None
+        elif is_factchecker(url):
+            tier = TIER_FACTCHECKER
         elif tier != TIER_OFFICIAL or not is_official(url):
             return None
         if is_pib(url) and re.search(r"PRID=\d+", url, re.I):
@@ -198,7 +196,7 @@ class BraveRetriever:
         run = getattr(self._tls, "run", None)
         if not any(e.tier in (TIER_PIB, TIER_OFFICIAL) for e in out):       # nothing official: see what established news organisations report
             if _news.news_enabled():
-                add(self._urls(f"{kw} news", lambda u: _news.is_news(u) or is_official(u), _news.PER_QUERY), _news.TIER_NEWS)
+                add(self._urls(f"{kw} news", lambda u: _news.is_news(u) and not is_factchecker(u), _news.PER_QUERY), _news.TIER_NEWS)
                 if run is not None:
                     run.news = True                  # the news search was attempted for this claim (read by the pipeline)
             if _news.social_enabled() and run is not None:

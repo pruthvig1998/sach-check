@@ -163,7 +163,8 @@ Used only when no official source was found for a claim. One extra web search, t
 - **Outlets:** the list `NEWS_GROUPS` in `sach/news.py`: news agencies (PTI, ANI, UNI, Reuters, AP), national dailies and broadcasters, and large regional-language dailies. They are grouped by owner so two titles of one company count once (for example Times of India and The Economic Times). The list was written from general knowledge of the Indian press, not from a register; additions should name the owner.
 - **REPORTED:** two independent owners report it. For a death: three, or two when one is a news agency.
 - **Reported as not true:** two independent owners say it is not true (the usual shape of a death hoax).
-- **NO RELIABLE REPORT:** only for event-type claims (death, disaster, ban, arrest, resignation and similar), and only when the news search itself ran and answered.
+- **NO RELIABLE REPORT:** only for a plain claim that a person has died, with no past year in the text, and only when the news search itself ran and answered. Other events are left out on purpose: one shallow search finding nothing says too little.
+- **The news search yields news-tier evidence only.** An official page or a fact-check page it happens to find is dropped, so the extra search can never produce a verdict or add a citation (found by the independent review, 18 Nov 2026).
 - **Known weak points:** many outlets reprint one agency story, so "two owners" can still be one original report; a news report can be wrong; an old article about an earlier event can be judged as support. The card says "reported", shows the outlets and says it is not an official confirmation.
 
 ### Social signal (`sach/news.py`, off by default, on with `SACH_SOCIAL_SIGNAL=1`)

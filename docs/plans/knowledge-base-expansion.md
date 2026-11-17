@@ -135,7 +135,7 @@ Owner decisions: all three labels approved; free sources only; social media to b
 - Reference store with the central holiday lists for 2026 and 2027, read from three government PDFs. On by default.
 - Question mode: a short question the store can answer gets an ANSWER card with the source, with no search and no AI call, and uses no live-check slot.
 - A statement that names a festival keeps its normal result and gains an "official dates" panel.
-- News tier with REPORTED, "reported as not true", "one outlet" and NO RELIABLE REPORT. Off until `SACH_NEWS_TIER=1`.
+- News tier with REPORTED, "reported as not true", "one outlet" and NO RELIABLE REPORT. Off until `SACH_NEWS_TIER=1`. NO RELIABLE REPORT is limited to claims that a person has died.
 - Social signal: counts of public posts on X, Facebook and Instagram found by web search. Off until `SACH_SOCIAL_SIGNAL=1`.
 - The verdict rules are unchanged. News and social findings sit in the claim trace and on the card as labelled lines.
 
