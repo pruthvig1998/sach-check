@@ -5,7 +5,7 @@
 
 Kept: only reviews published on the fact-checker sites Sach already lists (sach/fetch.py is_factchecker), with a claim, a rating and an
 https link, dated SINCE or later. Stored per review: the reviewed claim (at most 300 characters), the publisher's own rating words, the
-publisher's name, the link and the date. Never the article text. The file is rebuilt from scratch each run."""
+publisher's site, the link and the date. Never the article text. The file is rebuilt from scratch each run."""
 import argparse, json, os, sqlite3, sys, tempfile, time, urllib.request
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from sach import crcorpus
@@ -31,9 +31,7 @@ def rows(feed: dict):
                     or host.startswith(NOT_INDIA) or url in seen):
                 continue
             seen.add(url)
-            au = it.get("author") or {}
-            org = " ".join(str(au.get("name") or "").split()) if au.get("@type") == "Organization" else ""
-            yield url, claim[:300], rating[:80], (org or host.removeprefix("www."))[:80], date     # an organisation's name, else the site: never a person's byline
+            yield url, claim[:300], rating[:80], host.removeprefix("www.")[:80], date     # the site itself: the feed's free-text author field held bylines, a rating word and stray text
 
 
 def build(feed: dict, out: str) -> int:

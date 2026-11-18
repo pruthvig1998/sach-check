@@ -271,11 +271,14 @@ def test_related_fact_checks_need_the_same_words_and_numbers_and_show_no_rating(
     p = _corpus(tmp_path, [("https://factly.in/a", "Government will give Rs 5000 to every woman under a new scheme", "False", "FACTLY", "2026-01-02"),
                            ("https://factly.in/b", "Video shows a pilot of Air India flight that crashed in Ahmedabad speaking to his mother", "False", "FACTLY", "2026-01-03"),
                            ("http://factly.in/c", "Plain http link is never shown for this exact claim text here", "False", "FACTLY", "2026-01-04")])
-    hit = crcorpus.search("The government will give Rs 5000 to every woman under a new scheme.", path=p)
+    hit = crcorpus.search("GOVERNMENT will give Rs 5,000 to every woman under a new scheme!", path=p)
     assert [h["url"] for h in hit] == ["https://factly.in/a"] and "rating" not in hit[0]              # their rating word is never carried
     assert crcorpus.search("Government will give Rs 50000 to every woman under a new scheme", path=p) == []      # a different amount
     assert crcorpus.search("Video shows a pilot of Air India flight that crashed in Kerala speaking to his mother", path=p) == []   # another place
     assert crcorpus.search("Government will give Rs 5000 to every man under a new scheme", path=p) == []         # one key word differs
+    assert crcorpus.search("Government will not give Rs 5000 to every woman under a new scheme", path=p) == []   # the opposite statement
+    assert crcorpus.search("Government will give Rs 5000.50 to every woman under a new scheme", path=p) == []    # a decimal is one number
+    assert crcorpus.search("Government will give Rs 5000 to every woman under an old scheme", path=p) == []      # short and common words count too
     assert crcorpus.search("Plain http link is never shown for this exact claim text here", path=p) == []
     assert crcorpus.search("anything at all", path=str(tmp_path / "missing.sqlite")) == []
 
@@ -314,6 +317,8 @@ def test_alerts_need_the_same_hazard_the_same_place_and_a_recent_issue_time():
                   "Heavy rain in Chennai, all schools closed tomorrow",            # that alert is eleven days old
                   "Storm damages houses, video from Guwahati",                     # Guwahati is the issuing office, not the area
                   "Hyderabad heavy rain, Department says roads closed",            # a common capitalised word is not a place
+                  "Train derailed in Kamrup, passengers safe",                     # "Train" is not rain
+                  "Brainstorm session on the Kamrup budget",                       # "Brainstorm" is not a storm
                   "Kamrup collector announces new ration scheme"):                 # no hazard at all
         assert rel(wrong) == [], wrong
     assert alerts.parse("<not xml") == []
@@ -346,3 +351,22 @@ def test_telegram_busy_reply_lists_related_pib_pages_but_never_a_verdict(monkeyp
     assert "PRID=1" in msg and "not a verdict" in msg and not any(w in msg for w in ("TRUE", "FALSE", "MISLEADING"))
     assert "PRID=1" not in limits.busy_text("flight", "Government will give Rs 5000 to every woman")     # being checked right now: no extras
     assert "PRID=1" not in limits.busy_text("day")                                                        # old call shape still works
+
+
+def test_panels_never_raise_on_malformed_stored_values_and_link_only_https():
+    base = {"verdict": UNVERIFIED, "layer": "live", "language": "en", "claims": []}
+    for junk in (5, True, 1.5, "x", ["x", 3, None], {"at": 9e18, "items": 7}, {"items": "x"}, None):
+        for key in ("alerts", "related_factchecks", "reference"):
+            assert isinstance(news.panels_html({**base, key: junk}), str)
+    assert isinstance(news.panels_html({**base, "claims": [{"trace": 5}, "x", None]}), str)
+    assert isinstance(news.panels_html({**base, "language": ["en"]}), str)
+    rep = {"status": "reported", "outlets": [{"source": "A", "url": "http://plain.example/x"}, {"source": "B", "url": "https://ok.example/y"}, "junk"]}
+    html = news.panels_html({**base, "claims": [{"trace": {"reported": rep}}]})
+    assert "https://ok.example/y" in html and "http://plain.example" not in html
+
+
+def test_the_shipped_corpus_names_sites_never_people_or_rating_words():
+    import sqlite3
+    from sach import crcorpus
+    pubs = [r[0] for r in sqlite3.connect(crcorpus.DB_PATH).execute("select distinct publisher from reviews")]
+    assert pubs and all(re.fullmatch(r"[a-z0-9.\-]+\.[a-z]{2,}", p) for p in pubs), pubs[:5]

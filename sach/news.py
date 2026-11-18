@@ -231,6 +231,14 @@ def answer_block(res: dict) -> str:
 
 
 def panels_html(res: dict) -> str:
+    """Never raises: a stored result with malformed values simply shows no extra panels."""
+    try:
+        return _panels_html(res)
+    except Exception:
+        return ""
+
+
+def _panels_html(res: dict) -> str:
     """Extra panels under a result: official dates named in the text, what news organisations report, and the social-media signal."""
     from .honesty import _e, _NEUTRAL
     lang, t, out = res.get("language", "en"), _t(res.get("language", "en")), ""
@@ -240,7 +248,7 @@ def panels_html(res: dict) -> str:
     rep = _reported(res)
     if rep:
         items = "".join(f'<li style="margin:0 0 6px"><a href="{_e(o["url"])}" rel="noopener" target="_blank"><b>{_e(o["source"])}</b></a> '
-                        f'<span class="note">{_e(o.get("says", ""))}</span></li>' for o in rep.get("outlets", []) if str(o.get("url", "")).startswith("http"))
+                        f'<span class="note">{_e(o.get("says", ""))}</span></li>' for o in rep.get("outlets", []) if isinstance(o, dict) and str(o.get("url", "")).startswith("https://"))
         note = t["none_note"] if rep["status"] == "no_reliable_report" else t["note"]
         out += (f'<section class="reported" style="{_NEUTRAL}"><p style="margin:0 0 6px"><b>📰 {_e(t[rep["status"]])}</b></p>'
                 f'<p class="note" style="margin:0 0 10px">{_e(note)}</p>' + (f'<ul style="margin:0;padding-left:18px">{items}</ul>' if items else "") + '</section>')

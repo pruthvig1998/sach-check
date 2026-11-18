@@ -15,11 +15,12 @@ TTL_S, TIMEOUT_S, RECENT_H = 600, 5, 24
 _cache = {"at": 0.0, "items": []}
 
 # Hazard families: an alert is only related to a claim about the same kind of hazard.
-_FAMILY = {"rain": r"rain|thunderstorm|lightning|hail|cloudburst|shower", "storm": r"cyclone|storm|squall|gale", "flood": r"flood|inundat",
-           "quake": r"earthquake|tremor", "tsunami": r"tsunami", "heat": r"heat ?wave", "cold": r"cold ?wave|fog|frost", "slide": r"landslide"}
+_FAMILY = {"rain": r"\b(?:rains?|rainfall|thunderstorms?|lightning|hail|hailstorm|cloudburst|showers?)\b", "storm": r"\b(?:cyclone|cyclonic|storms?|squall|squally|gale)\b",
+           "flood": r"\b(?:floods?|flooding|flooded|inundation)\b", "quake": r"\b(?:earthquake|tremors?)\b", "tsunami": r"\btsunami\b",
+           "heat": r"\bheat ?wave\b", "cold": r"\b(?:cold ?wave|fog|frost)\b", "slide": r"\blandslides?\b"}
 # Capitalised words in an area phrase that are not places.
 _NOT_PLACE = set("north south east west central coastal interior upper lower parts districts district region regions state isolated places "
-                 "many most light moderate heavy very thunderstorm lightning rain rainfall metropolitan".split())
+                 "many most light moderate heavy very thunderstorm lightning rain rainfall metropolitan islands island coast".split())
 
 
 def enabled() -> bool:
