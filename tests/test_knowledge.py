@@ -527,14 +527,14 @@ def test_news_pages_are_read_from_their_description_and_article_paragraphs_not_t
 
 def test_death_questions_become_statements_for_the_news_judge_only():
     s = news.as_statement
-    assert s("Did the actor Giri Babu pass away?") == "the actor Giri Babu passed away."
-    assert s("Did Telugu actor Giri Babu pass away at the age of 80?") == "Telugu actor Giri Babu passed away at the age of 80."
-    assert s("Has Zakir Hussain died?") == "Zakir Hussain passed away."
+    assert s("Did the actor Giri Babu pass away?") == "the actor Giri Babu has died."
+    assert s("Did Telugu actor Giri Babu pass away at the age of 80?") == "Telugu actor Giri Babu has died at the age of 80."
+    assert s("Has Zakir Hussain died?") == "Zakir Hussain has died."
     assert s("Is Example Kumar dead?") == "Example Kumar has died."
     assert s("क्या अभिनेता गिरी बाबू का निधन हो गया?") == "अभिनेता गिरी बाबू का निधन हो गया।"
     for not_one in ("Giri Babu passed away.", "When is Diwali?", "Did the government give Rs 5000 to every woman under a new scheme today in all the states?",
                     "Did you know that drinking water cures cancer?", "", "क्या?"):
-        assert s(not_one) == "" or "passed away" not in s(not_one), not_one
+        assert s(not_one) == "" or "has died" not in s(not_one), not_one
 
 
 def test_a_death_question_is_judged_as_a_statement_on_news_pages_and_as_written_elsewhere():
@@ -547,6 +547,6 @@ def test_a_death_question_is_judged_as_a_statement_on_news_pages_and_as_written_
     r = StatusRetriever([off, N("thehindu.com", "CONFIRM"), N("ptinews.com", "CONFIRM", 2)])
     q = "Did veteran actor Example Kumar pass away?"
     res = check_forward(q, [r], Spy(), use_cache=False)
-    assert ("official", q) in seen and (news.TIER_NEWS, "veteran actor Example Kumar passed away.") in seen
+    assert ("official", q) in seen and (news.TIER_NEWS, "veteran actor Example Kumar has died.") in seen
     assert res["verdict"] == UNVERIFIED and res["claims"][0]["trace"]["reported"]["status"] == "reported"
     assert res["claims"][0]["claim"]["text"] == q                                  # the user's own words are kept
