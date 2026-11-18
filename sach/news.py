@@ -55,13 +55,13 @@ _DEATH = re.compile(r"\b(died|dies|dead|death|passed away|passes away|pass away|
 
 
 # A yes/no question about a death, turned into the statement the judge can check against a report. Only for news-tier judging: the user's
-# text, the card and every official or fact-checker judgement keep the question as written. English death questions and Hindi "kya"
-# questions only; anything else is left as it is.
-_Q_DEATH_EN = [
-    (re.compile(r"^\s*(?:did|has|have)\s+(.+?)\s+(?:pass(?:ed)?\s+away|died|die|demised?)\b(.*?)\s*[?？]*\s*$", re.I), r"\1 has died\2."),      # "died", not "passed away": reports mostly say "dies" or "died"
-    (re.compile(r"^\s*(?:is|was)\s+(.+?)\s+(?:dead|no more)\b(.*?)\s*[?？]*\s*$", re.I), r"\1 has died\2."),
-]
-_Q_HI = re.compile(r"^\s*क्या\s+(.+?)\s*[?？]+\s*$")
+# text, the card and every official or fact-checker judgement keep the question as written. Deliberately narrow (independent review,
+# 18 Nov 2026): the subject must contain a capitalised name, nothing may follow the verb except a place, an age or a time, and any negation,
+# "or" or second clause leaves the question as it is. Anything else returns "".
+_Q_EN = re.compile(r"^\s*(?:(?:did|has|have)\s+(?P<a>.+?)\s+(?:pass(?:ed)?\s+away|died|die)|(?:is|was)\s+(?P<b>.+?)\s+(?:dead|no more))"
+                   r"(?P<rest>(?:\s+(?:in|at|on|aged?|today|yesterday|recently|last|this|after)\b[^?？]*)?)\s*[?？]+\s*$", re.I)
+_REFUSE = re.compile(r"\b(?:not|never|no|n't|or|and|also|but|hoax|alive|rumou?rs?|you|we|i|they|someone)\b", re.I)
+_Q_HI = re.compile(r"^\s*क्या\s+(.+?(?:का|की|के)\s+(?:निधन|देहांत|मृत्यु)\s+हो\s+गया|.+?\s+नहीं\s+रहे)\s*[?？]+\s*$")
 # Telugu: the question is the verb with the question vowel "ా" ("చనిపోయారా?" = "did he/she die?"); the statement ends in "ు" instead.
 # Only these death verbs. NOT NATIVE-REVIEWED.
 _Q_TE = re.compile(r"^\s*(.+?\s)(చనిపోయార|మరణించార|కన్నుమూశార|చనిపోయాడ|మరణించాడ|కన్నుమూశాడ|చనిపోయింద|మరణించింద)ా\s*[?？]+\s*$")
@@ -70,13 +70,15 @@ _Q_TE = re.compile(r"^\s*(.+?\s)(చనిపోయార|మరణించా�
 def as_statement(text: str) -> str:
     """'Did actor X pass away?' -> 'actor X has died.'; 'क्या X का निधन हो गया?' -> 'X का निधन हो गया।'. '' when the text is not such a question."""
     t = " ".join((text or "").split())
-    for pat, rep in _Q_DEATH_EN:
-        m = pat.match(t)
-        if m and len(m.group(1).split()) <= 8:          # a name with a few words of description, not a whole sentence
-            return pat.sub(rep, t).replace(" .", ".").strip()
+    m = _Q_EN.match(t)
+    if m:
+        subj, rest = (m.group("a") or m.group("b")).strip(), m.group("rest") or ""
+        if (len(subj.split()) <= 6 and re.search(r"\b[A-Z][a-z]", subj) and not _REFUSE.search(subj + " " + rest)):
+            return f"{subj} has died{rest}.".replace(" .", ".")       # "died", not "passed away": reports mostly say "dies" or "died"
+        return ""
     m = _Q_HI.match(t)
-    if m and len(m.group(1).split()) >= 3:
-        return m.group(1).rstrip("।") + "।"
+    if m and not re.search(r"नहीं\s+(?:हुआ|हुई|हो)", m.group(1)):
+        return m.group(1) + "।"
     m = _Q_TE.match(t)
     if m and len(m.group(1).split()) <= 8:
         return m.group(1) + m.group(2) + "ు."

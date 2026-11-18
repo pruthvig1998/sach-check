@@ -536,8 +536,13 @@ def test_death_questions_become_statements_for_the_news_judge_only():
     assert s("సీనియర్ నటుడు గిరిబాబు మరణించారా ?") == "సీనియర్ నటుడు గిరిబాబు మరణించారు."
     assert s("గిరిబాబు సినిమా విడుదలైందా?") == ""                                  # not a death question: left as it is
     for not_one in ("Giri Babu passed away.", "When is Diwali?", "Did the government give Rs 5000 to every woman under a new scheme today in all the states?",
-                    "Did you know that drinking water cures cancer?", "", "क्या?"):
-        assert s(not_one) == "" or "has died" not in s(not_one), not_one
+                    "Did you know that drinking water cures cancer?", "", "क्या?",
+                    # found by the independent review: none of these is a question whether a person died
+                    "Is the battery dead?", "Did the price die down in the market?", "Did Modi die his beard?", "Is the dead line extended?",
+                    "Did Example Kumar not die?", "Is Example Kumar not dead?", "Is Example Kumar dead or a hoax?", "Is Example Kumar dead or alive?",
+                    "Did the government ban 500 notes and also die?", "Did you know Example Kumar died?", "When did Example Kumar die?",
+                    "क्या सरकार 500 के नोट बंद करेगी?", "क्या अभिनेता का निधन नहीं हुआ?"):
+        assert s(not_one) == "", not_one
 
 
 def test_a_death_question_is_judged_as_a_statement_on_news_pages_and_as_written_elsewhere():
@@ -581,3 +586,49 @@ def test_the_web_search_finishes_by_its_deadline_and_keeps_what_arrived(monkeypa
     assert time.time() - t < 1.6                                            # did not wait for the hung search or page
     assert [e.url for e in ev] == ["https://pib.gov.in/PressReleasePage.aspx?PRID=1"]     # the page that arrived is kept
     assert run.status == "partial"                                          # and the abandoned search is reported, not hidden
+
+
+def test_the_rumour_guard_reads_the_whole_news_page():
+    from sach.stance import heuristic_stance
+    claim = "Example Kumar has died in Hyderabad at 80"
+    long_page = ("Example Kumar has died in Hyderabad at 80. " * 36)
+    for tail in ("Reports said so; the viral post spread online.", "The rumour spread online.", "He is alive, his son said.",
+                 "A fact check is under way.", "The family will clarify the reports.", "This column is satire."):
+        assert heuristic_stance(claim, "Example Kumar dies at 80", long_page + tail, "news") == "none", tail
+    assert heuristic_stance(claim, "Example Kumar dies at 80", long_page, "news") == "confirms"
+
+
+def test_one_slow_or_broken_page_is_reported_and_never_starves_the_next_search(monkeypatch):
+    import time
+    from sach import retrieve
+    from sach.search import SearchRun
+    monkeypatch.delenv("SACH_NEWS_TIER", raising=False)
+    monkeypatch.setattr(retrieve, "MAIN_END_BY_S", 3.0)
+    monkeypatch.setattr(retrieve, "STAGE_WAIT_S", 0.5)
+    asked = []
+    class Chain:
+        configured = True
+        def new_run(self): return SearchRun()
+        def search(self, q, count, run=None):
+            asked.append(q); run.record(True, "fake")
+            if "site:pib.gov.in" in q:
+                return ["https://pib.gov.in/PressReleasePage.aspx?PRID=7"]
+            return ["https://example.gov.in/order.pdf", "https://example.gov.in/broken.pdf"]
+    def fetch(u):
+        if "PRID=7" in u:
+            time.sleep(3)                                                   # the PIB page hangs
+        body = None if "broken" in u else "<title>Order</title><p>text</p>"   # a page the parser cannot read
+        return {"status": 200, "final_url": u, "body": body, "fetched_at": TS}
+    monkeypatch.setattr(retrieve, "fetch", fetch)
+    ev, run = retrieve.BraveRetriever(key="k", chain=Chain()).search_with_status("Government will give Rs 5000 to every woman")
+    assert any("site:gov.in" in q for q in asked)                           # the official search still ran after the slow PIB page
+    assert [e.url for e in ev] == ["https://example.gov.in/order.pdf"]
+    assert run.status == "partial"                                          # the hung page and the broken page are recorded, not silent
+
+
+def test_news_text_picks_the_story_not_a_related_card_before_it():
+    from sach import retrieve
+    html = ("<article><p>Related: another story about cricket scores and team news today.</p></article>"
+            "<article><p>Veteran actor Example Kumar passed away in Hyderabad on Monday after a brief illness.</p>"
+            "<p>He acted in more than six hundred films over five decades, his family said.</p></article>")
+    assert "passed away in Hyderabad" in retrieve._news_text(html)[1] and "cricket" not in retrieve._news_text(html)[1]

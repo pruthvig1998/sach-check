@@ -88,7 +88,9 @@ def _news_text(html: str):
     title = meta("og:title") or (s.title.get_text(" ", strip=True) if s.title else "")
     for t in s(["script", "style", "nav", "footer", "header", "aside", "form"]):
         t.decompose()
-    paras = [p.get_text(" ", strip=True) for p in (s.find("article") or s).find_all("p")]
+    arts = s.find_all("article")
+    main = max(arts, key=lambda a: sum(len(p.get_text()) for p in a.find_all("p"))) if arts else s   # the story, not a related card before it
+    paras = [p.get_text(" ", strip=True) for p in main.find_all("p")]
     body = " ".join(p for p in paras if len(p.split()) >= 6)                 # short lines are captions, bylines and buttons
     return title, re.sub(r"\s+", " ", f"{meta('og:description', 'description')} {body}").strip()[:20000]
 
@@ -99,6 +101,7 @@ from .search import (SearchChain, SearchRun, BRAVE_MIN_INTERVAL_S, _brave_last, 
 # Every step of the web search finishes by MAIN_END_BY_S. Before 18 Nov 2026 the steps ran one after another with a 25 s page timeout, so two slow
 # steps overran the pipeline's 30 s retrieval deadline and ALL of this retriever's evidence was dropped ("search down" on production).
 MAIN_END_BY_S = 26
+STAGE_WAIT_S = 9          # each step waits at most this long for its pages: PIB pages, then official pages, then fact-checkers
 EXTRA_BOX_S = 12          # news/social get at most this long
 EXTRA_END_BY_S = 26       # and must end this many seconds after the retriever started: inside the pipeline's 30 s retrieval deadline
 
@@ -234,11 +237,15 @@ class BraveRetriever:
             from concurrent.futures import ThreadPoolExecutor, wait
             ex = ThreadPoolExecutor(max_workers=min(4, len(todo)))      # pages fetched in parallel; results kept in search order
             futs = [ex.submit(self._evidence, u, tier) for u in todo]
-            wait(futs, timeout=left())                                  # a page still loading at the deadline is dropped, not waited for
+            wait(futs, timeout=min(left(), STAGE_WAIT_S))               # bounded per step, so one slow page never starves the next search
             ex.shutdown(wait=False)
+            run = getattr(self._tls, "run", None)
             for f in futs:
                 if f.done() and f.exception() is None and f.result():
                     out.append(f.result())
+                elif not f.done() or f.exception() is not None:
+                    if run is not None:
+                        run.record(False, None)                         # a page that did not arrive in time, or broke the parser: said out loud
 
         def urls(q, check, limit):
             """A search that must answer before the deadline. One that is still running then is abandoned and recorded as unanswered."""
