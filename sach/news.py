@@ -44,6 +44,11 @@ NEWS_GROUPS = {
 }
 WIRES = {"PTI", "ANI", "UNI", "Reuters", "AP", "All India Radio", "DD News"}
 PER_QUERY = 4
+# The news search names its outlets. An unrestricted query goes to the Google-grounded provider first, which by design returns only government
+# and fact-checker pages, so every news result was lost (found by the live test on 18 Nov 2026). A site: query skips that provider by policy.
+QUERY_HOSTS = ("ptinews.com", "aninews.in", "newsonair.gov.in", "thehindu.com", "indianexpress.com", "timesofindia.indiatimes.com",
+               "hindustantimes.com", "ndtv.com", "indiatoday.in", "news18.com", "deccanherald.com", "eenadu.net", "sakshi.com", "bbc.com")
+NEWS_Q = "(" + " OR ".join("site:" + h for h in QUERY_HOSTS) + ")"
 
 # Broad: any wording that may be about a death. Used only to RAISE the number of outlets needed, so a false hit is harmless.
 _DEATH = re.compile(r"\b(died|dies|dead|death|passed away|passes away|pass away|is no more|demise|demised|funeral|killed|murdered|succumbed|"

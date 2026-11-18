@@ -211,7 +211,10 @@ def test_both_layers_are_off_by_default_and_the_retriever_then_sends_no_extra_qu
     monkeypatch.setenv("SACH_NEWS_TIER", "1"); monkeypatch.setenv("SACH_SOCIAL_SIGNAL", "1")
     seen.clear()
     ev, run = r.search_with_status(DEATH)
-    assert run.news is True and any(q.endswith(" news") for q in seen) and any("site:x.com" in q for q in seen)
+    assert run.news is True and any("site:x.com" in q for q in seen)
+    newsq = [q for q in seen if "site:ptinews.com" in q]
+    from sach.search import grounded_accepts
+    assert len(newsq) == 1 and not grounded_accepts(newsq[0])        # the grounded provider returns only official pages, so it must be skipped
 
 
 def test_the_news_query_only_keeps_listed_outlets_and_official_pages(monkeypatch):
@@ -308,6 +311,8 @@ FEED_XML = """<rss><channel>
 
 def test_alerts_need_the_same_hazard_the_same_place_and_a_recent_issue_time():
     from sach import alerts
+    import os
+    os.environ["SACH_ALERTS"] = "1"
     items = alerts.parse(FEED_XML)
     assert len(items) == 3 and all(i["url"].startswith("https://sachet.ndma.gov.in/") for i in items)   # a link off the SACHET host is dropped
     rel = lambda text: [a["url"][-1] for a in alerts.related(text, items=items, now=NOW)]
@@ -322,6 +327,8 @@ def test_alerts_need_the_same_hazard_the_same_place_and_a_recent_issue_time():
                   "Kamrup collector announces new ration scheme"):                 # no hazard at all
         assert rel(wrong) == [], wrong
     assert alerts.parse("<not xml") == []
+    del os.environ["SACH_ALERTS"]
+    assert alerts.related("Thunderstorm warning for Kamrup tonight, stay indoors", items=items, now=NOW) == []      # off by default
 
 
 def test_alerts_and_related_fact_checks_are_show_only_and_alerts_expire(monkeypatch):
@@ -329,6 +336,8 @@ def test_alerts_and_related_fact_checks_are_show_only_and_alerts_expire(monkeypa
     from sach import alerts, crcorpus
     monkeypatch.setattr(crcorpus, "search", lambda q, **k: [{"claim": "<b>c</b>", "publisher": "FACTLY", "url": "https://factly.in/a", "date": "2026-01-02"}])
     monkeypatch.setattr(alerts, "related", lambda t, **k: [{"title": "Alert over <i>Kamrup</i>", "url": "https://sachet.ndma.gov.in/x", "published": "now"}])
+    assert not alerts.enabled()                                       # opt-in
+    monkeypatch.setenv("SACH_ALERTS", "1")
     res, _ = check("Cyclone will hit Kamrup district tomorrow and all schools are closed.", [], use_cache=False)
     c = res["claims"][0]
     assert res["verdict"] == UNVERIFIED and c["reason_code"] == "no_evidence" and c["citations"] == [] and "FACTLY" not in res["card"]

@@ -17,6 +17,7 @@ def _isolate(tmp_path, monkeypatch):
         monkeypatch.delenv(k, raising=False)
     # The link checker's optional hostname lookups (RDAP, Safe Browsing, short-link expansion) never run in tests unless a test injects a fake opener.
     monkeypatch.setenv("SACH_LINKCHECK_NO_NETWORK", "1")
+    monkeypatch.delenv("SACH_STORE_DIR", raising=False)   # a store directory set outside the suite must not carry state from one test to the next
     monkeypatch.setenv("SACH_ALERTS_NO_NETWORK", "1")      # the NDMA alert feed is never read in tests: tests pass their own items
     monkeypatch.delenv("GOOGLE_SAFEBROWSING_API_KEY", raising=False)
     from sach import limits

@@ -158,7 +158,7 @@ Dated facts copied by hand from government documents, each with its source link.
 Limits: the lists are for central government offices in Delhi. States choose three of their holidays locally and can move the four Moon-dependent dates, and the store says so on those rows. State holiday lists are not in the store yet. The PDFs are scans, so rows were typed by hand and checked against the text once; a wrong digit is possible and the source link is shown beside every date so a reader can check.
 
 ### News tier (`sach/news.py`, off by default, on with `SACH_NEWS_TIER=1`)
-Used only when no official source was found for a claim. One extra web search, then the same fetch, quote check and AI judge as every other source.
+Used only when no official source was found for a claim. One extra web search that names fourteen outlets (`QUERY_HOSTS`), then the same fetch, quote check and AI judge as every other source. The first live test (18 Nov 2026) found the earlier unrestricted query returned nothing: the Google-grounded search provider answers first and returns only government and fact-checker pages. A query with `site:` names skips that provider. Only those fourteen outlets can be found; the longer owner list still decides what counts.
 
 - **Outlets:** the list `NEWS_GROUPS` in `sach/news.py`: news agencies (PTI, ANI, UNI, Reuters, AP), national dailies and broadcasters, and large regional-language dailies. They are grouped by owner so two titles of one company count once (for example Times of India and The Economic Times). The list was written from general knowledge of the Indian press, not from a register; additions should name the owner.
 - **REPORTED:** two independent owners report it. For a death: three, or two when one is a news agency.
@@ -184,7 +184,9 @@ The count is shown as a signal and is never evidence. How many accounts post a c
 - **Licence:** the feed records carry no `sdLicense` field. A search result on 18 Nov 2026 described the compilation as CC BY; the FAQ page that said so now redirects, so this was not read at the source. Sach stores short claim text and a link with the publisher named.
 - **Refresh:** `python scripts/harvest_claimreview.py` rebuilds the file. Not scheduled.
 
-### Recent official alerts (`sach/alerts.py`, on by default, off with `SACH_ALERTS=0`)
+### Recent official alerts (`sach/alerts.py`, off by default, on with `SACH_ALERTS=1`)
+Opt-in: three reviews each found wrong matches from word matching (a place name that is also a person's name, "shower of praise"). It stays off until the area is read from each alert's own CAP record instead of its title.
+
 The NDMA SACHET feed `https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml` (the feed marks itself "public domain"; 100 items when read on 18 Nov 2026, the oldest eleven days old). Read only when a claim mentions a hazard, with a 5 second timeout and a 10 minute copy in memory; a failed read shows nothing, never an old copy.
 
 Hazard words match as whole words ("Train" is not rain, "Brainstorm" is not a storm). An alert is shown only when all three hold: it was issued in the last 24 hours; it is about the same kind of hazard as the claim (rain, storm, flood, earthquake, tsunami, heat, cold, landslide); and its area phrase ("... over Kamrup in next 3 hours") names a place the claim also names. The issuing office and common capitalised words are not places. The feed gives no expiry time, and many alerts last only hours, so the panel shows the issue time and disappears three hours after the check (for cached and shared results). About 30 of 100 feed items are written without an "over" phrase or in Hindi, Bengali or Telugu; those are never matched. Show-only; only links on the SACHET host are kept.

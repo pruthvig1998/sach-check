@@ -4,7 +4,8 @@ Why: cyclone, flood, heavy-rain and earthquake rumours are a staple of forwards,
 Show-only: when a claim names a hazard and a place, and an alert issued in the last 24 hours is about the same kind of hazard in that place,
 the alert is listed with its issue time and link. It never sets a verdict. The feed is read only for claims that mention a hazard, with a
 short timeout; any failure means no panel (never an old copy).
-Switch off with SACH_ALERTS=0."""
+Off by default; switch on with SACH_ALERTS=1. Word matching still errs when a place name is also a person's name or a hazard word is
+used in another sense ("shower of praise"), so this is opt-in."""
 from __future__ import annotations
 import os, re, time, urllib.request
 import xml.etree.ElementTree as ET
@@ -24,7 +25,7 @@ _NOT_PLACE = set("north south east west central coastal interior upper lower par
 
 
 def enabled() -> bool:
-    return os.environ.get("SACH_ALERTS", "1") != "0"
+    return os.environ.get("SACH_ALERTS", "0") == "1"
 
 
 def _families(t: str) -> set:

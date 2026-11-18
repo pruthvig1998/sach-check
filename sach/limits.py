@@ -339,4 +339,4 @@ def busy_text(reason: str = "minute", text: str = "") -> str:
     rel = related_pages(text) if text and reason != "flight" else []
     pages = "".join(f"\n- {p['title']}: {p['url']}" for p in rel)
     return (f"{busy_title(reason)}.\n{busy_message(reason)}" + (f"\nOfficial pages that may be related (not a verdict):{pages}" if pages else "")
-            + f"\nPIB Fact Check: {PIB_PORTAL} or WhatsApp +91 87997 11259 ({PIB_WHATSAPP})")
+            + f"\nPIB Fact Check: {PIB_PORTAL} or WhatsApp +91 87997 11259 ({PIB_WHATSAPP})")[:4000]      # Telegram's limit is 4096
