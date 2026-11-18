@@ -337,3 +337,12 @@ def test_alerts_and_related_fact_checks_are_show_only_and_alerts_expire(monkeypa
     off = Evidence("Ministry", "https://example.gov.in/note", TIER_OFFICIAL, TS, "CONFIRM official note", "CONFIRM official note")
     res2, _ = check("Cyclone will hit Kamrup district tomorrow and all the schools are closed.", [off], use_cache=False)
     assert res2["verdict"] == "TRUE" and "related_factchecks" not in res2 and "alerts" not in res2                 # only under UNVERIFIED
+
+
+def test_telegram_busy_reply_lists_related_pib_pages_but_never_a_verdict(monkeypatch):
+    from sach import limits
+    monkeypatch.setattr(limits, "related_pages", lambda text, n=3: [{"title": "PIB release on a scheme", "url": "https://pib.gov.in/PressReleasePage.aspx?PRID=1"}])
+    msg = limits.busy_text("day", "Government will give Rs 5000 to every woman")
+    assert "PRID=1" in msg and "not a verdict" in msg and not any(w in msg for w in ("TRUE", "FALSE", "MISLEADING"))
+    assert "PRID=1" not in limits.busy_text("flight", "Government will give Rs 5000 to every woman")     # being checked right now: no extras
+    assert "PRID=1" not in limits.busy_text("day")                                                        # old call shape still works

@@ -333,6 +333,10 @@ def busy_block(reason: str = "minute", text: str = "") -> str:
             '<a href="%s" rel="noopener">PIB Fact Check portal</a> &middot; <a href="%s" rel="noopener">PIB Fact Check on WhatsApp (+91 87997 11259)</a>%s</div>'
             % (esc(busy_title(reason)), esc(busy_message(reason)), PIB_PORTAL, PIB_WHATSAPP, related))
 
-def busy_text(reason: str = "minute") -> str:
-    """Plain text for the Telegram bot."""
-    return f"{busy_title(reason)}.\n{busy_message(reason)}\nPIB Fact Check: {PIB_PORTAL} or WhatsApp +91 87997 11259 ({PIB_WHATSAPP})"
+def busy_text(reason: str = "minute", text: str = "") -> str:
+    """Plain text for the Telegram bot. With `text`, up to three related PIB pages from the local indexes are listed (titles and links, never a
+    verdict), the same as on the website. None for a 'being checked right now' reply."""
+    rel = related_pages(text) if text and reason != "flight" else []
+    pages = "".join(f"\n- {p['title']}: {p['url']}" for p in rel)
+    return (f"{busy_title(reason)}.\n{busy_message(reason)}" + (f"\nOfficial pages that may be related (not a verdict):{pages}" if pages else "")
+            + f"\nPIB Fact Check: {PIB_PORTAL} or WhatsApp +91 87997 11259 ({PIB_WHATSAPP})")
