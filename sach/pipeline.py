@@ -6,7 +6,7 @@ from .card import render_card
 from .extract import clean_text, extract_claims
 from .i18n import NOCLAIM, NOCLAIM_LABEL, tr
 from .lang import SUPPORTED, detect_language
-from . import cache, gtranslate, match as _match, news as _news, refstore
+from . import alerts as _alerts, cache, crcorpus, gtranslate, match as _match, news as _news, refstore
 from .models import Claim, ClaimVerdict, UNVERIFIED, build_trace, overall_rule
 from .retrieve import canonical_key
 from .search import combine_status, DOWN
@@ -245,6 +245,17 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
             out["card"] = card + "\n" + line
             if card_en:
                 card_en = card_en + "\n" + _news.card_line(results, "en")
+    if layer == "live" and overall == UNVERIFIED:      # show-only helpers: neither can change the verdict, a citation or the card
+        try:
+            qs = [results[0].english or results[0].claim.text, results[0].claim.text] if results else []
+            rel = next((r for r in (crcorpus.search(q) for q in dict.fromkeys(qs)) if r), [])
+            if rel:
+                out["related_factchecks"] = rel
+            al = _alerts.related(" ".join(qs))
+            if al:
+                out["alerts"] = al
+        except Exception:
+            pass
     ref = refstore.panel_facts(text)
     if ref:
         out["reference"] = ref                          # official dates for festivals named in the text: shown beside the result, never an input to it

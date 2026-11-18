@@ -222,7 +222,9 @@ def test_the_news_query_only_keeps_listed_outlets_and_official_pages(monkeypatch
     monkeypatch.setattr(retrieve, "fetch", lambda u: {"status": 200, "final_url": u, "body": "<title>Fake claim</title><p>text</p>", "fetched_at": TS})
     tiers = {u: getattr(r._evidence(u, news.TIER_NEWS), "tier", None) for u in pages}
     # the news query can only yield news-tier evidence: an official or fact-checker page found by it is dropped, so it opens no route to a verdict or a citation
-    assert tiers == {pages[0]: "news", pages[1]: None, pages[2]: None, pages[3]: None, pages[4]: None, pages[5]: None}
+    # the public broadcaster (newsonair.gov.in) is a NEWS report here: it can make a claim REPORTED but never TRUE through this search
+    assert tiers == {pages[0]: "news", pages[1]: None, pages[2]: "news", pages[3]: None, pages[4]: None, pages[5]: None}
+    assert news.group_of(pages[2]) == "All India Radio" and "All India Radio" in news.WIRES
     assert r._evidence("https://www.thehindu.com/a", TIER_OFFICIAL) is None      # a news page can never arrive as official
 
 
@@ -251,3 +253,67 @@ def test_no_em_dash_in_new_strings():
     import inspect
     assert chr(8212) not in inspect.getsource(news) and chr(8212) not in inspect.getsource(refstore)
     assert chr(8212) not in open(refstore._PATH, encoding="utf-8").read()
+
+
+# ---------------------------------------------------------------- related published fact-checks (offline corpus) and official alerts
+def _corpus(tmp_path, rows):
+    import sqlite3
+    from sach import crcorpus
+    from sach.pibfts import _MARKS
+    p = str(tmp_path / "cr.sqlite")
+    con = sqlite3.connect(p); con.executescript(crcorpus.SCHEMA % _MARKS)
+    con.executemany("insert into reviews(url, claim, rating, publisher, date) values (?,?,?,?,?)", rows); con.commit(); con.close()
+    return p
+
+
+def test_related_fact_checks_need_a_close_match_and_equal_numbers(tmp_path):
+    from sach import crcorpus
+    p = _corpus(tmp_path, [("https://factly.in/a", "Government will give Rs 5000 to every woman under a new scheme", "False", "FACTLY", "2026-01-02"),
+                           ("https://factly.in/b", "Drinking the strained juice of raw cassava cures cancer", "False", "FACTLY", "2026-01-03"),
+                           ("http://factly.in/c", "Plain http link is never shown for this exact claim text here", "False", "FACTLY", "2026-01-04")])
+    hit = crcorpus.search("Government will give Rs 5000 to every woman under a new scheme", path=p)
+    assert [h["url"] for h in hit] == ["https://factly.in/a"] and hit[0]["rating"] == "False"
+    assert crcorpus.search("Government will give Rs 50000 to every woman under a new scheme", path=p) == []      # a different amount is a different claim
+    assert crcorpus.search("Drinking hot water cures cancer", path=p) == []                                      # shares words, not the claim
+    assert crcorpus.search("Plain http link is never shown for this exact claim text here", path=p) == []
+    assert crcorpus.search("anything at all", path=str(tmp_path / "missing.sqlite")) == []
+
+
+def test_the_shipped_corpus_holds_only_listed_indian_fact_checkers():
+    import sqlite3, time
+    from sach import crcorpus
+    from sach.fetch import is_factchecker
+    con = sqlite3.connect(crcorpus.DB_PATH)
+    rows = con.execute("select url, claim, rating, date from reviews").fetchall()
+    assert len(rows) > 5000
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    for url, claim, rating, date in rows:
+        assert url.startswith("https://") and is_factchecker(url) and claim and rating and "2023-01-01" <= date <= today
+        assert not url.split("/")[2].startswith(("srilanka.", "cambodia.", "thailand."))
+
+
+def test_alerts_match_on_a_place_name_and_only_for_hazard_claims():
+    from sach import alerts
+    feed = """<rss><channel><item><title>IMD Guwahati has issued forecast for Thunderstorm with Lightning which is very likely to occur at a few places over Kamrup in next 3 hours.</title>
+    <link>https://sachet.ndma.gov.in/cap_public_website/FetchXMLFile?identifier=1</link><pubDate>Mon, 16 Nov 2026 17:42:52 GMT</pubDate></item>
+    <item><title>Evil alert over Kamrup</title><link>https://evil.example/x</link></item></channel></rss>"""
+    items = alerts.parse(feed)
+    assert len(items) == 1 and items[0]["url"].startswith("https://sachet.ndma.gov.in/")            # a link off the SACHET host is dropped
+    assert alerts.related("Thunderstorm warning for Kamrup tonight, stay indoors", items=items) == items
+    assert alerts.related("Heavy rain: schools closed in Mumbai tomorrow", items=items) == []          # another place
+    assert alerts.related("Kamrup collector announces new ration scheme", items=items) == []           # no hazard: the feed is not even read
+    assert alerts.parse("<not xml") == []
+
+
+def test_alerts_and_related_fact_checks_are_show_only(monkeypatch):
+    from sach import alerts, crcorpus
+    monkeypatch.setattr(crcorpus, "search", lambda q, **k: [{"claim": "<b>c</b>", "rating": "False", "publisher": "FACTLY", "url": "https://factly.in/a", "date": "2026-01-02"}])
+    monkeypatch.setattr(alerts, "related", lambda t, **k: [{"title": "Alert over <i>Kamrup</i>", "url": "https://sachet.ndma.gov.in/x", "published": ""}])
+    res, _ = check("Cyclone will hit Kamrup district tomorrow and all schools are closed.", [], use_cache=False)
+    c = res["claims"][0]
+    assert res["verdict"] == UNVERIFIED and c["reason_code"] == "no_evidence" and c["citations"] == [] and "FACTLY" not in res["card"]
+    html = result_block(res, text="x")
+    assert "Published fact-checks that may be related" in html and "Official alerts in force" in html and "<b>c</b>" not in html and "<i>Kamrup" not in html
+    off = Evidence("Ministry", "https://example.gov.in/note", TIER_OFFICIAL, TS, "CONFIRM official note", "CONFIRM official note")
+    res2, _ = check("Cyclone will hit Kamrup district tomorrow and all the schools are closed.", [off], use_cache=False)
+    assert res2["verdict"] == "TRUE" and "related_factchecks" not in res2 and "alerts" not in res2                 # only under UNVERIFIED

@@ -150,3 +150,23 @@ Owner decisions: all three labels approved; free sources only; social media to b
 - Phase 5: schemes, statistics, places. These need the owner's data.gov.in and Data Commons keys.
 - Phase 6: PB-SHABD registration and the other partnerships.
 - A live red-team set of real deaths and death hoaxes. The rules are tested offline with scripted judges only; no provider keys are on this machine.
+
+## 9. Build status, second pass (18 Nov 2026)
+
+**Deployed:** the first pass (reference store, question mode, news tier and social signal behind their switches) is on production as commit `af491163`. Checked live: "When is Diwali in 2026?" returns the ANSWER card; "Rakhi Sawant passed away" goes through the normal check.
+
+**Built in this pass (branch `kb-phase2`)**
+- Phase 2: official NDMA alerts in force, shown beside hazard claims that name the same place. All India Radio and DD News count as news agencies in the news tier.
+- Phase 4: an offline corpus of 12,477 published Indian fact-checks from the Data Commons feed, shown as "may be related" links.
+- Outreach drafts for the owner: `docs/outreach.md`.
+
+**Decided against**
+- Wikidata and Wikipedia as a death pointer. Matching a name in a forward to the right person is unreliable, both sites can be edited by anyone, and a wrong "date of death" beside a living person's name is the worst kind of error here. Not built.
+- A verdict from the number of social-media posts (see `docs/sources.md`).
+
+**Still open, and why**
+- The news tier is built but OFF on production: the automatic safety check on this machine refused the environment change, so the owner must switch it on (commands in `docs/outreach.md`, section 0).
+- A live test with real deaths and death hoaxes: needs the news tier on.
+- State holiday lists: each state publishes its own scanned order; none transcribed yet.
+- Schemes, statistics, places (phase 5): need the owner's data.gov.in and Data Commons keys.
+- Partnerships (phase 6): only the owner can apply.

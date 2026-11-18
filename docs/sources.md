@@ -171,3 +171,16 @@ Used only when no official source was found for a claim. One extra web search, t
 X, Facebook and Instagram offer no free search API, and Sach does not log in to them or scrape them. One web search restricted to those three sites returns links to public posts. Sach counts the links by platform and names any that come from a short list of established accounts (`KNOWN_HANDLES`). It does not open or read the posts.
 
 The count is shown as a signal and is never evidence. How many accounts post a claim does not show whether it is true: false forwards spread precisely because many genuine people share them. A verdict from post volume would turn popularity into truth, which is the failure this project exists to prevent, so that part of the request was deliberately not built.
+
+### Public broadcaster as a news report (same switch as the news tier)
+`newsonair.gov.in` (All India Radio) and `ddnews.gov.in` are on government hosts, but what they publish is news, not a government order. When the news search finds them they count as a news agency towards REPORTED. They are never upgraded to "official" by that search, so a broadcaster's report cannot produce TRUE through it.
+
+### Published fact-checks that may be related (`sach/crcorpus.py`, `data/claimreview.sqlite`, on by default, off with `SACH_CR_CORPUS=0`)
+- **Source:** the public Data Commons ClaimReview feed, `https://storage.googleapis.com/datacommons-feeds/claimreview/latest/data.json` (about 200 MB, refreshed daily; read on 18 Nov 2026: 94,295 feed items).
+- **Kept:** 12,477 reviews dated 2023 or later from the fact-checker sites already listed above (`is_factchecker`), India editions only. Stored per review: the reviewed claim (300 characters at most), the publisher's rating words, the publisher's name, the link, the date. No article text.
+- **Use:** show-only, under an UNVERIFIED result, up to three links, labelled "may be related". It is not the match layer and cannot set a verdict or add a citation. The gate is strict on purpose (word coverage both ways, overlap 0.6, identical numbers): a loose test showed unrelated fact-checks for "free laptops" and "hot water cures cancer", the strict gate shows none, and 300 of 300 stored claims still find themselves.
+- **Licence:** the feed records carry no `sdLicense` field. A search result on 18 Nov 2026 described the compilation as CC BY; the FAQ page that said so now redirects, so this was not read at the source. Sach stores short claim text, a rating and a link with the publisher named, which is the attribution each review asks for.
+- **Refresh:** `python scripts/harvest_claimreview.py` rebuilds the file. Not scheduled.
+
+### Official alerts in force (`sach/alerts.py`, on by default, off with `SACH_ALERTS=0`)
+The NDMA SACHET feed `https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml` (the feed marks itself "public domain"; 100 items when read on 18 Nov 2026). Read only when a claim mentions a hazard (cyclone, flood, heavy rain, earthquake and similar), with a 5 second timeout and a 10 minute copy in memory. An alert is shown when it names a place the claim also names. Show-only; only links on the SACHET host are kept.
