@@ -488,3 +488,10 @@ def test_the_overlap_rule_never_seconds_a_news_page_about_a_rumour_or_denial():
                         ("Fact check: actor Example Kumar has died in Hyderabad", "Actor Example Kumar has died in Hyderabad is the claim.")):
         assert heuristic_stance(claim, title, text, "news") == "none", title
     assert heuristic_stance(claim, "Actor Example Kumar dies in Hyderabad", "Actor Example Kumar has died in Hyderabad on Monday.", "news") == "confirms"
+
+
+def test_news_pages_are_chosen_one_per_owner():
+    urls = ["https://timesofindia.indiatimes.com/a", "https://timesofindia.indiatimes.com/b", "https://economictimes.indiatimes.com/c",
+            "https://www.thehindu.com/d", "https://random.example/e", "https://www.ndtv.com/f", "https://www.ptinews.com/g", "https://www.eenadu.net/h"]
+    assert news.one_per_owner(urls) == ["https://timesofindia.indiatimes.com/a", "https://www.thehindu.com/d", "https://www.ndtv.com/f", "https://www.ptinews.com/g"]
+    assert news.one_per_owner([]) == [] and news.one_per_owner(None) == []

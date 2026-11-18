@@ -81,6 +81,16 @@ def group_of(url: str) -> str:
     return ""
 
 
+def one_per_owner(urls, n: int = PER_QUERY) -> list:
+    """The first URL of each owner, in search order, at most n. REPORTED counts owners, so a second page of the same outlet adds nothing."""
+    out, seen = [], set()
+    for u in urls or []:
+        g = group_of(u)
+        if g and g not in seen:
+            seen.add(g); out.append(u)
+    return out[:n]
+
+
 def is_news(url: str) -> bool:
     return bool(group_of(url))
 

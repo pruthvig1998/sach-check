@@ -182,10 +182,10 @@ class BraveRetriever:
         ex = ThreadPoolExecutor(max_workers=6)
         news_ev, social, complete = [], None, False
         try:
-            fn = ex.submit(search, f"{kw} {_news.NEWS_Q}", lambda u: _news.is_news(u) and not is_factchecker(u), _news.PER_QUERY) if _news.news_enabled() else None
+            fn = ex.submit(search, f"{kw} {_news.NEWS_Q}", lambda u: _news.is_news(u) and not is_factchecker(u), 10) if _news.news_enabled() else None
             fs = ex.submit(search, f"{kw} {_news.SOCIAL_Q}", _news.is_social, 10) if _news.social_enabled() else None
             if fn is not None:
-                urls = fn.result(timeout=left())
+                urls = _news.one_per_owner(fn.result(timeout=left()))    # four different owners, not four pages of one outlet
                 fetches = [ex.submit(self._evidence, u, _news.TIER_NEWS) for u in urls]
                 wait(fetches, timeout=left())
                 news_ev = [f.result() for f in fetches if f.done() and f.exception() is None and f.result()]
