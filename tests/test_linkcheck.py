@@ -682,7 +682,7 @@ def test_home_card_and_no_js_view():
     h = site.home().decode()
     assert 'id="linkcheck"' in h and 'id="lcform"' in h and 'name="view" value="link"' in h and "Check a link, number or UPI ID" in h
     assert h.index('id="check"') < h.index('id="linkcheck"') < h.index('id="how"')
-    assert h.count("<script>") == 4 and 'maxlength="4000"' in h
+    assert h.count("<script>") == 6 and 'maxlength="4000"' in h     # + the motion layer's two inline scripts
     out, q = L.view_page_result("<b>x</b> https://sbi-kyc-update.com", "en")
     page = site.home(noindex=True, lc_prefill=q, lc_result=out).decode()
     assert "Imitates SBI" in page and "<b>x</b>" not in page and "&lt;b&gt;x&lt;/b&gt;" in page

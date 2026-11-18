@@ -11,7 +11,7 @@ from .report import display_card, report_html, card_data_script
 from .ocr import OCR_BLOCK
 from .scamsigns import CSS as SIGNS_CSS, signs_html
 from .siteurl import site_url        # noqa: F401  (re-exported: the one place that knows the site's public address)
-from . import linkcheck, honesty
+from . import linkcheck, honesty, motion
 from .voice import VOICE_JS, VOICE_CSS, voice_controls, progress_panel, listen_buttons
 
 REPO = "https://github.com/pruthvig1998/sach-check"
@@ -438,7 +438,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards", path: 
 {pwa.HEAD}
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="{FONTS}" rel="stylesheet"><style>{CSS}{VOICE_CSS}{share.CSS}{linkcheck.CSS}</style>
-<script defer src="https://cdn.vercel-insights.com/v1/script.js"></script></head><body>
+<script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>{motion.head()}</head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="wrap"><a class="logo" href="/" title="Sach (Hindi सच) and nijam (Telugu నిజం) both mean “truth”">Sach<small><span class="sc">सच · నిజం · </span>truth</small></a>
 <nav aria-label="Main"><a href="/#check">Check</a><a class="opt" href="/#how">How it works</a><a class="opt" href="/#rules">Rules</a><a class="opt" href="/#faq">FAQ</a>
@@ -446,7 +446,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards", path: 
 <main id="main">{body}</main>
 <footer><div class="wrap"><div><b>Sach</b> · open source (MIT) · built for the Code for a Billion hackathon.<br>Sach is not a government service. It cites official sources; it does not speak for them.</div>
 <div>Sources: PIB · *.gov.in / *.nic.in · WHO · fact-checkers (labelled secondary)<br><a href="{REPO}" rel="noopener">Source code</a> · <a href="/?view=ledger">Public ledger</a> · <a href="/?view=impact">Impact</a> · <a href="/#api">API</a> · <a href="/?view=status" rel="nofollow">Status</a>{tip_link}<br>{share.invite_link(base)}<br><a href="/?view=terms">Terms</a> · <a href="/?view=privacy">Privacy</a> · <a href="/?view=refund">Refunds</a> · <a href="/?view=contact">Contact</a></div></div></footer>
-{share.BAR_HTML}<script>{JS}{share.JS}{linkcheck.JS}</script><script>{VOICE_JS}</script>{pwa.SCRIPT}</body></html>""".encode()
+{share.BAR_HTML}<script>{JS}{share.JS}{linkcheck.JS}</script><script>{VOICE_JS}</script>{pwa.SCRIPT}{motion.body_end()}</body></html>""".encode()
 
 
 def stamp(v: str, cls="") -> str:

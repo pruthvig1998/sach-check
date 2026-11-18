@@ -380,7 +380,7 @@ def test_fonts_cover_every_script_and_stay_lightweight():
 
 
 def test_page_still_has_no_extra_script_tags():
-    assert SITE.home().decode().count("<script>") == 4
+    assert SITE.home().decode().count("<script>") == 6     # + the motion layer's early check and setup (sach/motion.py)
 
 
 # ---------------------------------------------------------------------------------------------------------------- voice

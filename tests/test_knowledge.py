@@ -671,3 +671,23 @@ def test_one_slow_page_among_several_does_not_mark_the_check_limited(monkeypatch
     monkeypatch.setattr(retrieve, "fetch", fetch)
     ev, run = retrieve.BraveRetriever(key="k", chain=Chain()).search_with_status("Government will give Rs 5000 to every woman")
     assert len(ev) == 1 and run.status == "ok"                               # the slow page is dropped; the check is not 'limited'
+
+
+def test_motion_layer_is_optional_and_never_hides_content_without_its_script(monkeypatch):
+    from sach import motion
+    from sach.site import home
+    html = home().decode()
+    assert motion.GSAP in html and motion.LENIS in html and "defer" in html.split(motion.GSAP)[0][-40:]
+    assert motion.GSAP.startswith("/?view=lib") and "cdnjs" not in html and "jsdelivr" not in html          # served from Sach's own domain
+    import hashlib
+    for name, (fname, sha) in motion.FILES.items():                                       # the copies are exactly the pinned releases
+        assert hashlib.sha256(motion.lib(name)).hexdigest() == sha, name
+    assert motion.lib("../../.env") is None and motion.lib("") is None                   # only the three named files, never a path
+    # nothing is hidden by CSS, and no animation starts below 35 % opacity, so a stalled script never leaves text unreadable
+    assert "{opacity:0}" not in motion.CSS and "opacity:0," not in motion.INIT_JS and "opacity:0}" not in motion.INIT_JS and "FLOOR=.35" in motion.INIT_JS
+    assert "setTimeout(function(){if(!window.__sachMotion)" in html
+    assert "prefers-reduced-motion: reduce" in html and "saveData" in html and "deviceMemory" in html
+    assert '<h1>' in html and 'style="opacity:0"' not in html                             # nothing hidden in the markup itself
+    monkeypatch.setenv("SACH_MOTION", "0")
+    off = home().decode()
+    assert motion.GSAP not in off and "html.motion" not in off

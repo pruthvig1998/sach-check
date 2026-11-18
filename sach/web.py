@@ -179,6 +179,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(impact.impact_page())
         if view == "ledger" or u.path == "/ledger":      # query form survives Vercel's rewrite; path form works locally
             self._send(ledger_page())
+        elif view == "lib" and u.path in ("", "/", "/api/index"):
+            from . import motion
+            body = motion.lib(qs.get("f", [""])[0])          # a fixed list of three files: never a path taken from the request
+            if body is None:
+                self._send(b"not found", 404, "text/plain; charset=utf-8")
+            else:
+                self._send(body, ctype="application/javascript; charset=utf-8", cache="public, max-age=31536000, immutable")   # the name carries the version
         elif view == "health" or u.path == "/healthz":
             self._send(b"ok", ctype="text/plain")
         else:
