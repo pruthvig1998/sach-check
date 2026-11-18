@@ -49,7 +49,7 @@ _DEATH = re.compile(r"\b(died|dies|dead|death|passed away|passes away|pass away|
                     r"lost (?:his|her|their) life)\b|निधन|मृत्यु|मौत|देहांत|नहीं रहे|మృతి|మరణ|కన్నుమూ|చనిపో|ఇకలేరు", re.I)
 # Narrow: a plain statement or question that a person has died. Only for this does finding no report mean anything, and only when the text
 # names no past year (silence about "X died in 1948" says nothing). Other events are left out on purpose: the search is too shallow.
-_DEATH_NOW = re.compile(r"\b(died|passed away|passes away|pass away|succumbed|lost (?:his|her|their) life)\b|"
+_DEATH_NOW = re.compile(r"\b(died|dies|ka nidhan|nidhan ho|passed away|passes away|pass away|succumbed|lost (?:his|her|their) life)\b|"
                         r"का निधन|निधन हो|देहांत हो|की मृत्यु हो|నిధనం|కన్నుమూశ|మృతి చెంద|మరణించ|చనిపోయ", re.I)
 
 

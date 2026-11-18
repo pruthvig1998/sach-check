@@ -103,6 +103,16 @@ def test_a_statement_keeps_its_normal_result_and_gains_only_a_dates_panel():
     res, _ = check(text, [])
     assert res["verdict"] == UNVERIFIED and not res.get("answer") and res["reference"][0]["id"] == "diwali"
     assert "Official dates" in result_block(res)
+    for name_not_festival in ("Rakhi Sawant passed away in Mumbai this morning", "Vishu Reddy wins the election in Kerala today",
+                              "Christmas Kumar was arrested by the police yesterday", "Holi special train cancelled by the Railways"):
+        r2, _ = check(name_not_festival, [])
+        assert "reference" not in r2, name_not_festival                 # a festival word that is a name, or no date talk: no dates panel
+
+
+def test_past_dates_are_marked():
+    from datetime import date as _d
+    assert refstore.fmt_date("2026-11-08", _d(2026, 11, 18)).endswith("(already passed)")
+    assert "passed" not in refstore.fmt_date("2027-10-29", _d(2026, 11, 18))
 
 
 # ---------------------------------------------------------------- news tier: rules

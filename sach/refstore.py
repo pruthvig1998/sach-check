@@ -135,10 +135,19 @@ def answerable(text: str) -> bool:
     return not left and bool(lookup(text))
 
 
-def fmt_date(iso: str) -> str:
+_HOLIDAY_WORD = re.compile(r"\b(holiday|holidays|festival|chhutti)\b|छुट्टी|अवकाश|त्योहार|పండుగ|సెలవు", re.I)
+
+
+def panel_facts(text: str) -> list:
+    """Dates to show beside a normal result: only when the text itself talks about a date or a holiday. A festival word alone is not enough,
+    because many are also names ("Rakhi Sawant", "Vishu Reddy", "Christmas Kumar")."""
+    return lookup(text) if (_DATE_INTENT.search(text or "") or _HOLIDAY_WORD.search(text or "")) else []
+
+
+def fmt_date(iso: str, today: date | None = None) -> str:
     y, m, d = (int(x) for x in iso.split("-"))
     dt = date(y, m, d)
-    return f"{dt.strftime('%A')}, {d} {dt.strftime('%B')} {y}"
+    return f"{dt.strftime('%A')}, {d} {dt.strftime('%B')} {y}" + (" (already passed)" if dt < (today or date.today()) else "")
 
 
 try:                                                     # a question the store answers costs nothing, so it never needs a live-check slot

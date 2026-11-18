@@ -245,7 +245,7 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
             out["card"] = card + "\n" + line
             if card_en:
                 card_en = card_en + "\n" + _news.card_line(results, "en")
-    ref = refstore.lookup(text)
+    ref = refstore.panel_facts(text)
     if ref:
         out["reference"] = ref                          # official dates for festivals named in the text: shown beside the result, never an input to it
     if layer != "live":
