@@ -379,3 +379,19 @@ def test_the_shipped_corpus_names_sites_never_people_or_rating_words():
     from sach import crcorpus
     pubs = [r[0] for r in sqlite3.connect(crcorpus.DB_PATH).execute("select distinct publisher from reviews")]
     assert pubs and all(re.fullmatch(r"[a-z0-9.\-]+\.[a-z]{2,}", p) for p in pubs), pubs[:5]
+
+
+def test_the_news_search_runs_even_when_the_official_search_found_an_unrelated_page(monkeypatch):
+    from sach import retrieve
+    monkeypatch.setenv("SACH_NEWS_TIER", "1")
+    seen = []
+    class Chain:
+        configured = True
+        def new_run(self): return Run(news_ran=False)
+        def search(self, q, count, run=None):
+            seen.append(q)
+            return ["https://example.gov.in/unrelated.pdf"] if "site:gov.in" in q else []
+    monkeypatch.setattr(retrieve, "fetch", lambda u: {"status": 200, "final_url": u, "body": "<title>Fauna</title><p>unrelated</p>", "fetched_at": TS})
+    ev, run = retrieve.BraveRetriever(key="k", chain=Chain()).search_with_status(DEATH)
+    assert any(e.tier == TIER_OFFICIAL for e in ev)                        # an official page was found (unrelated, not yet judged)
+    assert run.news is True and any("site:ptinews.com" in q for q in seen)   # and the news search still ran

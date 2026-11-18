@@ -194,13 +194,15 @@ class BraveRetriever:
         if not any(e.tier in (TIER_PIB, TIER_OFFICIAL) for e in out):
             add(self._urls(f"{short} {self.FC_Q}", is_factchecker, self.per_query), TIER_FACTCHECKER)
         run = getattr(self._tls, "run", None)
-        if not any(e.tier in (TIER_PIB, TIER_OFFICIAL) for e in out):       # nothing official: see what established news organisations report
-            if _news.news_enabled():
-                add(self._urls(f"{kw} {_news.NEWS_Q}", lambda u: _news.is_news(u) and not is_factchecker(u), _news.PER_QUERY), _news.TIER_NEWS)
-                if run is not None:
-                    run.news = True                  # the news search was attempted for this claim (read by the pipeline)
-            if _news.social_enabled() and run is not None:
-                run.social = self._urls(f"{kw} {_news.SOCIAL_Q}", _news.is_social, 10)   # links only: posts are never fetched or read
+        # The news and social searches run whether or not official pages were found: the official search nearly always returns some page, often an
+        # unrelated one, and at this point nothing has been judged yet (live test, 18 Nov 2026: with the old "only if nothing official" rule the
+        # news search never ran). Their findings are used only if the verdict ends UNVERIFIED.
+        if _news.news_enabled():
+            add(self._urls(f"{kw} {_news.NEWS_Q}", lambda u: _news.is_news(u) and not is_factchecker(u), _news.PER_QUERY), _news.TIER_NEWS)
+            if run is not None:
+                run.news = True                      # the news search was attempted for this claim (read by the pipeline)
+        if _news.social_enabled() and run is not None:
+            run.social = self._urls(f"{kw} {_news.SOCIAL_Q}", _news.is_social, 10)   # links only: posts are never fetched or read
         return out
 
 def default_retrievers():
