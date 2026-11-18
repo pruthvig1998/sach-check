@@ -82,6 +82,9 @@ import threading, time as _time
 from . import news as _news
 from .search import (SearchChain, SearchRun, BRAVE_MIN_INTERVAL_S, _brave_last, _brave_throttle, grounded_credential_usable)   # noqa: F401 (re-exported: older tests patch them here)
 
+EXTRA_START_BY_S = 14     # news/social are skipped when the official searches already took this long
+EXTRA_BOX_S = 10          # and get at most this long; 14 + 10 stays inside the pipeline's 30 s retrieval deadline
+
 class BraveRetriever:
     """Optional live web search (needs BRAVE_API_KEY and/or TAVILY_API_KEY; see sach/search.py for failover). Official
     domains first, then fact-checkers.
@@ -166,7 +169,31 @@ class BraveRetriever:
         finally:
             self._tls.run = None
 
+    def _extras(self, kw: str):
+        """-> (news evidence, social links, search answered) or None when the time box ran out. Runs in its own thread with its own SearchRun."""
+        from concurrent.futures import ThreadPoolExecutor
+        xrun = self.chain.new_run()
+        def work():
+            self._tls.run = xrun
+            news_ev, social = [], None
+            if _news.news_enabled():
+                urls = self._urls(f"{kw} {_news.NEWS_Q}", lambda u: _news.is_news(u) and not is_factchecker(u), _news.PER_QUERY)
+                if urls:
+                    with ThreadPoolExecutor(max_workers=min(4, len(urls))) as ex2:
+                        news_ev = [e for e in ex2.map(lambda u: self._evidence(u, _news.TIER_NEWS), urls) if e]
+            if _news.social_enabled():
+                social = self._urls(f"{kw} {_news.SOCIAL_Q}", _news.is_social, 10)
+            return news_ev, social, getattr(xrun, "status", "ok") == "ok"
+        ex = ThreadPoolExecutor(max_workers=1)
+        try:
+            return ex.submit(work).result(timeout=EXTRA_BOX_S)
+        except Exception:
+            return None                              # too slow or failed: the check goes on without news, and says nothing about news
+        finally:
+            ex.shutdown(wait=False)                  # an overrunning search is abandoned, never waited for
+
     def _search_claim(self, claim: str) -> list[Evidence]:
+        t0 = _time.monotonic()
         short, kw = self._short(claim), self._keywords(claim)
         out, seen = [], set()
 
@@ -194,15 +221,21 @@ class BraveRetriever:
         if not any(e.tier in (TIER_PIB, TIER_OFFICIAL) for e in out):
             add(self._urls(f"{short} {self.FC_Q}", is_factchecker, self.per_query), TIER_FACTCHECKER)
         run = getattr(self._tls, "run", None)
-        # The news and social searches run whether or not official pages were found: the official search nearly always returns some page, often an
-        # unrelated one, and at this point nothing has been judged yet (live test, 18 Nov 2026: with the old "only if nothing official" rule the
-        # news search never ran). Their findings are used only if the verdict ends UNVERIFIED.
-        if _news.news_enabled():
-            add(self._urls(f"{kw} {_news.NEWS_Q}", lambda u: _news.is_news(u) and not is_factchecker(u), _news.PER_QUERY), _news.TIER_NEWS)
-            if run is not None:
-                run.news = True                      # the news search was attempted for this claim (read by the pipeline)
-        if _news.social_enabled() and run is not None:
-            run.social = self._urls(f"{kw} {_news.SOCIAL_Q}", _news.is_social, 10)   # links only: posts are never fetched or read
+        # News and social searches. They run whether or not official pages were found (the official search nearly always returns some page, often
+        # unrelated, and nothing is judged yet), but in a time box of their own and with their own search record: a slow or failed news search
+        # must never delay, drop or mark as failed the official evidence above (independent review, 18 Nov 2026).
+        if run is not None and (_news.news_enabled() or _news.social_enabled()) and _time.monotonic() - t0 < EXTRA_START_BY_S:
+            got = self._extras(kw)
+            if got is not None:
+                news_ev, social, ok = got
+                for e in news_ev:
+                    k = canonical_key(e.url)
+                    if k not in seen:                # a page already held as official stays official and is not added twice
+                        seen.add(k); out.append(e)
+                if _news.news_enabled() and ok:
+                    run.news = True                  # the news search ran and answered (read by the pipeline)
+                if social:
+                    run.social = social              # links only: posts are never fetched or read
         return out
 
 def default_retrievers():

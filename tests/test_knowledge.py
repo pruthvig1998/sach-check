@@ -411,3 +411,58 @@ def test_the_overlap_rule_can_second_a_news_report_but_never_reaches_a_verdict()
     assert heuristic_stance(claim, "Example Kumar is alive, death rumours are fake", "Example Kumar is alive, rumours fake", "news") == "none"
     e = Evidence("thehindu.com", "https://www.thehindu.com/x", news.TIER_NEWS, TS, title, text); e.stance = "confirms"
     assert verdict.decide(Claim(claim), [e]).verdict == UNVERIFIED
+
+
+def test_a_slow_news_search_never_costs_the_official_evidence(monkeypatch):
+    import time
+    from sach import retrieve
+    monkeypatch.setenv("SACH_NEWS_TIER", "1")
+    monkeypatch.setattr(retrieve, "EXTRA_BOX_S", 0.3)
+    class Chain:
+        configured = True
+        def new_run(self): return Run(news_ran=False)
+        def search(self, q, count, run=None):
+            if "site:ptinews.com" in q:
+                time.sleep(1.5)                                             # the news search hangs past its time box
+                return ["https://www.thehindu.com/late"]
+            return ["https://example.gov.in/order.pdf"] if "site:gov.in" in q else []
+    monkeypatch.setattr(retrieve, "fetch", lambda u: {"status": 200, "final_url": u, "body": "<title>Order</title><p>text</p>", "fetched_at": TS})
+    t = time.time()
+    ev, run = retrieve.BraveRetriever(key="k", chain=Chain()).search_with_status(DEATH)
+    assert time.time() - t < 1.2                                            # it did not wait for the slow search
+    assert [e.tier for e in ev] == [TIER_OFFICIAL] and not run.news         # official evidence kept; nothing claimed about news
+
+
+def test_a_failed_news_search_or_news_judge_never_marks_the_check_limited(monkeypatch):
+    from sach import retrieve
+    monkeypatch.setenv("SACH_NEWS_TIER", "1")
+    class Chain:
+        configured = True
+        def new_run(self): return Run(news_ran=False)
+        def search(self, q, count, run=None):
+            if "site:ptinews.com" in q:
+                run.status = "down"                                         # what the real chain records when every provider fails
+                raise RuntimeError("provider down")
+            return []
+    ev, run = retrieve.BraveRetriever(key="k", chain=Chain()).search_with_status(DEATH)
+    assert ev == [] and run.status == "ok" and not run.news                 # the main search record is untouched by the news failure
+    class Boom(NewsLLM):
+        def stance(self, claim, title, text, tier=None):
+            if tier == news.TIER_NEWS:
+                raise RuntimeError("judge failed on a news page")
+            return super().stance(claim, title, text, tier)
+    r = StatusRetriever([N("thehindu.com", "CONFIRM"), N("ndtv.com", "CONFIRM", 2)])
+    res = check_forward(DEATH + "  ", [r], Boom(), use_cache=False)
+    assert res["verdict"] == UNVERIFIED and not res["degraded"] and "judge_problems" not in res
+
+
+def test_the_overlap_rule_never_seconds_a_news_page_about_a_rumour_or_denial():
+    from sach.stance import heuristic_stance
+    claim = "Actor Example Kumar has died in Hyderabad"
+    for title, text in (("Example Kumar is alive", "Actor Example Kumar has died in Hyderabad, a viral message claims. He is alive."),
+                        ("Viral message claims actor Example Kumar has died in Hyderabad", "Actor Example Kumar has died in Hyderabad, says the post."),
+                        ("Actor Example Kumar denies death reports", "Actor Example Kumar has died in Hyderabad, said reports that he denied."),
+                        ("Has actor Example Kumar died in Hyderabad? Here is the truth", "Actor Example Kumar has died in Hyderabad, some said."),
+                        ("Fact check: actor Example Kumar has died in Hyderabad", "Actor Example Kumar has died in Hyderabad is the claim.")):
+        assert heuristic_stance(claim, title, text, "news") == "none", title
+    assert heuristic_stance(claim, "Actor Example Kumar dies in Hyderabad", "Actor Example Kumar has died in Hyderabad on Monday.", "news") == "confirms"

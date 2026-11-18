@@ -127,7 +127,8 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
         if soc:
             v.trace["social"] = soc
     v.trace["timing_ms"] = {"retrieve": int((t_retrieved - t_start) * 1000), "judge": int((time.monotonic() - t_judge) * 1000), "judge_window": int(window * 1000)}
-    v.judge_problems = problems                         # sources whose AI judge did not answer (timeout or error): read by check_forward
+    problems = sum(1 for e in evidence if e.tier != _news.TIER_NEWS and str((getattr(e, "judge_note", None) or {}).get("outcome", "")).startswith(("timeout", "error")))
+    v.judge_problems = problems                         # official and fact-checker sources whose AI judge did not answer; news pages are extras and never make a check 'limited'
     v.search_status, v.search_provider = combine_status(sstat), ",".join(dict.fromkeys(sprov))   # not in to_dict(): read by check_forward
     return v
 
