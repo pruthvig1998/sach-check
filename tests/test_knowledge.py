@@ -500,3 +500,26 @@ def test_news_pages_are_chosen_one_per_owner():
 def test_a_stored_no_report_result_is_never_shown():
     res = {"verdict": UNVERIFIED, "layer": "live", "language": "en", "claims": [{"trace": {"reported": {"status": "no_reliable_report", "outlets": []}}}]}
     assert "RELIABLE" not in news.panels_html(res) and "reported" not in news.panels_html(res)
+
+
+def test_news_pages_are_read_from_their_description_and_article_paragraphs_not_their_menus():
+    from sach import retrieve
+    html = """<html><head><title>Site | Menu</title><meta property="og:title" content="Veteran actor Example Kumar dies at 80">
+    <meta name="description" content="Veteran actor Example Kumar dies at 80 in Hyderabad after a long career."></head><body>
+    <header>SEE ALL NEWSLETTERS Opinion SECTION Corrections and Clarifications Business Sport</header><nav>Home India World Fact Check Viral</nav>
+    <article><p>Share</p><p>Veteran actor Example Kumar passed away in Hyderabad on Monday after a brief illness, his family said.</p>
+    <p>He acted in more than six hundred films over five decades.</p></article>
+    <aside><p>Viral video: fake claim about a minister is false, says fact check team today.</p></aside></body></html>"""
+    title, text = retrieve._news_text(html)
+    assert title == "Veteran actor Example Kumar dies at 80"
+    assert text.startswith("Veteran actor Example Kumar dies at 80 in Hyderabad") and "passed away in Hyderabad on Monday" in text
+    assert "NEWSLETTERS" not in text and "Viral" not in text and "Share" not in text.split()          # menus, related links and buttons are left out
+    monkeypatch_fetch = lambda u: {"status": 200, "final_url": u, "body": html, "fetched_at": TS}
+    old = retrieve.fetch
+    retrieve.fetch = monkeypatch_fetch
+    try:
+        r = retrieve.BraveRetriever(key="k", chain=type("C", (), {"configured": True})())
+        assert "passed away in Hyderabad" in r._evidence("https://www.thehindu.com/a", news.TIER_NEWS).text
+        assert "NEWSLETTERS" in r._evidence("https://example.gov.in/a", TIER_OFFICIAL).text        # official pages are read exactly as before
+    finally:
+        retrieve.fetch = old

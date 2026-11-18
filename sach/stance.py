@@ -171,7 +171,7 @@ def critical_words(claim: str) -> set:
 
 _META = re.compile(r"\b(fake|false|hoax|rumou?rs?|misinformation|fact[- ]?check\w*|scam|fraud\w*|misleading)\b", re.I)
 
-_NEWS_DOUBT = re.compile(r"\b(alive|rumou?rs?|hoax|fake|false|den(?:y|ies|ied)|clarif\w+|viral|fact[- ]?check\w*|not true|misleading|satire|"
+_NEWS_DOUBT = re.compile(r"\b(alive|rumou?rs?|hoax|fake|false|den(?:y|ies|ied)|clarifie[sd]|clarification|viral|fact[- ]?check\w*|not true|misleading|satire|"
                          r"unverified|claims? that|is it true|here is the truth)\b|अफवाह|फर्जी|झूठ|जीवित|వదంతి|పుకారు|నకిలీ|బతికే", re.I)
 
 
@@ -192,7 +192,8 @@ def heuristic_stance(claim: str, title: str, text: str, tier: str) -> str:
         return "mixed" if tier == "official" and not _STRICT_DEBUNK.search(title) else "none"
     if tier == "pib_debunk" and _STRICT_DEBUNK.search(title) and subject_coverage(claim, title) >= 0.6 and overlap(claim, title) >= 0.4:
         return "contradicts"
-    if tier == "news" and _NEWS_DOUBT.search(page):   # the page reports a rumour, a denial or a fact-check: word overlap proves nothing
+    if tier == "news" and _NEWS_DOUBT.search(f"{title} {text[:1500]}"):   # the headline or opening reports a rumour, a denial or a fact-check: word
+        # overlap proves nothing. Only the opening is read: further down, news pages carry unrelated words ("viral", "fact check") in related links.
         return "none"
     # tier "news" (sach/news.py) gets the same second-opinion rule as an official page. It can only make a claim REPORTED: verdict.decide ignores
     # that tier, so this opens no route to TRUE. Without it a lone judge model could never confirm a news report (live test, 18 Nov 2026).

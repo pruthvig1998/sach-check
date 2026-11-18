@@ -78,6 +78,20 @@ def _page_text(html: str):
     title = s.title.get_text(" ", strip=True) if s.title else ""
     return title, re.sub(r"\s+", " ", s.get_text(" ", strip=True))[:20000]
 
+def _news_text(html: str):
+    """Title and article text of a news page: the page's own description, then the paragraphs of its <article> (or all paragraphs). The plain
+    page text of a news site is mostly menus and related links, which the judge cannot use (live test, 18 Nov 2026: The Hindu's page gave
+    'SEE ALL NEWSLETTERS Opinion SECTION ...' and nothing of the report)."""
+    s = BeautifulSoup(html, "html.parser")
+    meta = lambda *names: next((m.get("content", "").strip() for n in names for m in s.find_all("meta", attrs={"property": n}) + s.find_all("meta", attrs={"name": n})
+                                if m.get("content", "").strip()), "")
+    title = meta("og:title") or (s.title.get_text(" ", strip=True) if s.title else "")
+    for t in s(["script", "style", "nav", "footer", "header", "aside", "form"]):
+        t.decompose()
+    paras = [p.get_text(" ", strip=True) for p in (s.find("article") or s).find_all("p")]
+    body = " ".join(p for p in paras if len(p.split()) >= 6)                 # short lines are captions, bylines and buttons
+    return title, re.sub(r"\s+", " ", f"{meta('og:description', 'description')} {body}").strip()[:20000]
+
 import threading, time as _time
 from . import news as _news
 from .search import (SearchChain, SearchRun, BRAVE_MIN_INTERVAL_S, _brave_last, _brave_throttle, grounded_credential_usable)   # noqa: F401 (re-exported: older tests patch them here)
@@ -145,7 +159,7 @@ class BraveRetriever:
             rel = parse_release(rec["body"])  # proper PIB parsing: real title/body, and debunk tiering
             if rel["title"] or rel["body"]:
                 return _pib_evidence({**rel, "url": url, "fetched_at": rec["fetched_at"]})
-        title, text = _page_text(rec["body"])
+        title, text = _news_text(rec["body"]) if tier == _news.TIER_NEWS else _page_text(rec["body"])
         return Evidence(host, url, tier, rec["fetched_at"], title, text)
 
     def _urls(self, q: str, check, limit: int, count: int = 10):
