@@ -101,7 +101,7 @@ from .search import (SearchChain, SearchRun, BRAVE_MIN_INTERVAL_S, _brave_last, 
 # Every step of the web search finishes by MAIN_END_BY_S. Before 18 Nov 2026 the steps ran one after another with a 25 s page timeout, so two slow
 # steps overran the pipeline's 30 s retrieval deadline and ALL of this retriever's evidence was dropped ("search down" on production).
 MAIN_END_BY_S = 26
-STAGE_WAIT_S = 9          # each step waits at most this long for its pages: PIB pages, then official pages, then fact-checkers
+STAGE_WAIT_S = 12         # each step waits at most this long for its pages: PIB pages, then official pages (12 + 12 stays inside MAIN_END_BY_S)
 EXTRA_BOX_S = 12          # news/social get at most this long
 EXTRA_END_BY_S = 26       # and must end this many seconds after the retriever started: inside the pipeline's 30 s retrieval deadline
 
@@ -240,12 +240,11 @@ class BraveRetriever:
             wait(futs, timeout=min(left(), STAGE_WAIT_S))               # bounded per step, so one slow page never starves the next search
             ex.shutdown(wait=False)
             run = getattr(self._tls, "run", None)
-            for f in futs:
-                if f.done() and f.exception() is None and f.result():
-                    out.append(f.result())
-                elif not f.done() or f.exception() is not None:
-                    if run is not None:
-                        run.record(False, None)                         # a page that did not arrive in time, or broke the parser: said out loud
+            got = [f.result() for f in futs if f.done() and f.exception() is None and f.result()]
+            out.extend(got)
+            if not got and any(not f.done() or f.exception() is not None for f in futs) and run is not None:
+                run.record(False, None)     # the whole step produced nothing because pages hung or broke: said out loud. One slow page among
+                # several is dropped quietly: marking the check "limited" for that (no caching, a warning) cost more than the page (review, 18 Nov)
 
         def urls(q, check, limit):
             """A search that must answer before the deadline. One that is still running then is abandoned and recorded as unanswered."""

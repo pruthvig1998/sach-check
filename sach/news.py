@@ -64,7 +64,12 @@ _REFUSE = re.compile(r"\b(?:not|never|no|n't|or|and|also|but|hoax|alive|rumou?rs
 _Q_HI = re.compile(r"^\s*क्या\s+(.+?(?:का|की|के)\s+(?:निधन|देहांत|मृत्यु)\s+हो\s+गया|.+?\s+नहीं\s+रहे)\s*[?？]+\s*$")
 # Telugu: the question is the verb with the question vowel "ా" ("చనిపోయారా?" = "did he/she die?"); the statement ends in "ు" instead.
 # Only these death verbs. NOT NATIVE-REVIEWED.
-_Q_TE = re.compile(r"^\s*(.+?\s)(చనిపోయార|మరణించార|కన్నుమూశార|చనిపోయాడ|మరణించాడ|కన్నుమూశాడ|చనిపోయింద|మరణించింద)ా\s*[?？]+\s*$")
+_Q_TE = re.compile(r"^\s*(?!ఎవరు)(.+?\s)(చనిపోయార|మరణించార|కన్నుమూశార|చనిపోయాడ|మరణించాడ|కన్నుమూశాడ|చనిపోయింద|మరణించింద)ా\s*[?？]+\s*$")
+
+
+_TITLES = set("the a an president prime minister chief governor mayor actor actress mr mrs ms dr sir shri smt pm cm mp mla".split())
+_JOBS = set("actor actress singer director producer cricketer player politician minister leader writer author poet musician maestro "
+            "industrialist businessman journalist comedian filmmaker dancer artist legend athlete".split())
 
 
 def as_statement(text: str) -> str:
@@ -73,12 +78,18 @@ def as_statement(text: str) -> str:
     m = _Q_EN.match(t)
     if m:
         subj, rest = (m.group("a") or m.group("b")).strip(), m.group("rest") or ""
-        names = re.findall(r"(?:\b[A-Z][\w'.-]*(?:\s+|$))+", subj)
-        if len(subj.split()) <= 6 and names and not _REFUSE.search(subj + " " + rest):
-            # only the person's name (the last run of capitalised words): "senior", "veteran", "actor" in the question must not have to match
-            # the report word for word ("senior" is also an eligibility word that the quote check requires). "died", not "passed away":
-            # reports mostly say "dies" or "died".
-            return f"{names[-1].strip()} has died{rest}.".replace(" .", ".")
+        # The subject must END with the person's name: [lower-case words or a language/state word] [one job word] Name Name. Possessives,
+        # commas, "of", "from" and titles without a name are refused (independent review, 18 Nov 2026: "Did Sachin Tendulkar's father die?"
+        # had become "Sachin Tendulkar's has died", "Did Ravi Kumar of Guntur die?" had become "Guntur has died").
+        m2 = re.fullmatch(r"(?P<pre>(?:[a-z][\w-]*\s+|[A-Z][a-z]+\s+(?=[a-z]))*?)(?P<name>(?:[A-Z][\w.-]*\s+)*[A-Z][\w.-]*)", subj)
+        if (len(subj.split()) <= 6 and m2 and not _REFUSE.search(subj + " " + rest) and not re.search(r"'s\b|,|\b(?:of|from)\b", subj)
+                and not set(m2.group("name").lower().replace(".", " ").split()) <= _TITLES):
+            pre = m2.group("pre").split()
+            job = pre[-1] + " " if pre and pre[-1].lower() in _JOBS else ""
+            # Kept: the name and the job word just before it ("actor Giri Babu"), which helps tell two people of one name apart. Dropped:
+            # "senior", "veteran" and the like, which reports often word differently ("senior" is also an eligibility word the quote check
+            # requires). "died", not "passed away": reports mostly say "dies" or "died".
+            return f"{job}{m2.group('name')} has died{rest}.".replace(" .", ".")
         return ""
     m = _Q_HI.match(t)
     if m and not re.search(r"नहीं\s+(?:हुआ|हुई|हो)", m.group(1)):
