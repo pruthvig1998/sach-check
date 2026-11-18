@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://sachcheck.in"><img src="docs/assets/sach-banner.svg" alt="Sach: a forwarded WhatsApp message promising Rs 1000 to everyone is stamped FALSE, with a PIB Fact Check citation. Got a forward? Get the receipts. sachcheck.in" width="100%"></a>
+  <a href="https://sachcheck.in"><img src="docs/assets/sach-logo-horizontal.png" alt="Sach" width="100%"></a>a>
 </p>
 
 <p align="center"><b>Paste or share a viral WhatsApp forward. Sach checks every claim against PIB and official government sources and sends back a cited verdict card in the forward's own language, ready to post in the family group.</b></p>
