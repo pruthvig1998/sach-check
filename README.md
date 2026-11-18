@@ -1,7 +1,7 @@
 <p align="center">
     <a href="https://sachcheck.in">
           <picture>
-      <source media="(prefers-color-scheme: dark") srcset="docs/assets/sach-logo-horizontal-on-dark.svg">
+      <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sach-logo-horizontal-on-dark.svg">
       <img src="docs/assets/sach-logo-horizontal.png" alt="Sach" width="100%">
           </picture>
     </a>
