@@ -433,6 +433,28 @@ def test_a_slow_news_search_never_costs_the_official_evidence(monkeypatch):
     assert [e.tier for e in ev] == [TIER_OFFICIAL] and not run.news         # official evidence kept; nothing claimed about news
 
 
+def test_one_slow_news_site_costs_only_its_own_page_and_then_silence_is_not_claimed(monkeypatch):
+    import time
+    from sach import retrieve
+    monkeypatch.setenv("SACH_NEWS_TIER", "1")
+    monkeypatch.setattr(retrieve, "EXTRA_BOX_S", 0.6)
+    class Chain:
+        configured = True
+        def new_run(self): return Run(news_ran=False)
+        def search(self, q, count, run=None):
+            return ["https://www.thehindu.com/fast", "https://www.ndtv.com/slow"] if "site:ptinews.com" in q else []
+    def fetch(u):
+        if "slow" in u:
+            time.sleep(2)
+        return {"status": 200, "final_url": u, "body": "<title>T</title><p>text</p>", "fetched_at": TS}
+    monkeypatch.setattr(retrieve, "fetch", fetch)
+    ev, run = retrieve.BraveRetriever(key="k", chain=Chain()).search_with_status(DEATH)
+    assert [e.url for e in ev] == ["https://www.thehindu.com/fast"] and not run.news    # the fast page is kept; an unread page means no "no report"
+    monkeypatch.setattr(retrieve, "fetch", lambda u: {"status": 200, "final_url": u, "body": "<title>T</title><p>text</p>", "fetched_at": TS})
+    ev, run = retrieve.BraveRetriever(key="k", chain=Chain()).search_with_status(DEATH)
+    assert len(ev) == 2 and run.news is True                                            # every page read: the search is complete
+
+
 def test_a_failed_news_search_or_news_judge_never_marks_the_check_limited(monkeypatch):
     from sach import retrieve
     monkeypatch.setenv("SACH_NEWS_TIER", "1")

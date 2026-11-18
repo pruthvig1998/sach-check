@@ -82,8 +82,8 @@ import threading, time as _time
 from . import news as _news
 from .search import (SearchChain, SearchRun, BRAVE_MIN_INTERVAL_S, _brave_last, _brave_throttle, grounded_credential_usable)   # noqa: F401 (re-exported: older tests patch them here)
 
-EXTRA_START_BY_S = 14     # news/social are skipped when the official searches already took this long
-EXTRA_BOX_S = 10          # and get at most this long; 14 + 10 stays inside the pipeline's 30 s retrieval deadline
+EXTRA_BOX_S = 12          # news/social get at most this long
+EXTRA_END_BY_S = 26       # and must end this many seconds after the retriever started: inside the pipeline's 30 s retrieval deadline
 
 class BraveRetriever:
     """Optional live web search (needs BRAVE_API_KEY and/or TAVILY_API_KEY; see sach/search.py for failover). Official
@@ -169,28 +169,34 @@ class BraveRetriever:
         finally:
             self._tls.run = None
 
-    def _extras(self, kw: str):
-        """-> (news evidence, social links, search answered) or None when the time box ran out. Runs in its own thread with its own SearchRun."""
-        from concurrent.futures import ThreadPoolExecutor
-        xrun = self.chain.new_run()
-        def work():
+    def _extras(self, kw: str, box_s: float):
+        """-> (news evidence, social links, complete). Runs beside the official evidence, inside `box_s` seconds, with its own SearchRun.
+        Pages that arrive in time are kept; a slow site costs only its own page. `complete` is True only when the news search answered and
+        every page it named was fetched: only then does finding nothing mean anything."""
+        from concurrent.futures import ThreadPoolExecutor, wait
+        xrun, end = self.chain.new_run(), _time.monotonic() + box_s
+        left = lambda: max(0.05, end - _time.monotonic())
+        def search(q, pred, n):
             self._tls.run = xrun
-            news_ev, social = [], None
-            if _news.news_enabled():
-                urls = self._urls(f"{kw} {_news.NEWS_Q}", lambda u: _news.is_news(u) and not is_factchecker(u), _news.PER_QUERY)
-                if urls:
-                    with ThreadPoolExecutor(max_workers=min(4, len(urls))) as ex2:
-                        news_ev = [e for e in ex2.map(lambda u: self._evidence(u, _news.TIER_NEWS), urls) if e]
-            if _news.social_enabled():
-                social = self._urls(f"{kw} {_news.SOCIAL_Q}", _news.is_social, 10)
-            return news_ev, social, getattr(xrun, "status", "ok") == "ok"
-        ex = ThreadPoolExecutor(max_workers=1)
+            return self._urls(q, pred, n)
+        ex = ThreadPoolExecutor(max_workers=6)
+        news_ev, social, complete = [], None, False
         try:
-            return ex.submit(work).result(timeout=EXTRA_BOX_S)
+            fn = ex.submit(search, f"{kw} {_news.NEWS_Q}", lambda u: _news.is_news(u) and not is_factchecker(u), _news.PER_QUERY) if _news.news_enabled() else None
+            fs = ex.submit(search, f"{kw} {_news.SOCIAL_Q}", _news.is_social, 10) if _news.social_enabled() else None
+            if fn is not None:
+                urls = fn.result(timeout=left())
+                fetches = [ex.submit(self._evidence, u, _news.TIER_NEWS) for u in urls]
+                wait(fetches, timeout=left())
+                news_ev = [f.result() for f in fetches if f.done() and f.exception() is None and f.result()]
+                complete = getattr(xrun, "status", "ok") == "ok" and all(f.done() for f in fetches)
+            if fs is not None:
+                social = fs.result(timeout=left())
         except Exception:
-            return None                              # too slow or failed: the check goes on without news, and says nothing about news
+            pass                                     # too slow or failed: keep what arrived, claim nothing more
         finally:
-            ex.shutdown(wait=False)                  # an overrunning search is abandoned, never waited for
+            ex.shutdown(wait=False)                  # an overrunning search or fetch is abandoned, never waited for
+        return news_ev, social, complete
 
     def _search_claim(self, claim: str) -> list[Evidence]:
         t0 = _time.monotonic()
@@ -224,18 +230,17 @@ class BraveRetriever:
         # News and social searches. They run whether or not official pages were found (the official search nearly always returns some page, often
         # unrelated, and nothing is judged yet), but in a time box of their own and with their own search record: a slow or failed news search
         # must never delay, drop or mark as failed the official evidence above (independent review, 18 Nov 2026).
-        if run is not None and (_news.news_enabled() or _news.social_enabled()) and _time.monotonic() - t0 < EXTRA_START_BY_S:
-            got = self._extras(kw)
-            if got is not None:
-                news_ev, social, ok = got
-                for e in news_ev:
-                    k = canonical_key(e.url)
-                    if k not in seen:                # a page already held as official stays official and is not added twice
-                        seen.add(k); out.append(e)
-                if _news.news_enabled() and ok:
-                    run.news = True                  # the news search ran and answered (read by the pipeline)
-                if social:
-                    run.social = social              # links only: posts are never fetched or read
+        box = min(EXTRA_BOX_S, EXTRA_END_BY_S - (_time.monotonic() - t0))
+        if run is not None and (_news.news_enabled() or _news.social_enabled()) and box >= min(3, EXTRA_BOX_S):   # too little time left: skip
+            news_ev, social, complete = self._extras(kw, box)
+            for e in news_ev:
+                k = canonical_key(e.url)
+                if k not in seen:                    # a page already held as official stays official and is not added twice
+                    seen.add(k); out.append(e)
+            if _news.news_enabled() and complete:
+                run.news = True                      # the news search answered and every page was read (read by the pipeline)
+            if social:
+                run.social = social                  # links only: posts are never fetched or read
         return out
 
 def default_retrievers():
