@@ -335,7 +335,7 @@ def busy_block(reason: str = "minute", text: str = "") -> str:
 
 def busy_text(reason: str = "minute", text: str = "") -> str:
     """Plain text for the Telegram bot. With `text`, up to three related PIB pages from the local indexes are listed (titles and links, never a
-    verdict), the same as on the website. None for a 'being checked right now' reply."""
+    verdict), the same as on the website. A 'being checked right now' reply lists no pages."""
     rel = related_pages(text) if text and reason != "flight" else []
     pages = "".join(f"\n- {p['title']}: {p['url']}" for p in rel)
     return (f"{busy_title(reason)}.\n{busy_message(reason)}" + (f"\nOfficial pages that may be related (not a verdict):{pages}" if pages else "")

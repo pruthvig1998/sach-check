@@ -319,8 +319,11 @@ def handle_update(update: dict, retrievers, llm, send=None, bot_id=None, usernam
         adm = _limits.admit(claim, lang)             # same global live-check budget as the website; cache/match answers are free
         if adm.busy:
             if adm.reason != "flight":
-                from . import popularity
-                popularity.record_unchecked(claim, adm.reason)      # the same demand counter as the website: by anonymous fingerprint
+                try:
+                    from . import popularity
+                    popularity.record_unchecked(claim, adm.reason)  # the same demand counter as the website: by anonymous fingerprint
+                except Exception:
+                    pass                                            # counting must never stop the reply
             say(_limits.busy_text(adm.reason, claim)); return {"ok": True, "action": "busy"}
         send("sendChatAction", {"chat_id": chat_id, "action": "typing"})
         try:
