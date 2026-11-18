@@ -78,6 +78,7 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
         if k not in seen:
             seen.add(k); uniq.append(e)
     evidence = [e for e in uniq if e.tier != _news.TIER_NEWS][:8] + [e for e in uniq if e.tier == _news.TIER_NEWS][:_news.PER_QUERY]   # news never crowds out official sources
+    nq = _news.as_statement(q) or q                    # news-tier judging only; never used for official or fact-checker sources
     t_judge = time.monotonic()
     t_retrieved = t_judge
     ex = ThreadPoolExecutor(max_workers=8)              # LLM calls are slow; judge sources in parallel
@@ -87,7 +88,7 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
             rp = getattr(llm, "reset_provider", None)
             if rp:
                 rp()
-            res = judge(q, e, llm)
+            res = judge(nq if e.tier == _news.TIER_NEWS else q, e, llm)   # a news page is judged against the statement form of a question
             lp = getattr(llm, "last_provider", None)
             return res, int((time.monotonic() - t) * 1000), (lp() if lp else None)
         except Exception as exc:                        # judge() already swallows provider errors; anything raised here is a bug: say so
@@ -120,7 +121,7 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
     v.detected = tinfo.get("detected")
     v.trace["layer"] = "LIVE"
     if v.verdict == UNVERIFIED:                         # extra, separately labelled findings: they never change the verdict above
-        rep = _news.assess(q, evidence, news_searched)
+        rep = _news.assess(nq, evidence, news_searched)
         if rep:
             v.trace["reported"] = rep
         soc = _news.social_signal(social_urls)

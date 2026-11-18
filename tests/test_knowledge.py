@@ -523,3 +523,30 @@ def test_news_pages_are_read_from_their_description_and_article_paragraphs_not_t
         assert "NEWSLETTERS" in r._evidence("https://example.gov.in/a", TIER_OFFICIAL).text        # official pages are read exactly as before
     finally:
         retrieve.fetch = old
+
+
+def test_death_questions_become_statements_for_the_news_judge_only():
+    s = news.as_statement
+    assert s("Did the actor Giri Babu pass away?") == "the actor Giri Babu passed away."
+    assert s("Did Telugu actor Giri Babu pass away at the age of 80?") == "Telugu actor Giri Babu passed away at the age of 80."
+    assert s("Has Zakir Hussain died?") == "Zakir Hussain passed away."
+    assert s("Is Example Kumar dead?") == "Example Kumar has died."
+    assert s("क्या अभिनेता गिरी बाबू का निधन हो गया?") == "अभिनेता गिरी बाबू का निधन हो गया।"
+    for not_one in ("Giri Babu passed away.", "When is Diwali?", "Did the government give Rs 5000 to every woman under a new scheme today in all the states?",
+                    "Did you know that drinking water cures cancer?", "", "क्या?"):
+        assert s(not_one) == "" or "passed away" not in s(not_one), not_one
+
+
+def test_a_death_question_is_judged_as_a_statement_on_news_pages_and_as_written_elsewhere():
+    seen = []
+    class Spy(NewsLLM):
+        def stance(self, claim, title, text, tier=None):
+            seen.append((tier, claim))
+            return super().stance(claim, title, text, tier)
+    off = Evidence("Ministry", "https://example.gov.in/x", TIER_OFFICIAL, TS, "unrelated", "unrelated")
+    r = StatusRetriever([off, N("thehindu.com", "CONFIRM"), N("ptinews.com", "CONFIRM", 2)])
+    q = "Did veteran actor Example Kumar pass away?"
+    res = check_forward(q, [r], Spy(), use_cache=False)
+    assert ("official", q) in seen and (news.TIER_NEWS, "veteran actor Example Kumar passed away.") in seen
+    assert res["verdict"] == UNVERIFIED and res["claims"][0]["trace"]["reported"]["status"] == "reported"
+    assert res["claims"][0]["claim"]["text"] == q                                  # the user's own words are kept

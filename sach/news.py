@@ -54,6 +54,29 @@ _DEATH = re.compile(r"\b(died|dies|dead|death|passed away|passes away|pass away|
                     r"lost (?:his|her|their) life)\b|निधन|मृत्यु|मौत|देहांत|नहीं रहे|మృతి|మరణ|కన్నుమూ|చనిపో|ఇకలేరు", re.I)
 
 
+# A yes/no question about a death, turned into the statement the judge can check against a report. Only for news-tier judging: the user's
+# text, the card and every official or fact-checker judgement keep the question as written. English death questions and Hindi "kya"
+# questions only; anything else is left as it is.
+_Q_DEATH_EN = [
+    (re.compile(r"^\s*(?:did|has|have)\s+(.+?)\s+(?:pass(?:ed)?\s+away|died|die|demised?)\b(.*?)\s*[?？]*\s*$", re.I), r"\1 passed away\2."),
+    (re.compile(r"^\s*(?:is|was)\s+(.+?)\s+(?:dead|no more)\b(.*?)\s*[?？]*\s*$", re.I), r"\1 has died\2."),
+]
+_Q_HI = re.compile(r"^\s*क्या\s+(.+?)\s*[?？]+\s*$")
+
+
+def as_statement(text: str) -> str:
+    """'Did actor X pass away?' -> 'actor X passed away.'; 'क्या X का निधन हो गया?' -> 'X का निधन हो गया।'. '' when the text is not such a question."""
+    t = " ".join((text or "").split())
+    for pat, rep in _Q_DEATH_EN:
+        m = pat.match(t)
+        if m and len(m.group(1).split()) <= 8:          # a name with a few words of description, not a whole sentence
+            return pat.sub(rep, t).replace(" .", ".").strip()
+    m = _Q_HI.match(t)
+    if m and len(m.group(1).split()) >= 3:
+        return m.group(1).rstrip("।") + "।"
+    return ""
+
+
 def news_enabled() -> bool:
     return os.environ.get("SACH_NEWS_TIER", "0") == "1"
 
