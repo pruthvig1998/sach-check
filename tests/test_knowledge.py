@@ -152,8 +152,8 @@ def test_a_death_needs_three_owners_or_a_news_agency():
 def test_denials_conflicts_and_silence():
     assert news.assess(DEATH, _ev(("thehindu.com", "contradicts"), ("ndtv.com", "contradicts")), True)["status"] == "denied"
     assert news.assess(DEATH, _ev(("thehindu.com", "confirms"), ("ndtv.com", "contradicts")), True)["status"] == "conflicting"
-    assert news.assess(DEATH, [], True)["status"] == "no_reliable_report"
-    assert news.assess(DEATH, [], False) is None                         # the news search did not run or failed: silence means nothing
+    assert news.assess(DEATH, [], True) is None                          # finding nothing is never reported as a finding
+    assert news.assess(DEATH, [], False) is None
     for not_recent in ("Mahatma Gandhi died in 1948", "Actor Example Kumar killed it at the box office", "This phone is a rip off, buy the other one",
                        "There is no more time to submit the form", "Mobile phones will be banned in schools from next month",
                        "Free crash course for students this Sunday", "वह मौतों का सौदागर है", "मृत्युंजय नाम का लड़का जीता"):
@@ -189,7 +189,7 @@ def test_an_official_source_still_decides_and_news_adds_nothing():
 
 def test_no_report_only_when_the_news_search_really_ran():
     res, _ = check(DEATH, [], Run(news_ran=True))
-    assert res["claims"][0]["trace"]["reported"]["status"] == "no_reliable_report"
+    assert "reported" not in res["claims"][0]["trace"] and "RELIABLE" not in res["card"]         # silence is never a finding
     res2, _ = check(DEATH + " ", [], Run(news_ran=False), use_cache=False)
     assert "reported" not in res2["claims"][0]["trace"]
 
@@ -399,7 +399,7 @@ def test_the_news_search_runs_even_when_the_official_search_found_an_unrelated_p
 
 def test_news_pages_found_but_not_confirmed_are_not_silence():
     assert news.assess(DEATH, _ev(("thehindu.com", "none"), ("ndtv.com", "none")), True) is None       # pages exist: never "no reliable report"
-    assert news.assess(DEATH, [], True)["status"] == "no_reliable_report"                                # nothing found at all
+    assert news.assess(DEATH, [], True) is None                                                          # nothing found at all: still no claim of silence
 
 
 def test_the_overlap_rule_can_second_a_news_report_but_never_reaches_a_verdict():
@@ -495,3 +495,8 @@ def test_news_pages_are_chosen_one_per_owner():
             "https://www.thehindu.com/d", "https://random.example/e", "https://www.ndtv.com/f", "https://www.ptinews.com/g", "https://www.eenadu.net/h"]
     assert news.one_per_owner(urls) == ["https://timesofindia.indiatimes.com/a", "https://www.thehindu.com/d", "https://www.ndtv.com/f", "https://www.ptinews.com/g"]
     assert news.one_per_owner([]) == [] and news.one_per_owner(None) == []
+
+
+def test_a_stored_no_report_result_is_never_shown():
+    res = {"verdict": UNVERIFIED, "layer": "live", "language": "en", "claims": [{"trace": {"reported": {"status": "no_reliable_report", "outlets": []}}}]}
+    assert "RELIABLE" not in news.panels_html(res) and "reported" not in news.panels_html(res)

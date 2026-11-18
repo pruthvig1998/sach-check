@@ -4,7 +4,6 @@ Why: no government page records an actor's death, a match result or a film relea
 What this adds, WITHOUT a new route to TRUE or FALSE (sach/verdict.py ignores the news tier):
   REPORTED             at least two independent established news organisations report it (three for a death, unless one is a news agency)
   DENIED BY NEWS       at least two report that it is not true (for example a death hoax)
-  NO RELIABLE REPORT   a claim that a person has died, and none of the outlets searched reports it
 The machine verdict stays UNVERIFIED; these are a separate, clearly labelled finding in the claim's trace ("reported").
 
 The social signal counts public posts a web search finds on X, Facebook and Instagram and names established accounts among them. Sach cannot
@@ -53,16 +52,6 @@ NEWS_Q = "(" + " OR ".join("site:" + h for h in QUERY_HOSTS) + ")"
 # Broad: any wording that may be about a death. Used only to RAISE the number of outlets needed, so a false hit is harmless.
 _DEATH = re.compile(r"\b(died|dies|dead|death|passed away|passes away|pass away|is no more|demise|demised|funeral|killed|murdered|succumbed|"
                     r"lost (?:his|her|their) life)\b|निधन|मृत्यु|मौत|देहांत|नहीं रहे|మృతి|మరణ|కన్నుమూ|చనిపో|ఇకలేరు", re.I)
-# Narrow: a plain statement or question that a person has died. Only for this does finding no report mean anything, and only when the text
-# names no past year (silence about "X died in 1948" says nothing). Other events are left out on purpose: the search is too shallow.
-_DEATH_NOW = re.compile(r"\b(died|dies|ka nidhan|nidhan ho|passed away|passes away|pass away|succumbed|lost (?:his|her|their) life)\b|"
-                        r"का निधन|निधन हो|देहांत हो|की मृत्यु हो|నిధనం|కన్నుమూశ|మృతి చెంద|మరణించ|చనిపోయ", re.I)
-
-
-def _recent_death_claim(text: str) -> bool:
-    import time
-    years = [int(y) for y in re.findall(r"(?<!\d)((?:18|19|20)\d\d)(?!\d)", text or "")]
-    return bool(_DEATH_NOW.search(text or "")) and not any(y < time.gmtime().tm_year for y in years)
 
 
 def news_enabled() -> bool:
@@ -100,13 +89,12 @@ def is_death_claim(text: str) -> bool:
 
 
 def assess(claim: str, evidence: list, searched: bool) -> dict | None:
-    """What established news organisations say about `claim`, from the judged news-tier evidence. None when the news tier has nothing to say.
-    `searched`: the news search ran and answered, so finding no report is itself information (for event-type claims only)."""
-    conf, den, found = {}, {}, 0
+    """What established news organisations say about `claim`, from the judged news-tier evidence. None when no listed outlet reports or denies it.
+    `searched` is kept for callers and is not used: finding nothing is never reported as a finding."""
+    conf, den = {}, {}
     for e in evidence:
         if getattr(e, "tier", "") != TIER_NEWS:
             continue
-        found += 1
         g = group_of(e.url)
         if not g:
             continue
@@ -123,9 +111,9 @@ def assess(claim: str, evidence: list, searched: bool) -> dict | None:
         status = "denied"
     elif conf or den:
         status = "single_report"
-    elif searched and not found and _recent_death_claim(claim):   # silence = the search found NO page on the listed outlets; pages that were
-        # found but not judged as support are not silence (live test: four outlets reported a death and the old rule still said "no report")
-        status = "no_reliable_report"
+    # There is deliberately no "no reliable report" finding. Saying that nothing was reported needs proof that the search worked, every outlet
+    # was reachable and every page was read; on 18 Nov 2026 that label was wrong in four different ways (pages found but not confirmed, pages
+    # blocked, a search no provider could take, an unrecorded failure). Sach now says nothing about news unless an outlet reports or denies.
     else:
         return None
     outlets = [{"source": g, "url": e.url, "fetched_at": e.fetched_at, "says": "reports it" if e.stance == "confirms" else "says it is not true"}
@@ -263,7 +251,7 @@ def _panels_html(res: dict) -> str:
         out += (f'<section class="ref-dates" style="{_NEUTRAL}"><p style="margin:0 0 8px"><b>{_e(t["dates_title"])}</b></p>'
                 f'{_facts_html(res["reference"], lang)}</section>')
     rep = _reported(res)
-    if rep:
+    if rep and rep.get("status") != "no_reliable_report":      # a result stored before that label was removed never shows it
         items = "".join(f'<li style="margin:0 0 6px"><a href="{_e(o["url"])}" rel="noopener" target="_blank"><b>{_e(o["source"])}</b></a> '
                         f'<span class="note">{_e(o.get("says", ""))}</span></li>' for o in rep.get("outlets", []) if isinstance(o, dict) and str(o.get("url", "")).startswith("https://"))
         note = t["none_note"] if rep["status"] == "no_reliable_report" else t["note"]
