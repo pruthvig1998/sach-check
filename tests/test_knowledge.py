@@ -632,3 +632,16 @@ def test_news_text_picks_the_story_not_a_related_card_before_it():
             "<article><p>Veteran actor Example Kumar passed away in Hyderabad on Monday after a brief illness.</p>"
             "<p>He acted in more than six hundred films over five decades, his family said.</p></article>")
     assert "passed away in Hyderabad" in retrieve._news_text(html)[1] and "cricket" not in retrieve._news_text(html)[1]
+
+
+def test_a_news_report_may_name_where_it_happened_but_a_government_page_may_not_narrow_a_claim():
+    from sach.stance import validate_stance
+    claim, title = "veteran Telugu actor Example Kumar has died.", "Veteran Telugu actor Example Kumar dies at 80"
+    quote = "Veteran Telugu actor Example Kumar died at a private hospital in Hyderabad on Saturday while undergoing treatment."
+    text = quote + " He acted in more than six hundred films."
+    assert validate_stance("confirms", quote, claim, title, text, news.TIER_NEWS) == "confirms"
+    for tier in ("official", "pib_debunk", "factchecker", ""):
+        assert validate_stance("confirms", quote, claim, title, text, tier) == "none", tier        # unchanged for every other tier
+    only = "Only veteran Telugu actor Example Kumar died at a private hospital in Hyderabad on Saturday."
+    assert validate_stance("confirms", only, claim, title, only, news.TIER_NEWS) == "none"         # 'only' still blocks on news pages
+    assert validate_stance("mixed", quote, claim, title, text, news.TIER_NEWS) == "none"           # and the place rule still applies to 'mixed'

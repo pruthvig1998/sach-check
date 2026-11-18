@@ -331,7 +331,7 @@ def _contradiction_scope_ok(claim: str, title: str, quote: str, text: str = "") 
             return False                              # 'every man' denied for a claim about 'every woman'
     return True
 
-def _unmatched_restriction(claim: str, quote: str) -> bool:
+def _unmatched_restriction(claim: str, quote: str, places: bool = True) -> bool:
     """True when the quote limits the claim ('only', 'above 60 years', 'BPL', 'in Delhi') and the claim does not contain the same limit."""
     cw = re.findall(r"[a-z0-9]+", (claim or "").lower())
     grams = set()
@@ -348,12 +348,12 @@ def _unmatched_restriction(claim: str, quote: str) -> bool:
             ptoks = tuple(re.findall(r"[a-z0-9]+", m.group(0).lower()))
             if len(ptoks) > 6 or ptoks not in grams:
                 return True
-    for m in _PLACE.finditer(q):
+    for m in (_PLACE.finditer(q) if places else ()):
         if any(w not in words for w in re.findall(r"[a-z]+", m.group(1).lower())):
             return True
     return False
 
-def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -> str:
+def validate_stance(label: str, quote: str, claim: str, title: str, text: str, tier: str = "") -> str:
     """Accept an LLM stance only if it is backed by a verbatim quote from the page that relates to the claim.
     - quote must appear verbatim in the page (kills hallucinated evidence)
     - quote must overlap the claim (kills 'related topic' calls)
@@ -392,7 +392,10 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str) -
         return "none"          # the quote reports a claim, a forward or a rumour: it does not state the fact
     if label in ("confirms", "mixed") and _NEG_QUOTE.search(quote) and not (_NEGATION.search(claim) or _NEG_CLAIM.search(claim)):
         return "none"          # 'has not approved that ... Rs 5000' is the opposite of a confirmation of a positive claim
-    if label in ("confirms", "mixed", "contradicts") and _unmatched_restriction(claim, quote):
+    # A place in the quote that the claim does not name narrows a scheme ('every woman in Mumbai' is not 'every woman'), so it blocks. A news
+    # report of an event adds where it happened ('died at a hospital in Hyderabad'), which narrows nothing: for tier "news" (REPORTED label
+    # only, never a verdict) and CONFIRMS only, the place part is skipped. 'only', 'except' and the other limits still block (18 Nov 2026).
+    if label in ("confirms", "mixed", "contradicts") and _unmatched_restriction(claim, quote, places=not (tier == "news" and label == "confirms")):
         return "none"          # 'every woman who is a cricketer' / 'above 60 years' / 'in Mumbai' does not match 'every woman' / 'Delhi-NCR'
     # A denial ("This is fake; no such proposal exists.") gets its subject from the page title, so for CONTRADICTS the title
     # and quote together must relate to the claim. Confirmations / partial matches must be matched by the quote itself.

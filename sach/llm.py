@@ -87,7 +87,7 @@ class _Judge:
 
     def _label(self, model, claim, title, text, tier=""):
         st, q = parse_reply(self._raw(model, PROMPT, _user(claim, title, text, tier), 200))
-        return validate_stance(st, q, claim, title, text)
+        return validate_stance(st, q, claim, title, text, tier)
 
     def stance(self, claim, title, text, tier=""):
         """First opinion from the first model that answers. Any decisive stance (not 'none') must be confirmed by a
@@ -278,7 +278,7 @@ class ClaudeJudge:
             r = self.client.messages.create(model=self.model, max_tokens=200, system=PROMPT,
                                             messages=[{"role": "user", "content": _user(claim, title, text, tier)}])
             st, q = parse_reply(r.content[0].text)
-            st = validate_stance(st, q, claim, title, text)
+            st = validate_stance(st, q, claim, title, text, tier)
             return st if st == "none" or heuristic_stance(claim, title, text, tier) == st else "none"
         except Exception as e:
             self.failures += 1
