@@ -1,6 +1,6 @@
 <p align="center">
-  <a href="https://sachcheck.in"><img src="docs/assets/sach-logo-horizontal.png" alt="Sach" width="100%"></a>a>
-</p>
+  <a href="https://sachcheck.in"><picture><source media="(prefers-color-scheme: dark") srcset="docs/assets/sach-logo-horizontal-on-dark.svg">img src="docs/assets/sach-logo-horizontal.png" alt="Sach" width="100%"></picture></a>a>
+  /p>
 
 <p align="center"><b>Paste or share a viral WhatsApp forward. Sach checks every claim against PIB and official government sources and sends back a cited verdict card in the forward's own language, ready to post in the family group.</b></p>
 
