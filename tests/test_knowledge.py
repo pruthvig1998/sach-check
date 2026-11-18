@@ -677,8 +677,10 @@ def test_motion_layer_is_optional_and_never_hides_content_without_its_script(mon
     from sach import motion
     from sach.site import home
     html = home().decode()
-    assert motion.GSAP in html and motion.LENIS in html and "defer" in html.split(motion.GSAP)[0][-40:]
+    assert motion.GSAP in html and motion.LENIS in html and "src=\"/?view=lib" not in html   # requested by the early check, only when motion runs
     assert motion.GSAP.startswith("/?view=lib") and "cdnjs" not in html and "jsdelivr" not in html          # served from Sach's own domain
+    early = motion.HEAD_JS
+    assert early.index("prefers-reduced-motion") < early.index("createElement('script')")   # no download at all when motion is off
     import hashlib
     for name, (fname, sha) in motion.FILES.items():                                       # the copies are exactly the pinned releases
         assert hashlib.sha256(motion.lib(name)).hexdigest() == sha, name
@@ -691,3 +693,21 @@ def test_motion_layer_is_optional_and_never_hides_content_without_its_script(mon
     monkeypatch.setenv("SACH_MOTION", "0")
     off = home().decode()
     assert motion.GSAP not in off and "html.motion" not in off
+
+
+def test_lenis_ships_with_its_mit_notice_and_head_requests_get_no_body():
+    from sach import motion
+    assert motion.lib("lenis-1.1.13").startswith(b"/*! Lenis 1.1.13 | MIT License | Copyright (c) 2024 darkroom.engineering")
+    assert b"GreenSock" in motion.lib("gsap-3.12.5")[:400]                                  # GSAP's own notice kept intact
+    import threading, http.client
+    from http.server import ThreadingHTTPServer
+    from sach.web import Handler
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=5)
+        c.request("HEAD", "/?view=lib&f=gsap-3.12.5"); r = c.getresponse()
+        assert r.status == 200 and int(r.getheader("Content-Length")) > 50000 and r.read() == b""
+        c.request("GET", "/?view=lib&f=nope"); r = c.getresponse(); r.read()
+        assert r.status == 404                                                              # keep-alive still works after the HEAD
+    finally:
+        srv.shutdown()

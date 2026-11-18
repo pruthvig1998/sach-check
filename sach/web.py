@@ -53,7 +53,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cache-Control", cache or ("no-store" if code != 200 or self.command == "POST" else "public, max-age=60"))
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != "HEAD":                      # HEAD gets the headers only (a body would break keep-alive framing)
+            self.wfile.write(body)
 
     def _json(self, obj, code=200, extra=None):
         self._send(json.dumps(obj, ensure_ascii=False).encode(), code, "application/json; charset=utf-8", extra=extra)
