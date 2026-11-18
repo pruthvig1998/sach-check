@@ -153,8 +153,8 @@ def social_signal(urls) -> dict | None:
 
 # ---------------------------------------------------------------- wording. Hindi and Telugu are NOT NATIVE-REVIEWED.
 REPORTED_TEXT = {
-    "en": {"alerts_title": "Official alerts in force (NDMA)", "alerts_open": "Open the alert", "alerts_note": "These are current alerts from the National Disaster Management Authority that name a place in your message. They are shown for reference and are not a verdict on the message.",
-           "fc_title": "Published fact-checks that may be related", "fc_rated": "their rating", "fc_note": "Found by matching words, not checked by Sach. Read the fact-check to see whether it is about the same claim.",
+    "en": {"alerts_title": "Recent official alerts (NDMA)", "alerts_open": "Open the alert", "alerts_note": "Alerts issued in the last 24 hours through the National Disaster Management Authority's system for a place named in your message. Many last only a few hours, so check the time. They are shown for reference and are not a verdict on the message.",
+           "fc_title": "A published fact-check of this claim", "fc_note": "Found by matching the words of your message, not checked by Sach. Open it to read what the fact-checker found.",
            "reported": "REPORTED by news outlets", "denied": "News outlets report this is NOT true", "conflicting": "News outlets disagree",
            "single_report": "One news outlet reports on this", "no_reliable_report": "NO RELIABLE REPORT found",
            "note": "This is what news organisations report. It is not an official confirmation, and news reports can be wrong.",
@@ -162,8 +162,8 @@ REPORTED_TEXT = {
            "answer": "ANSWER", "source": "Source", "dates_title": "Official dates",
            "social_title": "Posts on social media", "social_found": "Public posts found", "social_known": "From established accounts",
            "social_note": "Sach could not read these posts, so they are not evidence. Many posts do not make a claim true: false claims also spread through many genuine accounts."},
-    "hi": {"alerts_title": "लागू आधिकारिक चेतावनियाँ (NDMA)", "alerts_open": "चेतावनी खोलें", "alerts_note": "ये राष्ट्रीय आपदा प्रबंधन प्राधिकरण की मौजूदा चेतावनियाँ हैं जिनमें आपके संदेश की किसी जगह का नाम है। ये संदर्भ के लिए हैं, संदेश पर फ़ैसला नहीं।",
-           "fc_title": "प्रकाशित फ़ैक्ट-चेक जो इससे जुड़े हो सकते हैं", "fc_rated": "उनकी रेटिंग", "fc_note": "शब्द मिलाकर खोजे गए हैं, Sach ने इन्हें जाँचा नहीं है। फ़ैक्ट-चेक पढ़कर देखें कि वह इसी दावे के बारे में है या नहीं।",
+    "hi": {"alerts_title": "हाल की आधिकारिक चेतावनियाँ (NDMA)", "alerts_open": "चेतावनी खोलें", "alerts_note": "पिछले 24 घंटों में राष्ट्रीय आपदा प्रबंधन प्राधिकरण की प्रणाली से जारी चेतावनियाँ, जिनमें आपके संदेश की किसी जगह का नाम है। कई चेतावनियाँ कुछ ही घंटों की होती हैं, इसलिए समय देखें। ये संदर्भ के लिए हैं, संदेश पर फ़ैसला नहीं।",
+           "fc_title": "इस दावे का प्रकाशित फ़ैक्ट-चेक", "fc_note": "आपके संदेश के शब्द मिलाकर खोजा गया है, Sach ने इसे जाँचा नहीं है। फ़ैक्ट-चेकर ने क्या पाया, यह जानने के लिए इसे खोलें।",
            "reported": "समाचार संस्थानों ने यह खबर दी है", "denied": "समाचार संस्थानों के अनुसार यह सच नहीं है", "conflicting": "समाचार संस्थानों की खबरें अलग-अलग हैं",
            "single_report": "एक समाचार संस्थान ने इस पर खबर दी है", "no_reliable_report": "कोई भरोसेमंद खबर नहीं मिली",
            "note": "यह समाचार संस्थानों की खबर है। यह आधिकारिक पुष्टि नहीं है, और खबरें गलत भी हो सकती हैं।",
@@ -171,8 +171,8 @@ REPORTED_TEXT = {
            "answer": "उत्तर", "source": "स्रोत", "dates_title": "आधिकारिक तारीखें",
            "social_title": "सोशल मीडिया पर पोस्ट", "social_found": "मिली सार्वजनिक पोस्ट", "social_known": "स्थापित खातों से",
            "social_note": "Sach ये पोस्ट पढ़ नहीं सका, इसलिए ये सबूत नहीं हैं। बहुत सी पोस्ट होने से कोई दावा सच नहीं हो जाता।"},
-    "te": {"alerts_title": "అమలులో ఉన్న అధికారిక హెచ్చరికలు (NDMA)", "alerts_open": "హెచ్చరికను తెరవండి", "alerts_note": "ఇవి జాతీయ విపత్తు నిర్వహణ సంస్థ ప్రస్తుత హెచ్చరికలు, మీ సందేశంలోని ఒక ప్రాంతం పేరు వీటిలో ఉంది. ఇవి సూచన కోసం మాత్రమే, సందేశంపై తీర్పు కాదు.",
-           "fc_title": "సంబంధం ఉండగల ప్రచురిత ఫ్యాక్ట్-చెక్‌లు", "fc_rated": "వారి రేటింగ్", "fc_note": "పదాల పోలిక ఆధారంగా దొరికాయి, Sach వీటిని తనిఖీ చేయలేదు. ఇది అదే ప్రకటన గురించా కాదా అని ఫ్యాక్ట్-చెక్ చదివి చూడండి.",
+    "te": {"alerts_title": "ఇటీవలి అధికారిక హెచ్చరికలు (NDMA)", "alerts_open": "హెచ్చరికను తెరవండి", "alerts_note": "గత 24 గంటల్లో జాతీయ విపత్తు నిర్వహణ సంస్థ వ్యవస్థ ద్వారా జారీ అయిన హెచ్చరికలు, మీ సందేశంలోని ఒక ప్రాంతం పేరు వీటిలో ఉంది. చాలా హెచ్చరికలు కొన్ని గంటలే వర్తిస్తాయి, కాబట్టి సమయం చూడండి. ఇవి సూచన కోసం మాత్రమే, సందేశంపై తీర్పు కాదు.",
+           "fc_title": "ఈ ప్రకటనపై ప్రచురిత ఫ్యాక్ట్-చెక్", "fc_note": "మీ సందేశంలోని పదాల పోలిక ఆధారంగా దొరికింది, Sach దీన్ని తనిఖీ చేయలేదు. ఫ్యాక్ట్-చెకర్ ఏమి కనుగొన్నారో తెలుసుకోవడానికి దీన్ని తెరవండి.",
            "reported": "వార్తా సంస్థలు ఈ వార్తను ప్రచురించాయి", "denied": "వార్తా సంస్థల ప్రకారం ఇది నిజం కాదు", "conflicting": "వార్తా సంస్థల కథనాలు వేర్వేరుగా ఉన్నాయి",
            "single_report": "ఒక వార్తా సంస్థ దీనిపై కథనం ఇచ్చింది", "no_reliable_report": "నమ్మదగిన వార్త ఏదీ దొరకలేదు",
            "note": "ఇది వార్తా సంస్థల కథనం. ఇది అధికారిక ధృవీకరణ కాదు, వార్తలు తప్పు కూడా కావచ్చు.",
@@ -245,16 +245,19 @@ def panels_html(res: dict) -> str:
         out += (f'<section class="reported" style="{_NEUTRAL}"><p style="margin:0 0 6px"><b>📰 {_e(t[rep["status"]])}</b></p>'
                 f'<p class="note" style="margin:0 0 10px">{_e(note)}</p>' + (f'<ul style="margin:0;padding-left:18px">{items}</ul>' if items else "") + '</section>')
     if res.get("verdict") == UNVERIFIED and res.get("layer") == "live":
-        al = [a for a in res.get("alerts") or [] if str(a.get("url", "")).startswith("https://sachet.ndma.gov.in/")]
+        import time as _time
+        ad = res.get("alerts") if isinstance(res.get("alerts"), dict) else {}
+        fresh = isinstance(ad.get("at"), (int, float)) and 0 <= _time.time() - ad["at"] < 3 * 3600     # never an old alert from a cached or shared result
+        al = [a for a in (ad.get("items") or []) if isinstance(a, dict) and str(a.get("url", "")).startswith("https://sachet.ndma.gov.in/")] if fresh else []
         if al:
-            items = "".join(f'<li style="margin:0 0 8px">{_e(a.get("title", ""))} <a href="{_e(a["url"])}" rel="noopener" target="_blank">{_e(t["alerts_open"])}</a></li>' for a in al[:3])
+            items = "".join(f'<li style="margin:0 0 8px">{_e(a.get("title", ""))} <span class="note">{_e(a.get("published", ""))}</span> '
+                            f'<a href="{_e(a["url"])}" rel="noopener" target="_blank">{_e(t["alerts_open"])}</a></li>' for a in al[:3])
             out += (f'<section class="alerts" style="{_NEUTRAL}"><p style="margin:0 0 6px"><b>{_e(t["alerts_title"])}</b></p>'
                     f'<p class="note" style="margin:0 0 10px">{_e(t["alerts_note"])}</p><ul style="margin:0;padding-left:18px">{items}</ul></section>')
-        fc = [f for f in res.get("related_factchecks") or [] if str(f.get("url", "")).startswith("https://")]
-        if fc:
+        fc = [f for f in res.get("related_factchecks") or [] if isinstance(f, dict) and str(f.get("url", "")).startswith("https://")]
+        if fc:                                          # no rating words here: a FALSE beside Sach's UNVERIFIED would read as a verdict
             items = "".join(f'<li style="margin:0 0 8px"><a href="{_e(f["url"])}" rel="noopener" target="_blank"><b>{_e(f.get("publisher", ""))}</b></a>: '
-                            f'“{_e(f.get("claim", ""))}” <span class="note">{_e(t["fc_rated"])}: {_e(f.get("rating", ""))}'
-                            + (f' · {_e(f["date"])}' if f.get("date") else "") + '</span></li>' for f in fc[:3])
+                            f'“{_e(f.get("claim", ""))}”' + (f' <span class="note">{_e(f["date"])}</span>' if f.get("date") else "") + '</li>' for f in fc[:3])
             out += (f'<section class="related-fc" style="{_NEUTRAL}"><p style="margin:0 0 6px"><b>{_e(t["fc_title"])}</b></p>'
                     f'<p class="note" style="margin:0 0 10px">{_e(t["fc_note"])}</p><ul style="margin:0;padding-left:18px">{items}</ul></section>')
     soc = next(((c.get("trace") or {}).get("social") for c in res.get("claims") or [] if (c.get("trace") or {}).get("social")), None)

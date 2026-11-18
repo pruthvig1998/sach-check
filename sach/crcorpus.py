@@ -1,14 +1,13 @@
 """Offline corpus of published fact-checks (data/claimreview.sqlite, built by scripts/harvest_claimreview.py from the public Data Commons
 ClaimReview feed). Only reviews from the fact-checkers Sach already lists in sach/fetch.py are kept.
 
-Show-only: under an UNVERIFIED result it lists up to three published fact-checks that look related, with the publisher's name, their own rating
-words and a link. It is NOT the match layer: it never sets a verdict, never adds a citation, and says "may be related" because the gate here is
-word overlap, not a reviewed match. Numbers must agree, so a fact-check about Rs 5,000 is never shown for a claim about Rs 50,000.
+Show-only: under an UNVERIFIED result it lists up to three published fact-checks of the same claim, with the publisher's name and a link, and
+without the publisher's rating words. It is NOT the match layer: it never sets a verdict and never adds a citation. The gate is exact on
+purpose: the same key words and the same numbers, so a fact-check about another place or another amount is never shown.
 Switch off with SACH_CR_CORPUS=0. A missing or unreadable file means no results, never an error."""
 from __future__ import annotations
 import os, re, sqlite3
-from .pibfts import ROOT, _connect_ro, query_for
-from .stance import overlap, subject_coverage
+from .pibfts import ROOT, _STOP, _WORD, _connect_ro, query_for
 
 DB_PATH = os.path.join(ROOT, "data", "claimreview.sqlite")
 SCHEMA = """
@@ -26,8 +25,15 @@ def _numbers(t: str) -> set:
     return set(re.findall(r"\d+", (t or "").replace(",", "")))
 
 
+def _key_words(t: str) -> frozenset:
+    """The words that carry a claim's meaning: every word of four or more characters that is not a stop word."""
+    return frozenset(w for w in _WORD.findall((t or "").lower()) if len(w) >= 4 and w not in _STOP and not w.isdigit())
+
+
 def search(claim: str, top_n: int = 3, path: str | None = None, pool: int = 40) -> list[dict]:
-    """Published fact-checks whose reviewed claim is close to `claim`: [{claim, rating, publisher, url, date}], best first."""
+    """Published fact-checks of the SAME claim: [{claim, publisher, url, date}]. The reviewed claim must use the same key words as `claim`
+    (so "crashed in Ahmedabad" never matches "crashed in Kerala") and the same numbers. The publisher's rating is deliberately not returned:
+    a rating word beside Sach's own UNVERIFIED would read as a verdict. The reader opens the fact-check to see it."""
     path = path or DB_PATH
     q = query_for(claim)
     if not enabled() or not q or not os.path.exists(path):
@@ -35,17 +41,14 @@ def search(claim: str, top_n: int = 3, path: str | None = None, pool: int = 40) 
     try:
         con = _connect_ro(path)
         try:
-            rows = con.execute("select r.claim, r.rating, r.publisher, r.url, r.date from fts join reviews r on r.rowid = fts.rowid "
+            rows = con.execute("select r.claim, r.publisher, r.url, r.date from fts join reviews r on r.rowid = fts.rowid "
                                "where fts match ? order by bm25(fts) limit ?", (q, pool)).fetchall()
         finally:
             con.close()
     except sqlite3.Error:
         return []
-    hits = []
-    for c, rating, pub, url, date in rows:
-        cov, ov = subject_coverage(claim, c or ""), overlap(claim, c or "")
-        back = subject_coverage(c or "", claim)                      # both ways: each text must be mostly about what the other says
-        if cov >= 0.8 and back >= 0.6 and ov >= 0.6 and _numbers(claim) == _numbers(c) and str(url).startswith("https://"):
-            hits.append((round(0.5 * cov + 0.5 * ov, 4), {"claim": c, "rating": rating or "", "publisher": pub or "", "url": url, "date": date or ""}))
-    hits.sort(key=lambda x: -x[0])
-    return [h for _, h in hits[:top_n]]
+    mine, hits = _key_words(claim), []
+    for c, pub, url, date in rows:
+        if len(mine) >= 3 and _key_words(c) == mine and _numbers(claim) == _numbers(c) and str(url).startswith("https://"):
+            hits.append({"claim": c, "publisher": pub or "", "url": url, "date": date or ""})
+    return hits[:top_n]

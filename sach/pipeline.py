@@ -253,7 +253,7 @@ def check_forward(text: str, retrievers, llm=None, log=True, reply_lang: str | N
                 out["related_factchecks"] = rel
             al = _alerts.related(" ".join(qs))
             if al:
-                out["alerts"] = al
+                out["alerts"] = {"at": int(time.time()), "items": al}     # the panel hides them three hours later (cached and shared results)
         except Exception:
             pass
     ref = refstore.panel_facts(text)

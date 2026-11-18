@@ -266,15 +266,16 @@ def _corpus(tmp_path, rows):
     return p
 
 
-def test_related_fact_checks_need_a_close_match_and_equal_numbers(tmp_path):
+def test_related_fact_checks_need_the_same_words_and_numbers_and_show_no_rating(tmp_path):
     from sach import crcorpus
     p = _corpus(tmp_path, [("https://factly.in/a", "Government will give Rs 5000 to every woman under a new scheme", "False", "FACTLY", "2026-01-02"),
-                           ("https://factly.in/b", "Drinking the strained juice of raw cassava cures cancer", "False", "FACTLY", "2026-01-03"),
+                           ("https://factly.in/b", "Video shows a pilot of Air India flight that crashed in Ahmedabad speaking to his mother", "False", "FACTLY", "2026-01-03"),
                            ("http://factly.in/c", "Plain http link is never shown for this exact claim text here", "False", "FACTLY", "2026-01-04")])
-    hit = crcorpus.search("Government will give Rs 5000 to every woman under a new scheme", path=p)
-    assert [h["url"] for h in hit] == ["https://factly.in/a"] and hit[0]["rating"] == "False"
-    assert crcorpus.search("Government will give Rs 50000 to every woman under a new scheme", path=p) == []      # a different amount is a different claim
-    assert crcorpus.search("Drinking hot water cures cancer", path=p) == []                                      # shares words, not the claim
+    hit = crcorpus.search("The government will give Rs 5000 to every woman under a new scheme.", path=p)
+    assert [h["url"] for h in hit] == ["https://factly.in/a"] and "rating" not in hit[0]              # their rating word is never carried
+    assert crcorpus.search("Government will give Rs 50000 to every woman under a new scheme", path=p) == []      # a different amount
+    assert crcorpus.search("Video shows a pilot of Air India flight that crashed in Kerala speaking to his mother", path=p) == []   # another place
+    assert crcorpus.search("Government will give Rs 5000 to every man under a new scheme", path=p) == []         # one key word differs
     assert crcorpus.search("Plain http link is never shown for this exact claim text here", path=p) == []
     assert crcorpus.search("anything at all", path=str(tmp_path / "missing.sqlite")) == []
 
@@ -292,28 +293,47 @@ def test_the_shipped_corpus_holds_only_listed_indian_fact_checkers():
         assert not url.split("/")[2].startswith(("srilanka.", "cambodia.", "thailand."))
 
 
-def test_alerts_match_on_a_place_name_and_only_for_hazard_claims():
+NOW = 1794853400.0                       # 16 Nov 2026, about 18:23 GMT
+FEED_XML = """<rss><channel>
+<item><title>IMD Guwahati has issued forecast for Thunderstorm with Lightning which is very likely to occur at a few places over Kamrup and Kamrup Metropolitan in next 3 hours. Issued in Public Interest by ASDMA.</title>
+<link>https://sachet.ndma.gov.in/cap_public_website/FetchXMLFile?identifier=1</link><pubDate>Mon, 16 Nov 2026 17:42:52 GMT</pubDate></item>
+<item><title>Heavy rain very likely over Chennai in next 3 hours.</title><link>https://sachet.ndma.gov.in/x?identifier=2</link><pubDate>Thu, 05 Nov 2026 10:35:27 GMT</pubDate></item>
+<item><title>Very High Forest Fire Risk reported by Disaster Management Department</title><link>https://sachet.ndma.gov.in/x?identifier=3</link><pubDate>Mon, 16 Nov 2026 17:00:00 GMT</pubDate></item>
+<item><title>Evil alert over Kamrup</title><link>https://evil.example/x</link><pubDate>Mon, 16 Nov 2026 17:42:52 GMT</pubDate></item>
+</channel></rss>"""
+
+
+def test_alerts_need_the_same_hazard_the_same_place_and_a_recent_issue_time():
     from sach import alerts
-    feed = """<rss><channel><item><title>IMD Guwahati has issued forecast for Thunderstorm with Lightning which is very likely to occur at a few places over Kamrup in next 3 hours.</title>
-    <link>https://sachet.ndma.gov.in/cap_public_website/FetchXMLFile?identifier=1</link><pubDate>Mon, 16 Nov 2026 17:42:52 GMT</pubDate></item>
-    <item><title>Evil alert over Kamrup</title><link>https://evil.example/x</link></item></channel></rss>"""
-    items = alerts.parse(feed)
-    assert len(items) == 1 and items[0]["url"].startswith("https://sachet.ndma.gov.in/")            # a link off the SACHET host is dropped
-    assert alerts.related("Thunderstorm warning for Kamrup tonight, stay indoors", items=items) == items
-    assert alerts.related("Heavy rain: schools closed in Mumbai tomorrow", items=items) == []          # another place
-    assert alerts.related("Kamrup collector announces new ration scheme", items=items) == []           # no hazard: the feed is not even read
+    items = alerts.parse(FEED_XML)
+    assert len(items) == 3 and all(i["url"].startswith("https://sachet.ndma.gov.in/") for i in items)   # a link off the SACHET host is dropped
+    rel = lambda text: [a["url"][-1] for a in alerts.related(text, items=items, now=NOW)]
+    assert rel("Thunderstorm warning for Kamrup tonight, stay indoors") == ["1"]
+    for wrong in ("Heavy rain: schools closed in Mumbai tomorrow",                 # another place
+                  "Earthquake tremors felt in Kamrup this evening",                # another kind of hazard
+                  "Heavy rain in Chennai, all schools closed tomorrow",            # that alert is eleven days old
+                  "Storm damages houses, video from Guwahati",                     # Guwahati is the issuing office, not the area
+                  "Hyderabad heavy rain, Department says roads closed",            # a common capitalised word is not a place
+                  "Kamrup collector announces new ration scheme"):                 # no hazard at all
+        assert rel(wrong) == [], wrong
     assert alerts.parse("<not xml") == []
 
 
-def test_alerts_and_related_fact_checks_are_show_only(monkeypatch):
+def test_alerts_and_related_fact_checks_are_show_only_and_alerts_expire(monkeypatch):
+    import time
     from sach import alerts, crcorpus
-    monkeypatch.setattr(crcorpus, "search", lambda q, **k: [{"claim": "<b>c</b>", "rating": "False", "publisher": "FACTLY", "url": "https://factly.in/a", "date": "2026-01-02"}])
-    monkeypatch.setattr(alerts, "related", lambda t, **k: [{"title": "Alert over <i>Kamrup</i>", "url": "https://sachet.ndma.gov.in/x", "published": ""}])
+    monkeypatch.setattr(crcorpus, "search", lambda q, **k: [{"claim": "<b>c</b>", "publisher": "FACTLY", "url": "https://factly.in/a", "date": "2026-01-02"}])
+    monkeypatch.setattr(alerts, "related", lambda t, **k: [{"title": "Alert over <i>Kamrup</i>", "url": "https://sachet.ndma.gov.in/x", "published": "now"}])
     res, _ = check("Cyclone will hit Kamrup district tomorrow and all schools are closed.", [], use_cache=False)
     c = res["claims"][0]
     assert res["verdict"] == UNVERIFIED and c["reason_code"] == "no_evidence" and c["citations"] == [] and "FACTLY" not in res["card"]
     html = result_block(res, text="x")
-    assert "Published fact-checks that may be related" in html and "Official alerts in force" in html and "<b>c</b>" not in html and "<i>Kamrup" not in html
+    assert "A published fact-check of this claim" in html and "Recent official alerts" in html and "<b>c</b>" not in html and "<i>Kamrup" not in html
+    assert "False" not in html.split("related-fc")[1].split("</section>")[0]                         # no rating word in that panel
+    old = {**res, "alerts": {**res["alerts"], "at": int(time.time()) - 4 * 3600}}                     # the same result served from a cache or a share link later
+    assert "Recent official alerts" not in result_block(old, text="x")
+    junk = {**res, "alerts": ["x"], "related_factchecks": ["y", 3]}                                   # malformed stored values never break the page
+    assert "result" in result_block(junk, text="x")
     off = Evidence("Ministry", "https://example.gov.in/note", TIER_OFFICIAL, TS, "CONFIRM official note", "CONFIRM official note")
     res2, _ = check("Cyclone will hit Kamrup district tomorrow and all the schools are closed.", [off], use_cache=False)
     assert res2["verdict"] == "TRUE" and "related_factchecks" not in res2 and "alerts" not in res2                 # only under UNVERIFIED

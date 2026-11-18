@@ -156,8 +156,8 @@ Owner decisions: all three labels approved; free sources only; social media to b
 **Deployed:** the first pass (reference store, question mode, news tier and social signal behind their switches) is on production as commit `af491163`. Checked live: "When is Diwali in 2026?" returns the ANSWER card; "Rakhi Sawant passed away" goes through the normal check.
 
 **Built in this pass (branch `kb-phase2`)**
-- Phase 2: official NDMA alerts in force, shown beside hazard claims that name the same place. All India Radio and DD News count as news agencies in the news tier.
-- Phase 4: an offline corpus of 12,477 published Indian fact-checks from the Data Commons feed, shown as "may be related" links.
+- Phase 2: NDMA alerts issued in the last 24 hours, shown beside a claim about the same hazard in the same place. All India Radio and DD News count as news agencies in the news tier.
+- Phase 4: an offline corpus of 12,477 published Indian fact-checks from the Data Commons feed. A fact-check of the same claim (same key words and numbers) is shown as a link, without its rating word.
 - Outreach drafts for the owner: `docs/outreach.md`.
 
 **Decided against**

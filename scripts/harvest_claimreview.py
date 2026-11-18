@@ -31,7 +31,9 @@ def rows(feed: dict):
                     or host.startswith(NOT_INDIA) or url in seen):
                 continue
             seen.add(url)
-            yield url, claim[:300], rating[:80], " ".join(str((it.get("author") or {}).get("name") or "").split())[:80], date
+            au = it.get("author") or {}
+            org = " ".join(str(au.get("name") or "").split()) if au.get("@type") == "Organization" else ""
+            yield url, claim[:300], rating[:80], (org or host.removeprefix("www."))[:80], date     # an organisation's name, else the site: never a person's byline
 
 
 def build(feed: dict, out: str) -> int:
