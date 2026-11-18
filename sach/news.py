@@ -92,10 +92,11 @@ def is_death_claim(text: str) -> bool:
 def assess(claim: str, evidence: list, searched: bool) -> dict | None:
     """What established news organisations say about `claim`, from the judged news-tier evidence. None when the news tier has nothing to say.
     `searched`: the news search ran and answered, so finding no report is itself information (for event-type claims only)."""
-    conf, den = {}, {}
+    conf, den, found = {}, {}, 0
     for e in evidence:
         if getattr(e, "tier", "") != TIER_NEWS:
             continue
+        found += 1
         g = group_of(e.url)
         if not g:
             continue
@@ -112,7 +113,8 @@ def assess(claim: str, evidence: list, searched: bool) -> dict | None:
         status = "denied"
     elif conf or den:
         status = "single_report"
-    elif searched and _recent_death_claim(claim):
+    elif searched and not found and _recent_death_claim(claim):   # silence = the search found NO page on the listed outlets; pages that were
+        # found but not judged as support are not silence (live test: four outlets reported a death and the old rule still said "no report")
         status = "no_reliable_report"
     else:
         return None

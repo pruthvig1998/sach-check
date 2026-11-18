@@ -395,3 +395,19 @@ def test_the_news_search_runs_even_when_the_official_search_found_an_unrelated_p
     ev, run = retrieve.BraveRetriever(key="k", chain=Chain()).search_with_status(DEATH)
     assert any(e.tier == TIER_OFFICIAL for e in ev)                        # an official page was found (unrelated, not yet judged)
     assert run.news is True and any("site:ptinews.com" in q for q in seen)   # and the news search still ran
+
+
+def test_news_pages_found_but_not_confirmed_are_not_silence():
+    assert news.assess(DEATH, _ev(("thehindu.com", "none"), ("ndtv.com", "none")), True) is None       # pages exist: never "no reliable report"
+    assert news.assess(DEATH, [], True)["status"] == "no_reliable_report"                                # nothing found at all
+
+
+def test_the_overlap_rule_can_second_a_news_report_but_never_reaches_a_verdict():
+    from sach.stance import heuristic_stance
+    claim = "Veteran Telugu actor Example Kumar passed away in Hyderabad"
+    title, text = "Veteran Telugu actor Example Kumar dies at 80", "Veteran Telugu actor Example Kumar passed away in Hyderabad on Monday after a brief illness."
+    assert heuristic_stance(claim, title, text, "news") == "confirms" and heuristic_stance(claim, title, text, "official") == "confirms"
+    assert heuristic_stance(claim, title, text, "factchecker") == "none"
+    assert heuristic_stance(claim, "Example Kumar is alive, death rumours are fake", "Example Kumar is alive, rumours fake", "news") == "none"
+    e = Evidence("thehindu.com", "https://www.thehindu.com/x", news.TIER_NEWS, TS, title, text); e.stance = "confirms"
+    assert verdict.decide(Claim(claim), [e]).verdict == UNVERIFIED

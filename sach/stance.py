@@ -188,7 +188,9 @@ def heuristic_stance(claim: str, title: str, text: str, tier: str) -> str:
         return "mixed" if tier == "official" and not _STRICT_DEBUNK.search(title) else "none"
     if tier == "pib_debunk" and _STRICT_DEBUNK.search(title) and subject_coverage(claim, title) >= 0.6 and overlap(claim, title) >= 0.4:
         return "contradicts"
-    return "confirms" if overlap(claim, page) >= 0.8 and tier == "official" and not _STRICT_DEBUNK.search(page) else "none"
+    # tier "news" (sach/news.py) gets the same second-opinion rule as an official page. It can only make a claim REPORTED: verdict.decide ignores
+    # that tier, so this opens no route to TRUE. Without it a lone judge model could never confirm a news report (live test, 18 Nov 2026).
+    return "confirms" if overlap(claim, page) >= 0.8 and tier in ("official", "news") and not _STRICT_DEBUNK.search(page) else "none"
 
 _DENIAL = re.compile(r"\b(fake|false|fictitious|fabricated|forged|fraudulent|scam|hoax|baseless|misleading|misinformation|"
                       r"no such|not true|not been issued|has not issued|denies|denied|clarif\w+|no proposal|not giving|"
