@@ -73,8 +73,12 @@ def as_statement(text: str) -> str:
     m = _Q_EN.match(t)
     if m:
         subj, rest = (m.group("a") or m.group("b")).strip(), m.group("rest") or ""
-        if (len(subj.split()) <= 6 and re.search(r"\b[A-Z][a-z]", subj) and not _REFUSE.search(subj + " " + rest)):
-            return f"{subj} has died{rest}.".replace(" .", ".")       # "died", not "passed away": reports mostly say "dies" or "died"
+        names = re.findall(r"(?:\b[A-Z][\w'.-]*(?:\s+|$))+", subj)
+        if len(subj.split()) <= 6 and names and not _REFUSE.search(subj + " " + rest):
+            # only the person's name (the last run of capitalised words): "senior", "veteran", "actor" in the question must not have to match
+            # the report word for word ("senior" is also an eligibility word that the quote check requires). "died", not "passed away":
+            # reports mostly say "dies" or "died".
+            return f"{names[-1].strip()} has died{rest}.".replace(" .", ".")
         return ""
     m = _Q_HI.match(t)
     if m and not re.search(r"नहीं\s+(?:हुआ|हुई|हो)", m.group(1)):
