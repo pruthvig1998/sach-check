@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><title>Sach logo, small sizes</title>
+  <!-- Small-size cut (favicon, 16-48 px): same idea, heavier: border 28, arrow 28 thick, larger head, frame fills more of the box. -->
+  <g transform="rotate(-8 128 128)">
+    <path fill="#000" fill-rule="evenodd" d="M36 44 H220 a16 16 0 0 1 16 16 V196 a16 16 0 0 1 -16 16 H36 a16 16 0 0 1 -16 -16 V60 a16 16 0 0 1 16 -16 Z
+      M54 72 a6 6 0 0 0 -6 6 V178 a6 6 0 0 0 6 6 H202 a6 6 0 0 0 6 -6 V78 a6 6 0 0 0 -6 -6 Z"/>
+    <path fill="#000" d="M70 178 V164 A62 62 0 0 1 132 102 V130 A34 34 0 0 0 98 164 V178 Z M128 76 L188 116 L128 156 Z"/>
+  </g>
+</svg>

@@ -54,6 +54,17 @@ def _chunk(tag: bytes, data: bytes) -> bytes:
 
 @lru_cache(maxsize=16)
 def icon_png(size: int, maskable: bool = False) -> bytes:
+    """The app icon: the logo kit's PNG (sach/assets/logo, the 'forward, stamped' mark of 19 Nov 2026), or the drawn S if the file is missing."""
+    import os
+    p = os.path.join(os.path.dirname(__file__), "assets", "logo", f"{'maskable' if maskable else 'icon'}-{size}.png")
+    try:
+        with open(p, "rb") as f:
+            return f.read()
+    except OSError:
+        return _drawn_icon_png(size, maskable)
+
+
+def _drawn_icon_png(size: int, maskable: bool = False) -> bytes:
     """RGBA PNG. Regular icons have rounded transparent corners. Maskable (and the 180 px Apple icon, which iOS masks itself)
     are full-bleed with the S kept inside the central safe zone."""
     full_bleed = maskable or size == 180

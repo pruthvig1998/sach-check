@@ -71,6 +71,7 @@ a{color:inherit}.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
 header.nav{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--paper) 94%,transparent);backdrop-filter:blur(6px);border-bottom:2px solid var(--rule)}
 .nav .wrap{display:flex;align-items:center;flex-wrap:wrap;gap:6px 22px;min-height:58px;padding-top:6px;padding-bottom:6px}
 .logo{font-family:var(--serif);font-weight:900;font-size:26px;text-decoration:none;letter-spacing:-.02em}
+.logomark{width:1.15em;height:1.15em;vertical-align:-.22em;margin-right:.18em;color:var(--false)}
 .logo small{font-weight:500;font-size:14px;margin-left:8px;color:var(--mute)}
 .nav nav{margin-left:auto;display:flex;gap:18px;font-size:15px;font-weight:500;align-items:center}
 .nav nav a{text-decoration:none;border-bottom:2px solid transparent}.nav nav a:hover{border-color:var(--ink)}
@@ -433,14 +434,14 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards", path: 
 <meta property="og:type" content="website"><meta property="og:site_name" content="Sach"><meta property="og:locale" content="en_IN"><meta property="og:url" content="{canon}">
 <meta property="og:image" content="{img}"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="{esc(OG_ALT)}">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Sach — cited verdicts for viral forwards"><meta name="twitter:description" content="{OG_DESC}"><meta name="twitter:image" content="{img}"><meta name="twitter:image:alt" content="{esc(OG_ALT)}">
-<meta name="theme-color" content="#f2ebdb"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23c2321f'/%3E%3Ctext x='32' y='45' font-size='40' text-anchor='middle' fill='white' font-family='serif' font-weight='900'%3ES%3C/text%3E%3C/svg%3E">
+<meta name="theme-color" content="#f2ebdb"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Crect width='256' height='256' rx='56' fill='%23c2321f'/%3E%3Cg transform='translate(128 128) scale(.84) translate(-128 -128)'%3E%3Cg transform='rotate(-8 128 128)'%3E %3Cpath fill='%23f2ebdb' fill-rule='evenodd' d='M36 44 H220 a16 16 0 0 1 16 16 V196 a16 16 0 0 1 -16 16 H36 a16 16 0 0 1 -16 -16 V60 a16 16 0 0 1 16 -16 Z M54 72 a6 6 0 0 0 -6 6 V178 a6 6 0 0 0 6 6 H202 a6 6 0 0 0 6 -6 V78 a6 6 0 0 0 -6 -6 Z'/%3E %3Cpath fill='%23f2ebdb' d='M70 178 V164 A62 62 0 0 1 132 102 V130 A34 34 0 0 0 98 164 V178 Z M128 76 L188 116 L128 156 Z'/%3E %3C/g%3E%3C/g%3E%3C/svg%3E">
 <link rel="icon" type="image/png" href="/?view=icon&amp;size=192">
 {pwa.HEAD}
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="{FONTS}" rel="stylesheet"><style>{CSS}{VOICE_CSS}{share.CSS}{linkcheck.CSS}</style>
 <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>{motion.head()}</head><body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="nav"><div class="wrap"><a class="logo" href="/" title="Sach (Hindi सच) and nijam (Telugu నిజం) both mean “truth”">Sach<small><span class="sc">सच · నిజం · </span>truth</small></a>
+<header class="nav"><div class="wrap"><a class="logo" href="/" title="Sach (Hindi सच) and nijam (Telugu నిజం) both mean “truth”"><svg class="logomark" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><g transform="rotate(-8 128 128)"> <path fill="currentColor" fill-rule="evenodd" d="M36 44 H220 a16 16 0 0 1 16 16 V196 a16 16 0 0 1 -16 16 H36 a16 16 0 0 1 -16 -16 V60 a16 16 0 0 1 16 -16 Z M54 72 a6 6 0 0 0 -6 6 V178 a6 6 0 0 0 6 6 H202 a6 6 0 0 0 6 -6 V78 a6 6 0 0 0 -6 -6 Z"/> <path fill="currentColor" d="M70 178 V164 A62 62 0 0 1 132 102 V130 A34 34 0 0 0 98 164 V178 Z M128 76 L188 116 L128 156 Z"/> </g></svg>Sach<small><span class="sc">सच · నిజం · </span>truth</small></a>
 <nav aria-label="Main"><a href="/#check">Check</a><a class="opt" href="/#how">How it works</a><a class="opt" href="/#rules">Rules</a><a class="opt" href="/#faq">FAQ</a>
 <a href="/?view=ledger">Ledger</a><a class="opt" href="/?view=impact">Impact</a><a class="opt" href="{REPO}" rel="noopener">GitHub</a></nav><button id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button></div></header>
 <main id="main">{body}</main>
