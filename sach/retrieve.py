@@ -96,6 +96,9 @@ import threading, time as _time
 from . import news as _news
 from .search import (SearchChain, SearchRun, BRAVE_MIN_INTERVAL_S, _brave_last, _brave_throttle, grounded_credential_usable)   # noqa: F401 (re-exported: older tests patch them here)
 
+# Every step of the web search finishes by MAIN_END_BY_S. Before 18 Nov 2026 the steps ran one after another with a 25 s page timeout, so two slow
+# steps overran the pipeline's 30 s retrieval deadline and ALL of this retriever's evidence was dropped ("search down" on production).
+MAIN_END_BY_S = 26
 EXTRA_BOX_S = 12          # news/social get at most this long
 EXTRA_END_BY_S = 26       # and must end this many seconds after the retriever started: inside the pipeline's 30 s retrieval deadline
 
@@ -214,6 +217,7 @@ class BraveRetriever:
 
     def _search_claim(self, claim: str) -> list[Evidence]:
         t0 = _time.monotonic()
+        left = lambda: max(0.05, t0 + MAIN_END_BY_S - _time.monotonic())
         short, kw = self._short(claim), self._keywords(claim)
         out, seen = [], set()
 
@@ -227,19 +231,44 @@ class BraveRetriever:
                 todo.append(u)
             if not todo:
                 return
-            from concurrent.futures import ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=min(4, len(todo))) as ex:   # pages fetched in parallel; results kept in search order
-                for e in ex.map(lambda u: self._evidence(u, tier), todo):
-                    if e:
-                        out.append(e)
+            from concurrent.futures import ThreadPoolExecutor, wait
+            ex = ThreadPoolExecutor(max_workers=min(4, len(todo)))      # pages fetched in parallel; results kept in search order
+            futs = [ex.submit(self._evidence, u, tier) for u in todo]
+            wait(futs, timeout=left())                                  # a page still loading at the deadline is dropped, not waited for
+            ex.shutdown(wait=False)
+            for f in futs:
+                if f.done() and f.exception() is None and f.result():
+                    out.append(f.result())
 
-        pib_urls = self._urls(f"site:pib.gov.in {short}", is_pib, self.per_query + 1)
+        def urls(q, check, limit):
+            """A search that must answer before the deadline. One that is still running then is abandoned and recorded as unanswered."""
+            from concurrent.futures import ThreadPoolExecutor
+            run = getattr(self._tls, "run", None)
+            if left() <= 0.05:
+                if run is not None:
+                    run.record(False, None)                             # no time left to ask: an unanswered search, not a silent one
+                return []
+            def work():
+                self._tls.run = run
+                return self._urls(q, check, limit)
+            import threading as _th
+            ex = ThreadPoolExecutor(max_workers=1, thread_name_prefix=_th.current_thread().name)    # traceable to the claim that asked
+            try:
+                return ex.submit(work).result(timeout=left())
+            except Exception:
+                if run is not None:
+                    run.record(False, None)                             # too slow: said out loud, as a failed search
+                return []
+            finally:
+                ex.shutdown(wait=False)
+
+        pib_urls = urls(f"site:pib.gov.in {short}", is_pib, self.per_query + 1)
         if not pib_urls and kw != short:
-            pib_urls = self._urls(f"site:pib.gov.in {kw}", is_pib, self.per_query)      # second PIB try, keyword form
+            pib_urls = urls(f"site:pib.gov.in {kw}", is_pib, self.per_query)      # second PIB try, keyword form
         add(pib_urls, TIER_OFFICIAL)
-        add([u for u in self._urls(f"{kw} {self.OFFICIAL_Q}", is_official, self.per_query + 2) if not is_pib(u)][: self.per_query], TIER_OFFICIAL)
+        add([u for u in urls(f"{kw} {self.OFFICIAL_Q}", is_official, self.per_query + 2) if not is_pib(u)][: self.per_query], TIER_OFFICIAL)
         if not any(e.tier in (TIER_PIB, TIER_OFFICIAL) for e in out):
-            add(self._urls(f"{short} {self.FC_Q}", is_factchecker, self.per_query), TIER_FACTCHECKER)
+            add(urls(f"{short} {self.FC_Q}", is_factchecker, self.per_query), TIER_FACTCHECKER)
         run = getattr(self._tls, "run", None)
         # News and social searches. They run whether or not official pages were found (the official search nearly always returns some page, often
         # unrelated, and nothing is judged yet), but in a time box of their own and with their own search record: a slow or failed news search

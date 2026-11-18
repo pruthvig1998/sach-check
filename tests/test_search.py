@@ -244,7 +244,7 @@ def test_parallel_claims_do_not_mix_up_statuses(monkeypatch):
         def search(self, q, count=8):
             try: barrier.wait(timeout=0.5)                       # force the claims to overlap inside the search
             except threading.BrokenBarrierError: pass
-            if plan[threading.current_thread().name] == "fail":
+            if plan[threading.current_thread().name.split("_")[0]] == "fail":     # searches run in a worker named after the claim's thread
                 raise http(503)
             return []
     r = R.BraveRetriever(key="k", chain=SearchChain([Prov()]))

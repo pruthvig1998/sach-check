@@ -550,3 +550,31 @@ def test_a_death_question_is_judged_as_a_statement_on_news_pages_and_as_written_
     assert ("official", q) in seen and (news.TIER_NEWS, "veteran actor Example Kumar has died.") in seen
     assert res["verdict"] == UNVERIFIED and res["claims"][0]["trace"]["reported"]["status"] == "reported"
     assert res["claims"][0]["claim"]["text"] == q                                  # the user's own words are kept
+
+
+def test_the_web_search_finishes_by_its_deadline_and_keeps_what_arrived(monkeypatch):
+    import time
+    from sach import retrieve
+    monkeypatch.delenv("SACH_NEWS_TIER", raising=False)
+    monkeypatch.setattr(retrieve, "MAIN_END_BY_S", 0.8)
+    class Chain:
+        configured = True
+        def new_run(self):
+            from sach.search import SearchRun
+            return SearchRun()
+        def search(self, q, count, run=None):
+            if "site:pib.gov.in" in q:
+                run.record(True, "fake")
+                return ["https://pib.gov.in/PressReleasePage.aspx?PRID=1", "https://pib.gov.in/PressReleasePage.aspx?PRID=2"]
+            time.sleep(3)                                                   # the wider official search hangs
+            return ["https://example.gov.in/late"]
+    def fetch(u):
+        if "PRID=2" in u:
+            time.sleep(3)                                                   # one page hangs
+        return {"status": 200, "final_url": u, "body": "<title>T</title><p>text</p>", "fetched_at": TS}
+    monkeypatch.setattr(retrieve, "fetch", fetch)
+    t = time.time()
+    ev, run = retrieve.BraveRetriever(key="k", chain=Chain()).search_with_status("Government will give Rs 5000 to every woman")
+    assert time.time() - t < 1.6                                            # did not wait for the hung search or page
+    assert [e.url for e in ev] == ["https://pib.gov.in/PressReleasePage.aspx?PRID=1"]     # the page that arrived is kept
+    assert run.status == "partial"                                          # and the abandoned search is reported, not hidden
