@@ -532,6 +532,9 @@ def test_death_questions_become_statements_for_the_news_judge_only():
     assert s("Has Zakir Hussain died?") == "Zakir Hussain has died."
     assert s("Is Example Kumar dead?") == "Example Kumar has died."
     assert s("क्या अभिनेता गिरी बाबू का निधन हो गया?") == "अभिनेता गिरी बाबू का निधन हो गया।"
+    assert s("నటుడు గిరిబాబు చనిపోయారా?") == "నటుడు గిరిబాబు చనిపోయారు."
+    assert s("సీనియర్ నటుడు గిరిబాబు మరణించారా ?") == "సీనియర్ నటుడు గిరిబాబు మరణించారు."
+    assert s("గిరిబాబు సినిమా విడుదలైందా?") == ""                                  # not a death question: left as it is
     for not_one in ("Giri Babu passed away.", "When is Diwali?", "Did the government give Rs 5000 to every woman under a new scheme today in all the states?",
                     "Did you know that drinking water cures cancer?", "", "क्या?"):
         assert s(not_one) == "" or "has died" not in s(not_one), not_one

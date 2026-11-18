@@ -62,6 +62,9 @@ _Q_DEATH_EN = [
     (re.compile(r"^\s*(?:is|was)\s+(.+?)\s+(?:dead|no more)\b(.*?)\s*[?？]*\s*$", re.I), r"\1 has died\2."),
 ]
 _Q_HI = re.compile(r"^\s*क्या\s+(.+?)\s*[?？]+\s*$")
+# Telugu: the question is the verb with the question vowel "ా" ("చనిపోయారా?" = "did he/she die?"); the statement ends in "ు" instead.
+# Only these death verbs. NOT NATIVE-REVIEWED.
+_Q_TE = re.compile(r"^\s*(.+?\s)(చనిపోయార|మరణించార|కన్నుమూశార|చనిపోయాడ|మరణించాడ|కన్నుమూశాడ|చనిపోయింద|మరణించింద)ా\s*[?？]+\s*$")
 
 
 def as_statement(text: str) -> str:
@@ -74,6 +77,9 @@ def as_statement(text: str) -> str:
     m = _Q_HI.match(t)
     if m and len(m.group(1).split()) >= 3:
         return m.group(1).rstrip("।") + "।"
+    m = _Q_TE.match(t)
+    if m and len(m.group(1).split()) <= 8:
+        return m.group(1) + m.group(2) + "ు."
     return ""
 
 
