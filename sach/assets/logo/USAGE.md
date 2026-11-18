@@ -13,6 +13,7 @@
 | App icon | `symbol-tile.svg`, `icon-192.png`, `icon-512.png`, `maskable-512.png`, `apple-touch-icon.png` |
 | Favicon (built from the heavier small-size cut `symbol-small.svg`) | `favicon.ico`, `favicon.svg`, `favicon-16/32/48.png` |
 | Website `<head>` | `head-snippet.html`, `site.webmanifest` |
+| Link preview (WhatsApp, X, LinkedIn): served at `/?view=ogimage` | `og-1200x630.png` (stacked logo, centred for square crops) |
 
 ## Colours
 | Name | HEX | RGB | Use |

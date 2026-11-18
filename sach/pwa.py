@@ -129,8 +129,18 @@ def _glyph_sd(kind: str, x: float, y: float) -> float:
 
 @lru_cache(maxsize=1)
 def og_png() -> bytes:
-    """1200x630 RGB PNG for link previews: paper background, the red rounded-square S mark, and four tilted verdict-stamp outlines.
-    No text on purpose (social apps show the page title and description beside it)."""
+    """1200x630 RGB PNG for link previews: the logo kit's file (sach/assets/logo/og-1200x630.png, the stacked 'forward, stamped' logo,
+    centred so a square crop in WhatsApp keeps it), or the older drawn card if the file is missing."""
+    import os
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "assets", "logo", "og-1200x630.png"), "rb") as f:
+            return f.read()
+    except OSError:
+        return _drawn_og_png()
+
+
+def _drawn_og_png() -> bytes:
+    """Fallback: paper background, the red rounded-square S mark, and four tilted verdict-stamp outlines. No text."""
     W, H = OG_W, OG_H
     img = bytearray(bytes(_PAPER) * (W * H))
 

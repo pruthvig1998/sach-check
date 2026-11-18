@@ -416,7 +416,7 @@ def eval_stats_html(d: dict | None) -> str:
 
 DESC = f"Paste a WhatsApp forward. Sach checks it against PIB and official sources and returns a cited verdict in English and {N_INDIAN} Indian languages."
 OG_DESC = f"Got a forward? Get the receipts. PIB-first fact-checking in English and {N_INDIAN} Indian languages."
-OG_ALT = "Sach: a red S mark beside four tilted verdict stamps for true, false, misleading and unverified."
+OG_ALT = "Sach logo: a forward arrow inside a tilted red stamp, above the word Sach."
 ROBOTS_INDEX, ROBOTS_NOINDEX = "index,follow", "noindex,follow"
 
 
@@ -426,7 +426,7 @@ def layout(body: str, title="Sach — cited verdicts for viral forwards", path: 
     tip_link = ' · <a href="/#tip">Tip jar ☕</a>' if cfg else ""
     base = site_url()
     canon = esc(base + path, quote=True)
-    img = esc(base + "/?view=ogimage", quote=True)
+    img = esc(base + "/?view=ogimage&v=2", quote=True)   # v: bump when the image changes, so link previews refetch it
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)}</title><meta name="description" content="{DESC}">
 <meta name="robots" content="{ROBOTS_NOINDEX if noindex else ROBOTS_INDEX}"><link rel="canonical" href="{canon}">

@@ -115,7 +115,7 @@ def test_head_tags_use_site_url_and_absolute_urls(monkeypatch):
     monkeypatch.setenv("SACH_SITE_URL", EXAMPLE)
     h = site.layout("<h1>x</h1>").decode()
     assert canonical(h) == EXAMPLE + "/" and meta(h, "property", "og:url") == EXAMPLE + "/"
-    img = EXAMPLE + "/?view=ogimage"
+    img = EXAMPLE + "/?view=ogimage&amp;v=2"
     assert meta(h, "property", "og:image") == img and meta(h, "name", "twitter:image") == img
     assert meta(h, "property", "og:type") == "website" and meta(h, "property", "og:site_name") == "Sach" and meta(h, "property", "og:locale") == "en_IN"
     assert meta(h, "property", "og:image:width") == "1200" and meta(h, "property", "og:image:height") == "630" and meta(h, "property", "og:image:alt")
@@ -149,7 +149,7 @@ def test_real_host_header_becomes_the_canonical_host(server):
     c.putheader("Host", "sach.example.com")
     c.endheaders()
     body = c.getresponse().read().decode()
-    assert canonical(body) == "https://sach.example.com/?view=ledger" and meta(body, "property", "og:image") == "https://sach.example.com/?view=ogimage"
+    assert canonical(body) == "https://sach.example.com/?view=ledger" and meta(body, "property", "og:image") == "https://sach.example.com/?view=ogimage&amp;v=2"
 
 
 def get(server, path):
@@ -254,8 +254,21 @@ def test_og_image_is_a_valid_1200x630_png_served_with_long_cache(server):
     assert len(raw) == h * (1 + w * 3)
     px = lambda x, y: tuple(raw[y * (1 + w * 3) + 1 + x * 3: y * (1 + w * 3) + 4 + x * 3])
     assert px(5, 5) == (0xF2, 0xEB, 0xDB)              # paper background
-    assert px(150, 200) == (0xC2, 0x32, 0x1F)          # the red mark on the left
-    assert pwa.og_png() is pwa.og_png()                # built once
+    assert px(616, 176) == (0xC2, 0x32, 0x1F)          # the red stamp of the logo, centre top
+    assert px(600, 625) == (0x17, 0x14, 0x0F)          # ink rule along the bottom
+    assert pwa.og_png() is pwa.og_png()                # read once
+
+
+def test_og_image_falls_back_to_the_drawn_card_when_the_kit_file_is_missing(monkeypatch):
+    import builtins
+    real = builtins.open
+    monkeypatch.setattr(builtins, "open", lambda p, *a, **k: (_ for _ in ()).throw(OSError()) if str(p).endswith("og-1200x630.png") else real(p, *a, **k))
+    pwa.og_png.cache_clear()
+    try:
+        b = pwa.og_png()
+        assert b[:8] == b"\x89PNG\r\n\x1a\n" and struct.unpack(">II", b[16:24]) == (1200, 630)
+    finally:
+        pwa.og_png.cache_clear()
 
 
 # ------------------------------------------------------------------ result markup on a phone
