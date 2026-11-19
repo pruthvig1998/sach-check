@@ -8,7 +8,7 @@ What goes in (read by sach/news.py):
   handles  X / Instagram / Facebook / Threads handles of groups A and B -> account name. Used only to name established accounts in the
            social-signal count, which is never evidence.
 What stays out: group C (influencers and celebrities: a watch-list, never a source), rows marked inactive, rows whose verified_from has no
-URL, government and fact-checker websites (they already have their own tiers), and platform or hosting domains.
+URL or with a doubt noted by the researcher ("recheck", "inferred", only cited by others), government and fact-checker websites (they already have their own tiers), and platform or hosting domains.
 Owner names: when a CSV owner already owns a domain in news.NEWS_GROUPS, the existing label is used, so one company is still counted once.
 The hand-written NEWS_GROUPS and KNOWN_HANDLES in sach/news.py always win over this file."""
 from __future__ import annotations
@@ -50,8 +50,12 @@ def handle(u: str) -> str:
     return h if _HANDLE.fullmatch(h) and h not in news._SKIP and h not in ("profile.php", "pages", "people") else ""
 
 
+_DOUBT = re.compile(r"recheck|inferred|\bcite[sd]?\b", re.I)      # the researcher's own doubt: kept in the sheet, left out here
+
+
 def usable(r: dict) -> bool:
-    return r["group"] in ("A", "B") and r["active"].strip().lower() != "no" and bool(re.search(r"https?://", r["verified_from"]))
+    return (r["group"] in ("A", "B") and r["active"].strip().lower() != "no" and bool(re.search(r"https?://", r["verified_from"]))
+            and not _DOUBT.search(r.get("notes", "")))
 
 
 def build(rows: list) -> dict:

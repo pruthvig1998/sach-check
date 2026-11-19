@@ -768,7 +768,7 @@ def test_build_news_sources_keeps_only_verified_news_and_official_accounts(monke
     spec = importlib.util.spec_from_file_location("bns", os.path.join(os.path.dirname(__file__), "..", "scripts", "build_news_sources.py"))
     bns = importlib.util.module_from_spec(spec); spec.loader.exec_module(bns)
     row = lambda **k: {"group": "B", "category": "tv", "name": "N", "owner": "O", "language": "Telugu", "platform": "website", "url": "",
-                       "active": "yes", "verified_from": "site footer https://ex.example/", **k}
+                       "active": "yes", "verified_from": "site footer https://ex.example/", "notes": "", **k}
     out = bns.build([
         row(url="https://www.newtv.example/", owner="TV9 Network / Associated Broadcasting"),
         row(url="https://other.example/", owner="Other Co", language="Telugu; English"),
@@ -781,6 +781,7 @@ def test_build_news_sources_keeps_only_verified_news_and_official_accounts(monke
         row(url="https://x.com/NewTV", platform="x", name="New TV"),
         row(url="https://x.com/CelebX", platform="x", group="C", name="Celeb"),
         row(url="https://x.com/StateGov", platform="x", group="A", name="State Govt"),
+        row(url="https://x.com/Maybe", platform="x", group="A", name="Maybe", notes="handle inferred from a graphic"),   # researcher's doubt
     ])
     assert out["domains"] == {"newtv.example": "TV9 Network", "other.example": "Other Co"}
     assert out["by_lang"] == {"te": ["newtv.example", "other.example"]}
