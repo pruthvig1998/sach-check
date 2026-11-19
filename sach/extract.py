@@ -1,6 +1,6 @@
 """Split a forward into atomic checkable claims and tag each with a domain."""
 from __future__ import annotations
-import re
+import re, unicodedata
 from .models import Claim
 
 _INVISIBLE = re.compile(r"[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]")
@@ -39,14 +39,18 @@ def classify_domain(text: str) -> str:
 _ABBR = re.compile(r"(\b(?:Rs|Re|Dr|Mr|Mrs|Ms|Shri|Smt|No|Nos|approx|vs|etc|St|Govt|Min)|రూ|రు|रु|रू|ரூ|રૂ|ರೂ|രൂ)\.", re.I)
 _DOT = "\u2024"   # one-dot leader: stands in for the full stop of an abbreviation while we split sentences
 
-# Tamil, Telugu, Kannada and Malayalam join words, so a whole claim can be three words: "నటుడు గిరిబాబు చనిపోయారా?" ("did the actor
-# Giribabu die?"). Text mostly in these scripts needs three words; everything else keeps the four-word minimum.
+# Tamil, Telugu, Kannada and Malayalam join words, so a death claim can be three words: "నటుడు గిరిబాబు చనిపోయారా?" ("did the actor
+# Giribabu die?"). Only a three-word sentence mostly in these scripts AND naming a death counts; greetings, thanks and calls to action of
+# three words ("everyone, donate") stay out, so they never cost a live check (independent review, 19 Nov 2026). Everything else keeps four.
 _JOINED = re.compile(r"[\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F]")
+# NOT NATIVE-REVIEWED: died / passed away / death in Telugu, Tamil, Kannada and Malayalam (stems, so the inflected forms match).
+_JOINED_DEATH = re.compile(r"చనిపో|మరణ|మృతి|కన్నుమూ|ఇకలేరు|இறந்|மரண|காலமா|உயிரிழ|ನಿಧನ|ಮರಣ|ಸಾವ|ಮೃತ|അന്തരി|മരിച്ച|മരണ")
 
 
 def _min_words(s: str) -> int:
-    letters = re.sub(r"[\W\d_]", "", s)
-    return 3 if letters and len(_JOINED.findall(s)) * 2 > len(letters) else 4
+    marks = [ch for ch in s if unicodedata.category(ch)[0] in "LM"]     # letters and vowel signs, counted the same way on both sides
+    joined = sum(1 for ch in marks if _JOINED.match(ch))
+    return 3 if marks and joined * 2 > len(marks) and _JOINED_DEATH.search(s) else 4
 
 def extract_claims(forward: str, max_claims: int = 8, report: dict | None = None) -> list[Claim]:
     """report: optional dict. When given it receives {'sentences': N, 'skipped': [...]} (N = distinct sentences seen, skipped = those

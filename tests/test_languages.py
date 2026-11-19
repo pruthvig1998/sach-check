@@ -555,4 +555,8 @@ def test_three_word_claims_are_kept_in_scripts_that_join_words():
         assert [c.text for c in extract_claims(text)] == [text], text
     assert extract_claims("గిరిబాబు చనిపోయారా?") == []                         # two words: still too little to be a claim
     assert extract_claims("Kohli retired today") == []                           # other scripts keep the four-word minimum
-    assert extract_claims("ఈ మెసేజ్ అందరికీ షేర్ చేయండి") == [] and extract_claims("అందరికీ శుభోదయం మిత్రులారా") == []
+    # three-word greetings, thanks and calls to action (independent review) stay out: they name no death
+    for junk in ("ఈ మెసేజ్ అందరికీ షేర్ చేయండి", "అందరికీ శుభోదయం మిత్రులారా", "எல்லோருக்கும் காலை வணக்கம்", "இனிய காலை வணக்கம்",
+                 "ಎಲ್ಲರಿಗೂ ಶುಭೋದಯ ಸ್ನೇಹಿತರೇ", "ಶುಭ ರಾತ್ರಿ ಸ್ನೇಹಿತರೇ", "ശുഭ രാത്രി സുഹൃത്തുക്കളെ", "జై శ్రీ రామ్", "మీ అందరికీ ధన్యవాదాలు", "కృతజ్ఞతలు తెలుపుతున్నాను మిత్రులారా", "എല്ലാവരും സംഭാവന ചെയ്യുക."):
+        assert extract_claims(junk) == [], junk
+    assert extract_claims("Kohli died today") == []                              # the three-word rule is only for these four scripts
