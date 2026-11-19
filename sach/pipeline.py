@@ -124,7 +124,7 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
         rep = _news.assess(nq, evidence, news_searched)
         if rep:
             v.trace["reported"] = rep
-        soc = _news.social_signal(social_urls)
+        soc = _news.social_signal(social_urls, f"{claim.text} {q}")      # the claim, as written and in English, decides whose own account counts
         if soc:
             v.trace["social"] = soc
     v.trace["timing_ms"] = {"retrieve": int((t_retrieved - t_start) * 1000), "judge": int((time.monotonic() - t_judge) * 1000), "judge_window": int(window * 1000)}

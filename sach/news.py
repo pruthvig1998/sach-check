@@ -43,13 +43,14 @@ NEWS_GROUPS = {
 }
 
 
-def _load_sources() -> dict:
+def _load_sources(name: str = "news_sources.json", switch: str = "SACH_NEWS_SOURCES") -> dict:
     """data/news_sources.json (built by scripts/build_news_sources.py from the researched sources map of 19 Nov 2026): more news websites by
-    owner and more established social handles. Off with SACH_NEWS_SOURCES=0; missing or unreadable means the hand-written lists only."""
-    if os.environ.get("SACH_NEWS_SOURCES", "1") == "0":
+    owner and more established social handles. data/people.json (scripts/build_people.py): public figures' own and known fake accounts.
+    Each is off with its switch set to 0; missing or unreadable means the hand-written lists only."""
+    if os.environ.get(switch, "1") == "0":
         return {}
     try:
-        with open(os.path.join(os.path.dirname(__file__), "..", "data", "news_sources.json"), encoding="utf-8") as f:
+        with open(os.path.join(os.path.dirname(__file__), "..", "data", name), encoding="utf-8") as f:
             d = json.load(f)
     except (OSError, ValueError):
         return {}
@@ -57,6 +58,7 @@ def _load_sources() -> dict:
 
 
 _SOURCES = _load_sources()
+_PEOPLE = _load_sources("people.json", "SACH_PEOPLE")
 # The hand-written entries above always win; the file only adds hosts they do not cover.
 NEWS_GROUPS.update({d: g for d, g in (_SOURCES.get("domains") or {}).items() if isinstance(g, str) and d not in NEWS_GROUPS})
 
@@ -215,9 +217,19 @@ def is_social(url: str) -> bool:
     return bool(platform_of(url))
 
 
-def social_signal(urls) -> dict | None:
-    """Counts of public posts a search found, by platform, and the established accounts among them. Sach has not read the posts."""
-    plats, known, n = {}, [], 0
+def _names_in(person: str, text: str) -> bool:
+    """True when the claim names this person: any word of four or more letters of the name appears as a word in the text.
+    shortcut: Latin script only, so a Telugu or Hindi claim never matches an English name; upgrade with transliterated names when needed."""
+    low = (text or "").lower()
+    return any(re.search(r"\b" + re.escape(w) + r"\b", low) for w in re.findall(r"[a-z]{4,}", person.lower()))
+
+
+def social_signal(urls, claim: str = "") -> dict | None:
+    """Counts of public posts a search found, by platform, and the established accounts among them. Sach has not read the posts.
+    Also, from data/people.json: posts from the own account of a person the claim names ("own_accounts"), and posts from accounts a
+    fact-check, news report, government page or court named as fake ("named_fake", always shown: it is a warning)."""
+    plats, known, n, own, fake = {}, [], 0, [], []
+    people_own, people_fake = _PEOPLE.get("own") or {}, _PEOPLE.get("impostor") or {}
     for u in dict.fromkeys(urls or []):
         p = platform_of(u)
         if not p:
@@ -228,7 +240,21 @@ def social_signal(urls) -> dict | None:
         handle = seg[0].lower().lstrip("@") if seg and seg[0].lower() not in _SKIP else ""
         if handle in KNOWN_HANDLES and KNOWN_HANDLES[handle] not in known:
             known.append(KNOWN_HANDLES[handle])
-    return {"posts": n, "platforms": plats, "established_accounts": known} if n else None
+        k = p.lower() + ":" + handle
+        who = people_own.get(k)
+        if isinstance(who, str) and who not in own and _names_in(who, claim):
+            own.append(who)
+        who = people_fake.get(k)
+        if isinstance(who, str) and who not in fake:
+            fake.append(who)
+    if not n:
+        return None
+    out = {"posts": n, "platforms": plats, "established_accounts": known}
+    if own:
+        out["own_accounts"] = own
+    if fake:
+        out["named_fake"] = fake
+    return out
 
 
 # ---------------------------------------------------------------- wording. Hindi and Telugu are NOT NATIVE-REVIEWED.
@@ -241,7 +267,8 @@ REPORTED_TEXT = {
            "none_note": "Sach searched established news organisations and found no report of this. The death of a public figure is normally reported within hours. This is not proof that it is false: the search is limited.",
            "answer": "ANSWER", "source": "Source", "dates_title": "Official dates",
            "social_title": "Posts on social media", "social_found": "Public posts found", "social_known": "From established accounts",
-           "social_note": "Sach could not read these posts, so they are not evidence. Many posts do not make a claim true: false claims also spread through many genuine accounts."},
+           "social_note": "Sach could not read these posts, so they are not evidence. Many posts do not make a claim true: false claims also spread through many genuine accounts.",
+           "social_own": "From the person's own account", "social_fake": "From an account a fact-check or news report named as a fake account of"},
     "hi": {"alerts_title": "हाल की आधिकारिक चेतावनियाँ (NDMA)", "alerts_open": "चेतावनी खोलें", "alerts_note": "पिछले 24 घंटों में राष्ट्रीय आपदा प्रबंधन प्राधिकरण की प्रणाली से जारी चेतावनियाँ, जिनमें आपके संदेश की किसी जगह का नाम है। कई चेतावनियाँ कुछ ही घंटों की होती हैं, इसलिए समय देखें। ये संदर्भ के लिए हैं, संदेश पर फ़ैसला नहीं।",
            "fc_title": "इस दावे का प्रकाशित फ़ैक्ट-चेक", "fc_note": "आपके संदेश के शब्द मिलाकर खोजा गया है, Sach ने इसे जाँचा नहीं है। फ़ैक्ट-चेकर ने क्या पाया, यह जानने के लिए इसे खोलें।",
            "reported": "समाचार संस्थानों ने यह खबर दी है", "denied": "समाचार संस्थानों के अनुसार यह सच नहीं है", "conflicting": "समाचार संस्थानों की खबरें अलग-अलग हैं",
@@ -250,7 +277,8 @@ REPORTED_TEXT = {
            "none_note": "Sach ने स्थापित समाचार संस्थानों में खोजा और इसकी कोई खबर नहीं मिली। ऐसी असली घटना की खबर आम तौर पर कुछ घंटों में आ जाती है। यह इस बात का सबूत नहीं है कि दावा झूठ है।",
            "answer": "उत्तर", "source": "स्रोत", "dates_title": "आधिकारिक तारीखें",
            "social_title": "सोशल मीडिया पर पोस्ट", "social_found": "मिली सार्वजनिक पोस्ट", "social_known": "स्थापित खातों से",
-           "social_note": "Sach ये पोस्ट पढ़ नहीं सका, इसलिए ये सबूत नहीं हैं। बहुत सी पोस्ट होने से कोई दावा सच नहीं हो जाता।"},
+           "social_note": "Sach ये पोस्ट पढ़ नहीं सका, इसलिए ये सबूत नहीं हैं। बहुत सी पोस्ट होने से कोई दावा सच नहीं हो जाता।",
+           "social_own": "उस व्यक्ति के अपने खाते से", "social_fake": "ऐसे खाते से जिसे किसी फ़ैक्ट-चेक या समाचार रिपोर्ट ने इनका नकली खाता बताया है"},
     "te": {"alerts_title": "ఇటీవలి అధికారిక హెచ్చరికలు (NDMA)", "alerts_open": "హెచ్చరికను తెరవండి", "alerts_note": "గత 24 గంటల్లో జాతీయ విపత్తు నిర్వహణ సంస్థ వ్యవస్థ ద్వారా జారీ అయిన హెచ్చరికలు, మీ సందేశంలోని ఒక ప్రాంతం పేరు వీటిలో ఉంది. చాలా హెచ్చరికలు కొన్ని గంటలే వర్తిస్తాయి, కాబట్టి సమయం చూడండి. ఇవి సూచన కోసం మాత్రమే, సందేశంపై తీర్పు కాదు.",
            "fc_title": "ఈ ప్రకటనపై ప్రచురిత ఫ్యాక్ట్-చెక్", "fc_note": "మీ సందేశంలోని పదాల పోలిక ఆధారంగా దొరికింది, Sach దీన్ని తనిఖీ చేయలేదు. ఫ్యాక్ట్-చెకర్ ఏమి కనుగొన్నారో తెలుసుకోవడానికి దీన్ని తెరవండి.",
            "reported": "వార్తా సంస్థలు ఈ వార్తను ప్రచురించాయి", "denied": "వార్తా సంస్థల ప్రకారం ఇది నిజం కాదు", "conflicting": "వార్తా సంస్థల కథనాలు వేర్వేరుగా ఉన్నాయి",
@@ -259,7 +287,8 @@ REPORTED_TEXT = {
            "none_note": "Sach ప్రముఖ వార్తా సంస్థలలో వెతికింది, దీని గురించి ఏ వార్తా దొరకలేదు. ఇలాంటి నిజమైన సంఘటన సాధారణంగా కొన్ని గంటల్లోనే వార్తల్లో వస్తుంది. ఇది అబద్ధం అనడానికి ఇది రుజువు కాదు.",
            "answer": "సమాధానం", "source": "మూలం", "dates_title": "అధికారిక తేదీలు",
            "social_title": "సోషల్ మీడియాలో పోస్టులు", "social_found": "దొరికిన పబ్లిక్ పోస్టులు", "social_known": "ప్రముఖ ఖాతాల నుండి",
-           "social_note": "Sach ఈ పోస్టులను చదవలేకపోయింది, కాబట్టి ఇవి సాక్ష్యం కావు. చాలా పోస్టులు ఉన్నంత మాత్రాన ఒక ప్రకటన నిజం కాదు."},
+           "social_note": "Sach ఈ పోస్టులను చదవలేకపోయింది, కాబట్టి ఇవి సాక్ష్యం కావు. చాలా పోస్టులు ఉన్నంత మాత్రాన ఒక ప్రకటన నిజం కాదు.",
+           "social_own": "ఆ వ్యక్తి స్వంత ఖాతా నుండి", "social_fake": "ఫ్యాక్ట్-చెక్ లేదా వార్తా కథనం నకిలీ ఖాతాగా పేర్కొన్న ఖాతా నుండి"},
 }
 
 
@@ -352,7 +381,10 @@ def _panels_html(res: dict) -> str:
     if soc and res.get("verdict") == UNVERIFIED:
         plats = ", ".join(f"{_e(k)} {int(v)}" for k, v in (soc.get("platforms") or {}).items())
         known = ", ".join(_e(x) for x in soc.get("established_accounts") or [])
+        own = ", ".join(_e(x) for x in soc.get("own_accounts") or [])
+        fake = ", ".join(_e(x) for x in soc.get("named_fake") or [])
         out += (f'<section class="social-signal" style="{_NEUTRAL}"><p style="margin:0 0 6px"><b>{_e(t["social_title"])}</b></p>'
-                f'<p style="margin:0 0 6px">{_e(t["social_found"])}: {plats}' + (f'<br>{_e(t["social_known"])}: {known}' if known else "") + '</p>'
+                f'<p style="margin:0 0 6px">{_e(t["social_found"])}: {plats}' + (f'<br>{_e(t["social_known"])}: {known}' if known else "")
+                + (f'<br>{_e(t["social_own"])}: {own}' if own else "") + (f'<br><b>{_e(t["social_fake"])}</b>: {fake}' if fake else "") + '</p>'
                 f'<p class="note" style="margin:0">{_e(t["social_note"])}</p></section>')
     return out

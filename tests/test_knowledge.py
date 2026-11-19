@@ -786,3 +786,54 @@ def test_build_news_sources_keeps_only_verified_news_and_official_accounts(monke
     assert out["domains"] == {"newtv.example": "TV9 Network", "other.example": "Other Co"}
     assert out["by_lang"] == {"te": ["newtv.example", "other.example"]}
     assert out["handles"] == {"newtv": "New TV", "stategov": "State Govt"}
+
+
+# ---------------------------------------------------------------- researched people map (data/people.json): social signal only
+def test_people_map_names_own_accounts_only_for_the_person_the_claim_names_and_always_flags_named_fakes(monkeypatch):
+    monkeypatch.setattr(news, "_PEOPLE", {"own": {"x:realstar": "Asha Example"}, "impostor": {"x:realstarr": "Asha Example"}})
+    urls = ["https://x.com/RealStar/status/1", "https://x.com/realstarr/status/2", "https://instagram.com/realstar/p/3"]
+    s = news.social_signal(urls, "Did Asha Example pass away?")
+    assert s["own_accounts"] == ["Asha Example"] and s["named_fake"] == ["Asha Example"]       # instagram:realstar is not listed: platform matters
+    s = news.social_signal(urls, "Government gives Rs 1000 to all")
+    assert "own_accounts" not in s and s["named_fake"] == ["Asha Example"]                      # a star's account says nothing about a scheme
+    assert news.social_signal(["https://x.com/someone/status/1"], "Asha Example")  == {"posts": 1, "platforms": {"X": 1}, "established_accounts": []}
+
+
+def test_people_lines_render_only_beside_unverified_and_never_change_the_verdict(monkeypatch):
+    monkeypatch.setattr(news, "_PEOPLE", {"own": {"x:realstar": "Asha Example"}, "impostor": {"x:fakestar": "Asha Example"}})
+    urls = ["https://x.com/realstar/status/1", "https://x.com/fakestar/status/2"]
+    res, _ = check("Did Asha Example pass away?", [], Run(news_ran=False, social=urls))
+    soc = res["claims"][0]["trace"]["social"]
+    assert res["verdict"] == UNVERIFIED and soc["own_accounts"] == ["Asha Example"] and soc["named_fake"] == ["Asha Example"]
+    html = news.panels_html(res)
+    assert "From the person&#x27;s own account: Asha Example" in html and "named as a fake account of</b>: Asha Example" in html
+
+
+def test_people_file_is_loaded_switchable_and_free_of_deceased_and_weak_rows(monkeypatch):
+    data = news._load_sources("people.json", "SACH_PEOPLE")
+    assert len(data["own"]) > 300 and data["impostor"] and all(":" in k for k in (*data["own"], *data["impostor"]))
+    assert not set(data["own"]) & set(data["impostor"])
+    assert data["impostor"].get("x:sirhardik3777") == "Hardik Pandya"                          # named fake by Alt News
+    assert "facebook:aliabhatt" not in data["impostor"]                                        # exact-name handle from a 2014 report: may be hers now
+    monkeypatch.setenv("SACH_PEOPLE", "0")
+    assert news._load_sources("people.json", "SACH_PEOPLE") == {}
+
+
+def test_build_people_keeps_only_strong_evidence(monkeypatch):
+    import importlib.util, os
+    spec = importlib.util.spec_from_file_location("bp", os.path.join(os.path.dirname(__file__), "..", "scripts", "build_people.py"))
+    bp = importlib.util.module_from_spec(spec); spec.loader.exec_module(bp)
+    row = lambda **k: {"person": "Asha Example", "platform": "x", "url": "", "account_type": "official", "verified_badge": "unknown",
+                       "verified_from": "", "active": "yes", "deceased_date": "", **k}
+    out = bp.build([
+        row(url="https://x.com/badge", verified_badge="yes"),                                              # verified badge
+        row(url="https://x.com/newsref", verified_from="report https://www.ndtv.com/a"),                   # a listed news organisation
+        row(url="https://x.com/fansite", verified_from="profile https://celebsinfo.example/asha"),         # aggregator: out
+        row(url="https://x.com/gone", verified_badge="yes", deceased_date="2026-01-01"),                   # died: a post there is not her
+        row(url="https://x.com/quiet", verified_badge="yes", active="no"),
+        row(url="https://x.com/fakeasha", account_type="impostor", verified_from="https://www.altnews.in/fc"),
+        row(url="https://x.com/ashaexample", account_type="impostor", verified_from="https://www.altnews.in/old"),   # exact name: out
+        row(url="https://x.com/rumour", account_type="impostor", verified_from="https://gossip.example/x"),         # weak source: out
+        row(url="https://www.instagram.com/p/abc/", platform="instagram", verified_badge="yes"),          # a post, not a profile
+    ])
+    assert out["own"] == {"x:badge": "Asha Example", "x:newsref": "Asha Example"} and out["impostor"] == {"x:fakeasha": "Asha Example"}
