@@ -353,6 +353,78 @@ def _unmatched_restriction(claim: str, quote: str, places: bool = True) -> bool:
             return True
     return False
 
+# ---------------------------------------------------------------- news tier: whose death does the sentence report?
+# Guarantee: a news quote counts toward REPORTED for "X died" only if X is the grammatical subject of a death verb in it: X directly before
+# died / dies / passed away / is no more / breathed his last, with only an age, a comma or has/had/have between, and no "of" or possessive
+# in front of X. The same function finds X in the claim. Not guaranteed: a namesake's obituary, or a plain "X died" on a satire page; those
+# rest on the three-owner threshold (sach/news.py) and the judge. Everything here fails closed: no subject found means "none".
+# English only; claims in other languages reach the news judge as their English translation (independent reviews, 19 Nov 2026).
+_TOK = re.compile(r"\d+\+?|[A-Za-z](?:[A-Za-z\-]|\.(?=[A-Za-z]))*(?:'s)?|[,;:]")      # a dot only inside a word ("M.S."), never a full stop
+_DEATH_VERB = ((("died",), 1), (("dies",), 1), (("passes", "away"), 2), (("passed", "away"), 2), (("is", "no", "more"), 3),
+               (("was", "no", "more"), 3), (("breathed", "his", "last"), 3), (("breathed", "her", "last"), 3), (("breathes", "his", "last"), 3),
+               (("breathes", "her", "last"), 3))
+_GAP = {"has", "had", "have", ","}                                # between the person and the verb: "X, 80, has died"
+_BREAK = {"of", "for", "to", "and", "with", "by", "from", "about", "on", "at", "in", "the", "a", "an"}   # words a name never contains
+_AFTER = re.compile(r"^(in|during|on) (a|an|the|his|her) (film|movie|serial|scene|show|episode|play|drama|series)\b|^on[- ]screen\b|"
+                    r"^in (the )?(climax|scene)\b|^in (19|20)\d\d\b", re.I)
+_EN_PAGE_DOUBT = re.compile(r"\b(alive|hale and hearty|recovering|stable condition|is stable|safe and sound|hoax|rumou?rs?|fake (?:news|message|post)|"
+                            r"not true|false (?:news|claim|report)|denied|clarified)\b", re.I)
+_DEATH_CLAIM = re.compile(r"\b(died|dies|dead|passed away|passes away|no more|breathed (?:his|her) last)\b", re.I)
+
+
+def death_subjects(text: str) -> list:
+    """[(name words, words after the verb)] for every 'X died' in the text whose X can be found (see the guarantee above)."""
+    toks = _TOK.findall((text or "").replace("\u2019", "'"))
+    low = [t.lower() for t in toks]
+    out = []
+    for i in range(len(toks)):
+        for words, n in _DEATH_VERB:
+            if tuple(low[i:i + n]) != words:
+                continue
+            j = i - 1
+            while j >= 0 and (low[j] in _GAP or low[j].rstrip("+").isdigit()):
+                if low[j] == ",":                 # "X, who acted in 600 films, has died": skip a who-clause closed by this comma
+                    k = j - 1
+                    while k >= 0 and low[k] not in (",", ";", ":"):
+                        k -= 1
+                    if k >= 0 and low[k] == "," and k + 1 < j and low[k + 1] == "who":
+                        j = k
+                j -= 1
+            name = []
+            while j >= 0 and toks[j][:1].isupper() and not toks[j].endswith("'s") and low[j] not in _BREAK:
+                name.insert(0, low[j]); j -= 1
+            # "Wife of actor X", "X's son": something else owns the death. Look back past job words and adjectives (lower case) to the
+            # nearest "of" or possessive within three words.
+            before = [low[k] for k in range(max(0, j - 2), j + 1)]
+            if name and not any(w == "of" or w.endswith("'s") for w in before):
+                out.append((name, " ".join(low[i + n:i + n + 4])))
+    return out
+
+
+def _same_person(claim_name: list, quote_name: list) -> bool:
+    """The two names end alike: at least two final words in common when the claim's name has two or more ("Industrialist Ratan Tata" and
+    "Ratan Tata"; never "Giri Babu" and "Babu"), else its one word ("Dhoni" and "MS Dhoni"). Spaces do not matter ("Giribabu")."""
+    need = min(2, len(claim_name))
+    n = 0
+    while n < min(len(claim_name), len(quote_name)) and claim_name[-1 - n] == quote_name[-1 - n]:
+        n += 1
+    if n >= need:
+        return True
+    joined = lambda ws, k: "".join(ws[-k:])
+    return any(joined(claim_name, a) == joined(quote_name, b) for a in (1, 2) for b in (1, 2)
+               if a != b and a <= len(claim_name) and b <= len(quote_name))
+
+
+def _death_subject_ok(claim: str, quote: str, page: str) -> bool:
+    who = [n for n, _ in death_subjects(claim)]
+    if not who or _EN_PAGE_DOUBT.search(page):
+        return False
+    for name, after in death_subjects(quote):
+        if any(_same_person(c, name) for c in who) and not _AFTER.search(after):
+            return True
+    return False
+
+
 def validate_stance(label: str, quote: str, claim: str, title: str, text: str, tier: str = "") -> str:
     """Accept an LLM stance only if it is backed by a verbatim quote from the page that relates to the claim.
     - quote must appear verbatim in the page (kills hallucinated evidence)
@@ -399,6 +471,8 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str, t
         return "none"          # 'every woman who is a cricketer' / 'above 60 years' / 'in Mumbai' does not match 'every woman' / 'Delhi-NCR'
     # A denial ("This is fake; no such proposal exists.") gets its subject from the page title, so for CONTRADICTS the title
     # and quote together must relate to the claim. Confirmations / partial matches must be matched by the quote itself.
+    if tier == "news" and label in ("confirms", "mixed") and _DEATH_CLAIM.search(claim) and not _death_subject_ok(claim, quote, f"{title} {text}"):
+        return "none"                        # the quote does not say that the claim's person died (see death_subjects)
     if overlap(claim, f"{title} {quote}" if label == "contradicts" else quote) < 0.4:
         return "none"
     if label in ("confirms", "mixed") and not _META.search(claim) and (

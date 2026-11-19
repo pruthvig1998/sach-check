@@ -174,6 +174,17 @@ X, Facebook and Instagram offer no free search API, and Sach does not log in to 
 
 The count is shown as a signal and is never evidence. How many accounts post a claim does not show whether it is true: false forwards spread precisely because many genuine people share them. A verdict from post volume would turn popularity into truth, which is the failure this project exists to prevent, so that part of the request was deliberately not built.
 
+### Whose death a news page reports (19 Nov 2026)
+For a death claim, a news quote counts toward REPORTED only if the claim's person is the grammatical subject of a death verb in it: the name
+directly before died / dies / passed away / is no more / breathed his last, with only an age, a comma, has/had or a "who ..." clause between,
+and no "of" or possessive in front of the name. The same function (`stance.death_subjects`) reads the person from the claim; names match by
+their last two words (one for a one-word name), spaces ignored. Also refused: "in a film / scene / serial", "in 1998" right after the verb,
+and a page that says alive, recovering, hoax, rumour, fake, not true, denied or clarified. Everything fails closed: no person found, no count.
+**Guaranteed:** "X's father/co-star died", "X mourns Y", "wife of X dies", "X said Y died", "X has not / nearly / reportedly died" never count.
+**Not guaranteed:** a namesake's obituary, or a plain "X died" on a satire page; those rest on the three-owner threshold and the judge.
+Measured on the four live pages that reported Giri Babu's death: all four owners still count. English only; claims in other languages reach
+the news judge as their English translation.
+
 ### Public broadcaster as a news report (same switch as the news tier)
 `newsonair.gov.in` (All India Radio) and `ddnews.gov.in` are on government hosts, but what they publish is news, not a government order. When the news search finds them they count as a news agency towards REPORTED. They are never upgraded to "official" by that search, so a broadcaster's report cannot produce TRUE through it.
 

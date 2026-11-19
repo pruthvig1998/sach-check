@@ -869,3 +869,81 @@ def test_the_forwards_own_language_reaches_the_news_search_even_though_it_search
     assert not any("tv9telugu.com" in q for q in asked)
     plain = type("Old", (), {"search_with_status": lambda self, q: (["ok"], None)})()  # a retriever without the lang parameter still works
     assert pipeline._search_one(plain, "q", "te") == (["ok"], None)
+
+
+# ---------------------------------------------------------------- news tier: the dead person must be the claim's person (19 Nov 2026)
+# What the rule guarantees: a news quote counts toward REPORTED for "X died" only if X is the grammatical subject of a death verb in it
+# (X directly before died / dies / passed away / is no more, with only an age, a comma or has/had between, and no "of" or possessive in
+# front of X). What it does not: a namesake's obituary, or a plain "X died" sentence on a satire page; those rest on the three-owner
+# threshold and the judge. Real sentences from the pages that reported Giri Babu's death must still count.
+DEATH_SUBJECT_CONFIRM = [
+    ("actor Giri Babu has died.", "Veteran Telugu actor Giri Babu passes away at 80 in Hyderabad; Chiranjeevi, Mohan Babu, Nandamuri Balakrishna and others mourn his demise."),
+    ("actor Giri Babu has died.", "Veteran Telugu actor Giri Babu dies at 80."),
+    ("actor Giri Babu has died.", "Veteran Telugu actor Giri Babu dies at 80 in Hyderabad after a five-decade career across 600+ films."),
+    ("actor Giri Babu has died.", "Veteran Telugu actor Giri Babu dies at 83; Chiranjeevi, Anil Ravipudi pay tribute."),
+    ("actor Giri Babu has died.", "Veteran Telugu actor, director and producer Giri Babu died at 80 in Hyderabad."),
+    ("actor Giri Babu has died.", "Veteran Telugu actor Giri Babu, who entertained audiences with several memorable roles over decades, has died on Saturday."),
+    ("actor Giri Babu has died.", "Veteran Telugu Actor Giri Babu Dies At 80"),
+    ("actor Giri Babu has died.", "Giri Babu, 80, has died in Hyderabad."),
+    ("Dhoni has died.", "MS Dhoni has died."),
+]
+
+
+def test_the_same_finder_reads_the_person_in_the_claim():
+    from sach.stance import death_subjects
+    name = lambda t: [n for n, _ in death_subjects(t)]
+    assert name("actor Giri Babu has died.") == [["giri", "babu"]]
+    assert name("Veteran actor Giri Babu passed away in Hyderabad today after a long illness.") == [["giri", "babu"]]
+    assert name("Superstar M.S. Dhoni is no more")[0][-2:] == ["m.s", "dhoni"]       # a capitalised first word joins the name; matching uses its end
+    assert name("Rao, who worked with Giri Babu, has died.") == [["rao"]]           # the who-clause belongs to Rao
+    assert name("Did the actor die?") == [] and name("giri babu died") == []         # no name: nothing to match, so no news page counts
+
+
+def test_names_match_by_their_last_words_and_ignore_spacing():
+    # the subject rule alone (the older word-overlap checks may still refuse these pairs; that is unchanged)
+    from sach.stance import _death_subject_ok as ok
+    assert ok("Industrialist Ratan Tata passed away in Mumbai.", "Ratan Tata died in Mumbai.", "")
+    assert ok("actor Giribabu has died.", "Veteran Telugu actor Giri Babu dies at 80.", "")
+    assert not ok("Giri Babu has died.", "Babu died on Monday.", "") and not ok("Ratan Tata has died.", "Tata died.", "")
+DEATH_SUBJECT_REFUSE = [   # (claim, quote, rest of the page)
+    ("Giri Babu has died.", "Giri Babu's father died on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu's wife died on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu's co-star Rao died on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu's manager died on Monday in Hyderabad.", ""),
+    ("Giri Babu has died.", "Giri Babu's driver died in an accident.", ""),
+    ("Giri Babu has died.", "Giri Babu's pet dog died on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu's stepmother died on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu's bhabhi died on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu mourns the death of his friend Rao who died on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu attended the funeral of Rao who died on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu said Rao died on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu was close to Rao, who died on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu died in a film scene on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu, 70, died in the climax of the serial.", ""),
+    ("Giri Babu has died.", "Giri Babu died in 1998.", ""),
+    ("Giri Babu has died.", "Wife of actor Giri Babu dies at 70.", ""),
+    ("Giri Babu has died.", "Son of veteran actor Giri Babu passes away.", ""),
+    ("Giri Babu has died.", "Wife Of Actor Giri Babu Dies At 70", ""),
+    ("Giri Babu has died.", "Giri Babu has not died, his family said.", ""),
+    ("Giri Babu has died.", "Giri Babu nearly died in an accident on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu reportedly died on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu died on Monday.", "Giri Babu is alive and well, his team said."),
+    ("Giri Babu has died.", "Giri Babu died on Monday.", "Giri Babu is hale and hearty."),
+    ("Giri Babu has died.", "Giri Babu died on Monday.", "Police clarified it is a fake message."),
+    ("Giri Babu has died.", "Giri Babu died on Monday.", "He is recovering in hospital."),
+    ("giri babu has died.", "Giri Babu died on Monday.", ""),                    # no name Sach can find in the claim: abstain, never guess
+    ("Giri Babu has died.", "Rao, who worked with Giri Babu, has died.", ""),
+    ("Giri Babu has died.", "Babu died on Monday.", ""),                          # one shared word is not the same two-word name
+]
+
+
+@pytest.mark.parametrize("claim,quote", DEATH_SUBJECT_CONFIRM)
+def test_real_death_reports_still_count(claim, quote):
+    from sach.stance import validate_stance
+    assert validate_stance("confirms", quote, claim, "t", quote + " x", "news") == "confirms"
+
+
+@pytest.mark.parametrize("claim,quote,rest", DEATH_SUBJECT_REFUSE)
+def test_a_quote_where_someone_else_died_never_counts(claim, quote, rest):
+    from sach.stance import validate_stance
+    assert validate_stance("confirms", quote, claim, "t", f"{quote} {rest}", "news") == "none"
