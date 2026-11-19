@@ -743,7 +743,7 @@ def test_language_news_query_is_short_separate_and_only_for_languages_with_outle
     assert news.social_signal(["https://x.com/ntvtelugulive/status/1"])["established_accounts"] == ["NTV Telugu"]
 
 
-def test_news_search_adds_the_claims_language_outlets_first(monkeypatch):
+def test_news_search_adds_the_claims_language_outlets_after_the_national_ones(monkeypatch):
     from sach import retrieve
     monkeypatch.setenv("SACH_NEWS_TIER", "1")
     r = retrieve.BraveRetriever(key="k", chain=type("C", (), {"configured": True, "new_run": lambda self: type("R", (), {"status": "ok"})()})())
@@ -757,7 +757,7 @@ def test_news_search_adds_the_claims_language_outlets_first(monkeypatch):
     monkeypatch.setattr(news, "one_per_owner", lambda u, n=news.PER_QUERY: ranked.append(real(u, n)) or ranked[-1])
     r._extras("నటుడు గిరిబాబు చనిపోయారా", 5)
     assert len(asked) == 2 and any(news.NEWS_Q in q for q in asked) and any(news.lang_news_q("te") in q for q in asked)
-    assert ranked == [["https://www.tv9telugu.com/a", "https://www.thehindu.com/b", "https://www.ndtv.com/c"]]     # the claim's language first
+    assert ranked == [["https://www.thehindu.com/b", "https://www.ndtv.com/c", "https://www.tv9telugu.com/a"]]     # national first; local fills spare places
     asked.clear()
     r._extras("Did the actor Giri Babu die", 5)
     assert asked == [f"Did the actor Giri Babu die {news.NEWS_Q}"]                       # English: the national query only

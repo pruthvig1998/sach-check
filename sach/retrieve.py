@@ -217,8 +217,9 @@ class BraveRetriever:
                         local = fl.result(timeout=left())
                     except Exception:
                         local = []                                       # the language query is extra: its failure costs only its outlets
-                # four different owners, not four pages of one outlet; outlets in the claim's language first
-                urls = _news.one_per_owner(list(local) + list(fn.result(timeout=left())))
+                # four different owners, not four pages of one outlet. National outlets first: a page in the claim's own language is judged
+                # against the English translation and so cannot confirm it yet; it only fills places the national search left (live test, 19 Nov 2026).
+                urls = _news.one_per_owner(list(fn.result(timeout=left())) + list(local))
                 fetches = [ex.submit(self._evidence, u, _news.TIER_NEWS) for u in urls]
                 wait(fetches, timeout=left())
                 news_ev = [f.result() for f in fetches if f.done() and f.exception() is None and f.result()]
