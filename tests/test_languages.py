@@ -547,3 +547,12 @@ def test_forcing_any_reply_language_on_an_english_forward():
         assert res["language"] == code and res["input_language"] == "en" and res["verdict"] == "FALSE"
         assert I18N.tr(I18N.LABEL, code)["FALSE"] in res["card"]
         assert ("card_en" in res) == (code != "en")
+
+
+def test_three_word_claims_are_kept_in_scripts_that_join_words():
+    # Telugu, Tamil, Kannada and Malayalam pack a whole claim into three words; the four-word minimum dropped them before any check ran.
+    for text in ("నటుడు గిరిబాబు చనిపోయారా?", "నటుడు గిరిబాబు మరణించారు.", "நடிகர் விஜய் இறந்தாரா?", "ನಟ ಪುನೀತ್ ನಿಧನರಾದರು.", "നടൻ മോഹൻലാൽ മരിച്ചോ?"):
+        assert [c.text for c in extract_claims(text)] == [text], text
+    assert extract_claims("గిరిబాబు చనిపోయారా?") == []                         # two words: still too little to be a claim
+    assert extract_claims("Kohli retired today") == []                           # other scripts keep the four-word minimum
+    assert extract_claims("ఈ మెసేజ్ అందరికీ షేర్ చేయండి") == [] and extract_claims("అందరికీ శుభోదయం మిత్రులారా") == []

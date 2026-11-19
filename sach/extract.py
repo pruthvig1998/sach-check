@@ -39,6 +39,15 @@ def classify_domain(text: str) -> str:
 _ABBR = re.compile(r"(\b(?:Rs|Re|Dr|Mr|Mrs|Ms|Shri|Smt|No|Nos|approx|vs|etc|St|Govt|Min)|రూ|రు|रु|रू|ரூ|રૂ|ರೂ|രൂ)\.", re.I)
 _DOT = "\u2024"   # one-dot leader: stands in for the full stop of an abbreviation while we split sentences
 
+# Tamil, Telugu, Kannada and Malayalam join words, so a whole claim can be three words: "నటుడు గిరిబాబు చనిపోయారా?" ("did the actor
+# Giribabu die?"). Text mostly in these scripts needs three words; everything else keeps the four-word minimum.
+_JOINED = re.compile(r"[\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F]")
+
+
+def _min_words(s: str) -> int:
+    letters = re.sub(r"[\W\d_]", "", s)
+    return 3 if letters and len(_JOINED.findall(s)) * 2 > len(letters) else 4
+
 def extract_claims(forward: str, max_claims: int = 8, report: dict | None = None) -> list[Claim]:
     """report: optional dict. When given it receives {'sentences': N, 'skipped': [...]} (N = distinct sentences seen, skipped = those
     not returned, in document order). The returned claims are the same with or without it."""
@@ -47,7 +56,7 @@ def extract_claims(forward: str, max_claims: int = 8, report: dict | None = None
     for part in _SPLIT.split(protected):
         part = part.replace(_DOT, ".")
         s = re.sub(r"\s+", " ", part).strip(" -–—*_~\"'")
-        if len(s.split()) < 4 or _BOILER.search(s) and len(s.split()) < 9:
+        if len(s.split()) < _min_words(s) or _BOILER.search(s) and len(s.split()) < 9:
             if report is not None and s and s.lower() not in seen:
                 seen.add(s.lower()); order.append((s, None))
             continue
