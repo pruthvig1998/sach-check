@@ -439,6 +439,8 @@ def death_subjects(text: str) -> list:
             name = []
             while j >= 0 and toks[j][:1].isupper() and not toks[j].endswith("'s") and low[j] not in _BREAK:
                 name.insert(0, low[j]); j -= 1
+            if any(w in _DEATH_HEDGE for w in name):          # "Reportedly Ravi Kumar died": a doubt word is never part of a name
+                continue
             # "the beloved wife of veteran Telugu actor X dies", "X's son ...": something else owns the death. Look back to the start of
             # the clause for "of" or a possessive.
             k, owned = j, False

@@ -971,6 +971,9 @@ DEATH_SUBJECT_REFUSE = [   # (claim, quote, rest of the page)
     ("Ravi Kumar has died.", "Rumour: actor Mr. Ravi Kumar died", ""),
     ("Ravi Kumar has died.", "I think Mr. Ravi Kumar died", ""),
     ("Ravi Kumar has died.", "The mother of Rev. Ravi Kumar died", ""),
+    ("Ravi Kumar has died.", "Reportedly Prof. Ravi Kumar died", ""),
+    ("Ravi Kumar has died.", "Allegedly Ravi Kumar died on Monday.", ""),
+    ("Ravi Kumar has died.", "Unconfirmed Ravi Kumar died on Monday.", ""),
     ("Ravi Kumar has died.", "Ravi Kumar's film released. Then the producer of it died.", ""),
 ]
 
