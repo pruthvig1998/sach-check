@@ -361,7 +361,9 @@ def _unmatched_restriction(claim: str, quote: str, places: bool = True) -> bool:
 # English only; claims in other languages reach the news judge as their English translation (independent reviews, 19 Nov 2026).
 # A dot inside a word stays ("M.S."); a sentence end (. ! ? before a space or the end) is its own token, a boundary like , ; :
 _TOK = re.compile(r"\d+\+?|[A-Za-z](?:[A-Za-z\-]|\.(?=[A-Za-z]))*(?:'s)?|[,;:]|(?<![A-Z])[.!?](?=\s|$)")   # not after an initial ("M.S. Dhoni")
-_CLAUSE_END = {",", ";", ":", ".", "!", "?"}
+_CLAUSE_END = {",", ";", ":"}       # the look-back before a name stops only here: a full stop could be "Dr." (fail closed, review 19 Nov 2026)
+_TITLES = {"dr", "mr", "mrs", "ms", "prof", "rev", "sri", "shri", "smt", "st", "jr", "sr", "no", "vs", "lt", "col", "gen", "capt", "hon", "sgt",
+           "maj", "adv", "er", "late"}
 # Doubt earlier in the same sentence ("Rumour: X died", "I think X died", "X reportedly ..."): never a report.
 _DEATH_HEDGE = {"rumour", "rumor", "rumours", "rumors", "fake", "hoax", "alleged", "allegedly", "reportedly", "think", "believe", "claim", "claims",
           "claimed", "unconfirmed", "viral", "false", "speculation"}
@@ -417,7 +419,8 @@ _DEATH_CLAIM = re.compile(r"\b(died|dies|dead|passed away|passes away|no more|br
 
 def death_subjects(text: str) -> list:
     """[(name words, words after the verb)] for every 'X died' in the text whose X is the subject (see the guarantee above)."""
-    toks = _TOK.findall((text or "").replace("\u2019", "'"))
+    raw = _TOK.findall((text or "").replace("\u2019", "'"))
+    toks = [t for n, t in enumerate(raw) if not (t == "." and n and raw[n - 1].lower() in _TITLES)]     # "Dr." is not a sentence end
     low = [t.lower() for t in toks]
     out = []
     for i in range(len(toks)):
