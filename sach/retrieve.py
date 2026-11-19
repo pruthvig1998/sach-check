@@ -211,6 +211,7 @@ class BraveRetriever:
             fl = ex.submit(search, f"{kw} {lq}", is_news_page, 10) if lq else None    # outlets in the claim's own language
             fs = ex.submit(search, f"{kw} {_news.SOCIAL_Q}", _news.is_social, 10) if _news.social_enabled() else None
             if fn is not None:
+                national = list(fn.result(timeout=left()))           # read first: a slow language query must not use up the national one's time
                 local = []
                 if fl is not None:
                     try:
@@ -219,7 +220,7 @@ class BraveRetriever:
                         local = []                                       # the language query is extra: its failure costs only its outlets
                 # four different owners, not four pages of one outlet. National outlets first: a page in the claim's own language is judged
                 # against the English translation and so cannot confirm it yet; it only fills places the national search left (live test, 19 Nov 2026).
-                urls = _news.one_per_owner(list(fn.result(timeout=left())) + list(local))
+                urls = _news.one_per_owner(national + list(local))
                 fetches = [ex.submit(self._evidence, u, _news.TIER_NEWS) for u in urls]
                 wait(fetches, timeout=left())
                 news_ev = [f.result() for f in fetches if f.done() and f.exception() is None and f.result()]
