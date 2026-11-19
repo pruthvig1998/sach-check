@@ -886,6 +886,12 @@ DEATH_SUBJECT_CONFIRM = [
     ("actor Giri Babu has died.", "Veteran Telugu Actor Giri Babu Dies At 80"),
     ("actor Giri Babu has died.", "Giri Babu, 80, has died in Hyderabad."),
     ("Dhoni has died.", "MS Dhoni has died."),
+    # once the quote is known to report this person's death, its wording no longer matters (death-words change)
+    ("Giri Babu has died.", "Giri Babu passed away on Tuesday."),
+    ("Giri Babu has died.", "Giri Babu passed away in his sleep."),
+    ("Giri Babu has died.", "Giri Babu is no more, his family said."),
+    ("Giri Babu has died.", "GIRI BABU DIES AT 80"),
+    ("actor Giri Babu has died.", "Veteran Telugu actor Giri Babu breathed his last in Hyderabad."),
     ("Giri Babu has died.", "Giri Babu died. He was 80."),                        # fourth review: a full stop ends the death clause
     ("Giri Babu has died.", "Giri Babu has died. The funeral is tomorrow."),
     ("Ravi Kumar has died.", "Dr. Ravi Kumar died on Monday."),

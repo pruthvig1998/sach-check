@@ -391,7 +391,7 @@ def _tail_ok(tail: list, verb: tuple) -> bool:
         return True
     if tail[0] == "?":
         return False
-    if verb[-1] in ("more", "last"):          # "is no more" / "breathed his last" end the clause; "was no more interested" is not a death
+    if verb[-1] == "more":                    # "is no more" ends the clause; "was no more interested" is not a death
         return False
     t = [w.lower() for w in tail]
     if any(w in _SHOWBIZ for w in t[:4]):
@@ -415,6 +415,7 @@ def _this_year() -> int:
 
 
 _DEATH_CLAIM = re.compile(r"\b(died|dies|dead|passed away|passes away|no more|breathed (?:his|her) last)\b", re.I)
+_EN_DEATH_WORDS = re.compile(r"\b(?:pass(?:es|ed)? away|(?:is|was) no more|breathe[sd]? (?:his|her) last|dies|died)\b", re.I)
 
 
 def death_subjects(text: str) -> list:
@@ -524,8 +525,12 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str, t
         return "none"          # 'every woman who is a cricketer' / 'above 60 years' / 'in Mumbai' does not match 'every woman' / 'Delhi-NCR'
     # A denial ("This is fake; no such proposal exists.") gets its subject from the page title, so for CONTRADICTS the title
     # and quote together must relate to the claim. Confirmations / partial matches must be matched by the quote itself.
-    if tier == "news" and label in ("confirms", "mixed") and _DEATH_CLAIM.search(claim) and not _death_subject_ok(claim, quote, f"{title} {text}"):
-        return "none"                        # the quote does not say that the claim's person died (see death_subjects)
+    if tier == "news" and label in ("confirms", "mixed") and _DEATH_CLAIM.search(claim):
+        if not _death_subject_ok(claim, quote, f"{title} {text}"):
+            return "none"                    # the quote does not say that the claim's person died (see death_subjects)
+        # The quote is known to say that this person died, so "passed away" / "is no more" / "dies" are the same word as the claim's
+        # "has died" for the word-overlap checks below (they refused real reports for the wording alone, live test 19 Nov 2026).
+        claim, quote = _EN_DEATH_WORDS.sub("died", claim), _EN_DEATH_WORDS.sub("died", quote)
     if overlap(claim, f"{title} {quote}" if label == "contradicts" else quote) < 0.4:
         return "none"
     if label in ("confirms", "mixed") and not _META.search(claim) and (
