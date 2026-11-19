@@ -799,6 +799,15 @@ def test_people_map_names_own_accounts_only_for_the_person_the_claim_names_and_a
     assert news.social_signal(["https://x.com/someone/status/1"], "Asha Example")  == {"posts": 1, "platforms": {"X": 1}, "established_accounts": []}
 
 
+def test_a_name_word_shared_by_several_people_never_identifies_one_of_them():
+    own = set(news._PEOPLE["own"].values())
+    who = lambda claim: sorted(p for p in own if news._names_in(p, claim))
+    assert who("Rahul Gandhi said this") == ["Rahul Gandhi"]                    # not KL Rahul
+    assert who("Did Amit Shah announce it") == ["Amit Shah"]                    # not Amit Trivedi or Naseeruddin Shah
+    assert who("Arjun Tendulkar retired") == []                                 # not Allu Arjun, not Sachin Tendulkar
+    assert who("Kohli retired from Tests") == ["Virat Kohli"] and who("Sachin Tendulkar passed away") == ["Sachin Tendulkar"]
+
+
 def test_people_lines_render_only_beside_unverified_and_never_change_the_verdict(monkeypatch):
     monkeypatch.setattr(news, "_PEOPLE", {"own": {"x:realstar": "Asha Example"}, "impostor": {"x:fakestar": "Asha Example"}})
     urls = ["https://x.com/realstar/status/1", "https://x.com/fakestar/status/2"]
@@ -813,8 +822,10 @@ def test_people_file_is_loaded_switchable_and_free_of_deceased_and_weak_rows(mon
     data = news._load_sources("people.json", "SACH_PEOPLE")
     assert len(data["own"]) > 300 and data["impostor"] and all(":" in k for k in (*data["own"], *data["impostor"]))
     assert not set(data["own"]) & set(data["impostor"])
-    assert data["impostor"].get("x:sirhardik3777") == "Hardik Pandya"                          # named fake by Alt News
+    assert data["impostor"].get("x:amivkohli") == "Virat Kohli"                               # named fake in a 2019-or-later report
     assert "facebook:aliabhatt" not in data["impostor"]                                        # exact-name handle from a 2014 report: may be hers now
+    assert "x:sirhardik3777" not in data["impostor"]                                           # 2018 report: the handle may have been re-registered
+    assert "x:sonunigamsingh" not in data["impostor"] and "Sara Tendulkar" not in data["impostor"].values()
     monkeypatch.setenv("SACH_PEOPLE", "0")
     assert news._load_sources("people.json", "SACH_PEOPLE") == {}
 
@@ -831,9 +842,13 @@ def test_build_people_keeps_only_strong_evidence(monkeypatch):
         row(url="https://x.com/fansite", verified_from="profile https://celebsinfo.example/asha"),         # aggregator: out
         row(url="https://x.com/gone", verified_badge="yes", deceased_date="2026-01-01"),                   # died: a post there is not her
         row(url="https://x.com/quiet", verified_badge="yes", active="no"),
-        row(url="https://x.com/fakeasha", account_type="impostor", verified_from="https://www.altnews.in/fc"),
-        row(url="https://x.com/ashaexample", account_type="impostor", verified_from="https://www.altnews.in/old"),   # exact name: out
-        row(url="https://x.com/rumour", account_type="impostor", verified_from="https://gossip.example/x"),         # weak source: out
+        row(url="https://x.com/fakeasha", account_type="impostor", verified_from="https://www.altnews.in/fc", notes="Alt News, Mar 2024"),
+        row(url="https://x.com/oldfake", account_type="impostor", verified_from="https://www.altnews.in/fc", notes="Alt News, 2017"),  # old: out
+        row(url="https://x.com/undated", account_type="impostor", verified_from="https://www.altnews.in/fc"),     # no date: out
+        row(url="https://x.com/ashaexample", account_type="impostor", verified_from="https://www.altnews.in/old", notes="2024"),  # exact name
+        row(url="https://x.com/rumour", account_type="impostor", verified_from="https://gossip.example/x", notes="2024"),   # weak source
+        row(person="Sara Tendulkar", url="https://x.com/saraimpostor", account_type="impostor", verified_from="https://www.altnews.in/a",
+            notes="2024"),                                                                                     # a private person: out
         row(url="https://www.instagram.com/p/abc/", platform="instagram", verified_badge="yes"),          # a post, not a profile
     ])
     assert out["own"] == {"x:badge": "Asha Example", "x:newsref": "Asha Example"} and out["impostor"] == {"x:fakeasha": "Asha Example"}

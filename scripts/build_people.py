@@ -5,7 +5,8 @@
 What goes in (read by sach/news.py, social signal only; never evidence, never a verdict):
   own       "platform:handle" -> person, for public figures' own accounts on X, Instagram and Facebook (the platforms the social search
             covers). Shown as "the person's own account" only when the claim names that person.
-  impostor  "platform:handle" -> person, for accounts a fact-checker, a news organisation, a government page or a court named as fake.
+  impostor  "platform:handle" -> person, for accounts a fact-checker, a news organisation, a government page or a court named as fake,
+            in a report dated IMPOSTOR_SINCE or later (the year is read from the row's notes or source link).
 Only strong evidence counts: a verified badge, or a verified_from page on a government site, a fact-checker, a listed news organisation,
 a court record, or the person's own website. About a third of the sheet cites fan sites, aggregators or Wikipedia; those rows stay out.
 Also out: inactive accounts, accounts of people who have died (a post there is not the person speaking), and rows without a usable URL."""
@@ -25,6 +26,11 @@ PLATFORM = {"x": ("x.com", "twitter.com"), "instagram": ("instagram.com",), "fac
 FACT_CHECKERS = ("altnews.in", "boomlive.in", "vishvasnews.com", "newschecker.in", "factly.in", "newsmobile.in", "factcrescendo.com")
 COURTS = ("indiankanoon.org", "sci.gov.in", "ecourts.gov.in")
 _HANDLE = re.compile(r"[a-z0-9_.]{2,50}")
+IMPOSTOR_SINCE = 2019       # older reports are left out: a suspended handle can be re-registered by someone else since
+# Left out on purpose (independent review, 19 Nov 2026): a private person who is not a public figure, and a handle that is also a real
+# person's own name (Sonu Nigam v Sonu Nigam Singh, Bombay High Court 2025).
+NOT_PUBLIC = {"Sara Tendulkar"}
+NOT_A_FAKE = {"x:sonunigamsingh"}
 
 
 def host(u: str) -> str:
@@ -65,7 +71,12 @@ def build(rows: list) -> dict:
         k, person = key(r), r["person"].strip()
         if not k or not person or not strong(r, sites[person]):
             continue
+        if person in NOT_PUBLIC or k in NOT_A_FAKE:
+            continue
         if r["account_type"] == "impostor":
+            years = [int(y) for y in re.findall(r"\b(20[0-3]\d)\b", r.get("notes", "") + " " + r["verified_from"])]
+            if not years or max(years) < IMPOSTOR_SINCE:
+                continue
             # a handle that is just the person's name may have been taken over by the real person since the report (Alia Bhatt, 2014 -> 2020)
             if k.split(":", 1)[1].replace("_", "").replace(".", "") != re.sub(r"[^a-z0-9]", "", person.lower()):
                 fake.setdefault(k, person)

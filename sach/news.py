@@ -217,11 +217,25 @@ def is_social(url: str) -> bool:
     return bool(platform_of(url))
 
 
+def _name_words(person: str) -> list:
+    return re.findall(r"[a-z]+", person.lower())
+
+
+# How many listed people share each name word ("rahul": KL Rahul and Rahul Gandhi). A shared word alone never identifies a person.
+_SHARED = {}
+for _p in set(v for m in ("own", "impostor") for v in (_PEOPLE.get(m) or {}).values() if isinstance(v, str)):
+    for _w in set(_name_words(_p)):
+        _SHARED[_w] = _SHARED.get(_w, 0) + 1
+
+
 def _names_in(person: str, text: str) -> bool:
-    """True when the claim names this person: any word of four or more letters of the name appears as a word in the text.
+    """True when the claim names this person: a name word of four or more letters that no other listed person has ("kohli"), or every
+    word of the name ("rahul gandhi"; "kl rahul" needs "kl" too). Words are matched whole.
     shortcut: Latin script only, so a Telugu or Hindi claim never matches an English name; upgrade with transliterated names when needed."""
     low = (text or "").lower()
-    return any(re.search(r"\b" + re.escape(w) + r"\b", low) for w in re.findall(r"[a-z]{4,}", person.lower()))
+    has = lambda w: re.search(r"\b" + re.escape(w) + r"\b", low) is not None
+    words = _name_words(person)
+    return bool(words) and (any(len(w) >= 4 and _SHARED.get(w, 0) <= 1 and has(w) for w in words) or all(has(w) for w in words))
 
 
 def social_signal(urls, claim: str = "") -> dict | None:
