@@ -96,6 +96,7 @@ def _news_text(html: str):
 
 import threading, time as _time
 from . import news as _news
+from .lang import detect_language as _detect_lang
 from .search import (SearchChain, SearchRun, BRAVE_MIN_INTERVAL_S, _brave_last, _brave_throttle, grounded_credential_usable)   # noqa: F401 (re-exported: older tests patch them here)
 
 # Every step of the web search finishes by MAIN_END_BY_S. Before 18 Nov 2026 the steps ran one after another with a 25 s page timeout, so two slow
@@ -202,10 +203,20 @@ class BraveRetriever:
         ex = ThreadPoolExecutor(max_workers=6)
         news_ev, social, complete = [], None, False
         try:
-            fn = ex.submit(search, f"{kw} {_news.NEWS_Q}", lambda u: _news.is_news(u) and not is_factchecker(u), 10) if _news.news_enabled() else None
+            is_news_page = lambda u: _news.is_news(u) and not is_factchecker(u)
+            fn = ex.submit(search, f"{kw} {_news.NEWS_Q}", is_news_page, 10) if _news.news_enabled() else None
+            lq = _news.lang_news_q(_detect_lang(kw)) if fn is not None else ""
+            fl = ex.submit(search, f"{kw} {lq}", is_news_page, 10) if lq else None    # outlets in the claim's own language
             fs = ex.submit(search, f"{kw} {_news.SOCIAL_Q}", _news.is_social, 10) if _news.social_enabled() else None
             if fn is not None:
-                urls = _news.one_per_owner(fn.result(timeout=left()))    # four different owners, not four pages of one outlet
+                local = []
+                if fl is not None:
+                    try:
+                        local = fl.result(timeout=left())
+                    except Exception:
+                        local = []                                       # the language query is extra: its failure costs only its outlets
+                # four different owners, not four pages of one outlet; outlets in the claim's language first
+                urls = _news.one_per_owner(list(local) + list(fn.result(timeout=left())))
                 fetches = [ex.submit(self._evidence, u, _news.TIER_NEWS) for u in urls]
                 wait(fetches, timeout=left())
                 news_ev = [f.result() for f in fetches if f.done() and f.exception() is None and f.result()]

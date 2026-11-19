@@ -711,3 +711,77 @@ def test_lenis_ships_with_its_mit_notice_and_head_requests_get_no_body():
         assert r.status == 404                                                              # keep-alive still works after the HEAD
     finally:
         srv.shutdown()
+
+
+# ---------------------------------------------------------------- researched sources map (data/news_sources.json)
+def test_news_sources_file_adds_regional_outlets_without_double_counting_an_owner():
+    from sach.fetch import is_official, is_factchecker
+    data = json.load(open(news.os.path.join(news.os.path.dirname(news.__file__), "..", "data", "news_sources.json"), encoding="utf-8"))
+    # one company under several titles is one owner, and it uses the label the hand-written list already has
+    assert {news.group_of(f"https://www.tv9{l}.com/a") for l in ("telugu", "hindi", "marathi", "bangla")} == {"TV9 Network"}
+    assert news.group_of("https://eisamay.com/a") == news.group_of("https://timesofindia.indiatimes.com/a") == "Times of India"
+    assert news.group_of("https://www.etv.co.in/a") == news.group_of("https://www.eenadu.net/a") == "Eenadu"
+    assert news.group_of("https://www.loksatta.com/a") == "The Indian Express"            # the hand-written entry wins
+    for d in data["domains"]:                                                              # never a government or fact-checker site, never a platform
+        u = "https://" + d + "/"
+        assert not is_official(u) and not is_factchecker(u) and not any(news._under(d, p) for p in ("youtube.com", "google.com", "x.com"))
+    assert news.group_of("https://pib.gov.in/a") == "" and news.group_of("https://www.boomlive.in/a") == ""
+
+
+def test_news_sources_can_be_switched_off(monkeypatch):
+    monkeypatch.setenv("SACH_NEWS_SOURCES", "0")
+    assert news._load_sources() == {}
+    monkeypatch.delenv("SACH_NEWS_SOURCES")
+    assert news._load_sources()["domains"]
+
+
+def test_language_news_query_is_short_separate_and_only_for_languages_with_outlets():
+    q = news.lang_news_q("te")
+    assert q.startswith("(site:") and "tv9telugu.com" in q and "thehindu.com" not in q and len(q) < 300
+    assert q.count("site:") <= news.LANG_QUERY_HOSTS and "ts.etv.co.in" not in q          # a subdomain of a listed host adds nothing
+    assert news.lang_news_q("en") == news.lang_news_q("") == news.lang_news_q("xx") == ""
+    assert news.social_signal(["https://x.com/ntvtelugulive/status/1"])["established_accounts"] == ["NTV Telugu"]
+
+
+def test_news_search_adds_the_claims_language_outlets_first(monkeypatch):
+    from sach import retrieve
+    monkeypatch.setenv("SACH_NEWS_TIER", "1")
+    r = retrieve.BraveRetriever(key="k", chain=type("C", (), {"configured": True, "new_run": lambda self: type("R", (), {"status": "ok"})()})())
+    asked = []
+    def urls(q, pred, n):
+        asked.append(q)
+        return ["https://www.tv9telugu.com/a"] if "tv9telugu.com" in q else ["https://www.thehindu.com/b", "https://www.ndtv.com/c"]
+    monkeypatch.setattr(r, "_urls", urls)
+    monkeypatch.setattr(r, "_evidence", lambda u, tier: None)
+    ranked, real = [], news.one_per_owner
+    monkeypatch.setattr(news, "one_per_owner", lambda u, n=news.PER_QUERY: ranked.append(real(u, n)) or ranked[-1])
+    r._extras("నటుడు గిరిబాబు చనిపోయారా", 5)
+    assert len(asked) == 2 and any(news.NEWS_Q in q for q in asked) and any(news.lang_news_q("te") in q for q in asked)
+    assert ranked == [["https://www.tv9telugu.com/a", "https://www.thehindu.com/b", "https://www.ndtv.com/c"]]     # the claim's language first
+    asked.clear()
+    r._extras("Did the actor Giri Babu die", 5)
+    assert asked == [f"Did the actor Giri Babu die {news.NEWS_Q}"]                       # English: the national query only
+
+
+def test_build_news_sources_keeps_only_verified_news_and_official_accounts(monkeypatch):
+    import importlib.util, os
+    spec = importlib.util.spec_from_file_location("bns", os.path.join(os.path.dirname(__file__), "..", "scripts", "build_news_sources.py"))
+    bns = importlib.util.module_from_spec(spec); spec.loader.exec_module(bns)
+    row = lambda **k: {"group": "B", "category": "tv", "name": "N", "owner": "O", "language": "Telugu", "platform": "website", "url": "",
+                       "active": "yes", "verified_from": "site footer https://ex.example/", **k}
+    out = bns.build([
+        row(url="https://www.newtv.example/", owner="TV9 Network / Associated Broadcasting"),
+        row(url="https://other.example/", owner="Other Co", language="Telugu; English"),
+        row(url="https://celeb.example/", group="C", category="celebrity"),                       # watch-list: never a source
+        row(url="https://dead.example/", active="no"),                                           # inactive
+        row(url="https://nourl.example/", verified_from="seen in search results"),               # no evidence link
+        row(url="https://factcheck.example/", category="fact-checker"),                          # fact-checkers keep their own tier
+        row(url="https://state.gov.in/", group="A", category="state-govt"),                     # government: official tier, never news
+        row(url="https://www.youtube.com/@newtv", platform="youtube"),
+        row(url="https://x.com/NewTV", platform="x", name="New TV"),
+        row(url="https://x.com/CelebX", platform="x", group="C", name="Celeb"),
+        row(url="https://x.com/StateGov", platform="x", group="A", name="State Govt"),
+    ])
+    assert out["domains"] == {"newtv.example": "TV9 Network", "other.example": "Other Co"}
+    assert out["by_lang"] == {"te": ["newtv.example", "other.example"]}
+    assert out["handles"] == {"newtv": "New TV", "stategov": "State Govt"}

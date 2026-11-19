@@ -12,7 +12,7 @@ people. So the count is shown as a signal and never decides anything.
 
 Switches (all off by default): SACH_NEWS_TIER=1, SACH_SOCIAL_SIGNAL=1."""
 from __future__ import annotations
-import os, re
+import json, os, re
 from urllib.parse import urlparse
 from .fetch import host_of, _under
 from .models import UNVERIFIED
@@ -41,6 +41,33 @@ NEWS_GROUPS = {
     "dinamalar.com": "Dinamalar", "lokmat.com": "Lokmat", "loksatta.com": "The Indian Express",
     "bbc.com": "BBC", "bbc.co.uk": "BBC", "reuters.com": "Reuters", "apnews.com": "AP",
 }
+
+
+def _load_sources() -> dict:
+    """data/news_sources.json (built by scripts/build_news_sources.py from the researched sources map of 19 Nov 2026): more news websites by
+    owner and more established social handles. Off with SACH_NEWS_SOURCES=0; missing or unreadable means the hand-written lists only."""
+    if os.environ.get("SACH_NEWS_SOURCES", "1") == "0":
+        return {}
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "..", "data", "news_sources.json"), encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in d.items() if isinstance(v, dict)} if isinstance(d, dict) else {}
+
+
+_SOURCES = _load_sources()
+# The hand-written entries above always win; the file only adds hosts they do not cover.
+NEWS_GROUPS.update({d: g for d, g in (_SOURCES.get("domains") or {}).items() if isinstance(g, str) and d not in NEWS_GROUPS})
+
+
+def lang_news_q(lang: str) -> str:
+    """A second, separate news query: up to LANG_QUERY_HOSTS outlets that publish in `lang` (data/news_sources.json), or "" when there are
+    none. Separate because one query naming every outlet is too long (Brave allows 400 characters; Google reads 32 words)."""
+    hosts = [h for h in (_SOURCES.get("by_lang") or {}).get(lang or "", []) if isinstance(h, str) and h not in QUERY_HOSTS][:LANG_QUERY_HOSTS]
+    return "(" + " OR ".join("site:" + h for h in hosts) + ")" if hosts else ""
+
+
 WIRES = {"PTI", "ANI", "UNI", "Reuters", "AP", "All India Radio", "DD News"}
 PER_QUERY = 4
 # The news search names its outlets. An unrestricted query goes to the Google-grounded provider first, which by design returns only government
@@ -48,6 +75,7 @@ PER_QUERY = 4
 QUERY_HOSTS = ("ptinews.com", "aninews.in", "newsonair.gov.in", "thehindu.com", "indianexpress.com", "timesofindia.indiatimes.com",
                "hindustantimes.com", "ndtv.com", "indiatoday.in", "news18.com", "deccanherald.com", "eenadu.net", "sakshi.com", "bbc.com")
 NEWS_Q = "(" + " OR ".join("site:" + h for h in QUERY_HOSTS) + ")"
+LANG_QUERY_HOSTS = 8          # outlets of the claim's language added to the news query (a longer query is cut by search providers)
 
 # Broad: any wording that may be about a death. Used only to RAISE the number of outlets needed, so a false hit is harmless.
 _DEATH = re.compile(r"\b(died|dies|dead|death|passed away|passes away|pass away|is no more|demise|demised|funeral|killed|murdered|succumbed|"
@@ -174,6 +202,7 @@ _PLATFORM = {"x.com": "X", "twitter.com": "X", "facebook.com": "Facebook", "inst
 KNOWN_HANDLES = {"pibfactcheck": "PIB Fact Check", "pib_india": "PIB India", "mygovindia": "MyGov", "airnewsalerts": "All India Radio News",
                  "ddnewslive": "DD News", "pti_news": "PTI", "ani": "ANI", "the_hindu": "The Hindu", "indianexpress": "The Indian Express",
                  "timesofindia": "Times of India", "httweets": "Hindustan Times", "ndtv": "NDTV", "indiatoday": "India Today"}
+KNOWN_HANDLES.update({h: n for h, n in (_SOURCES.get("handles") or {}).items() if isinstance(n, str) and h not in KNOWN_HANDLES})
 _SKIP = {"hashtag", "search", "i", "home", "explore", "share", "sharer", "watch", "groups", "p", "reel", "reels", "stories", "events", "login"}
 
 
