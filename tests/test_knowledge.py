@@ -886,6 +886,8 @@ DEATH_SUBJECT_CONFIRM = [
     ("actor Giri Babu has died.", "Veteran Telugu Actor Giri Babu Dies At 80"),
     ("actor Giri Babu has died.", "Giri Babu, 80, has died in Hyderabad."),
     ("Dhoni has died.", "MS Dhoni has died."),
+    ("Giri Babu has died.", "Giri Babu died. He was 80."),                        # fourth review: a full stop ends the death clause
+    ("Giri Babu has died.", "Giri Babu has died. The funeral is tomorrow."),
     # real obituary forms (third review)
     ("Giri Babu has died.", "Giri Babu died of cardiac arrest in Hyderabad."),
     ("Giri Babu has died.", "Giri Babu died in a road accident on Monday."),
@@ -960,6 +962,10 @@ DEATH_SUBJECT_REFUSE = [   # (claim, quote, rest of the page)
     ("Giri Babu has died.", "Giri Babu dies in Pushpa 2", ""),
     ("Giri Babu has died.", "Giri Babu dies on screen in his new film", ""),
     ("Giri Babu has died.", "Giri Babu died on Monday.", "Death rumours about the actor were dismissed by his son."),
+    ("Giri Babu has died.", "Rumour: Giri Babu died on Monday.", ""),             # fourth review
+    ("Giri Babu has died.", "Fake: Giri Babu died on Monday.", ""),
+    ("Giri Babu has died.", "I think Giri Babu died on Monday.", ""),
+    ("Giri Babu has died.", "Giri Babu died? No, he is fine.", ""),
 ]
 
 

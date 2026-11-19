@@ -179,7 +179,8 @@ For a death claim, a news quote counts toward REPORTED only if the claim's perso
 directly before died / dies / passed away / is no more / breathed his last, with only an age, a comma, has/had or a "who ..." clause between,
 and no "of" or possessive earlier in that clause. The words after the verb must read like an obituary (the end, an age, a date, "of",
 "after", "in a hospital", "in <place>") or the sentence is refused, so "dies in Bigg Boss task", "died for the role", "dies in Pushpa 2"
-and "was no more interested" never count. The same function (`stance.death_subjects`) reads the person from the claim; names match by
+and "was no more interested" never count. A full stop ends the clause ("X died. He was 80." counts); a question mark, or a doubt word
+earlier in the sentence ("Rumour: X died", "I think X died", "X reportedly ..."), refuses. The same function (`stance.death_subjects`) reads the person from the claim; names match by
 their last two words (one for a one-word name), spaces ignored. Also refused: a past year right after the verb ("died in 1998"), and a page with an explicit doubt phrase (hoax, death rumours, fake news,
 is alive, alive and well, hale and hearty, is recovering, not true): plain "rumours", "denied" or "stable" no longer block a real obituary. Everything fails closed: no person found, no count.
 **Guaranteed:** "X's father/co-star died", "X mourns Y", "wife of X dies", "X said Y died", "X has not / nearly / reportedly died" never count.

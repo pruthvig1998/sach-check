@@ -359,7 +359,12 @@ def _unmatched_restriction(claim: str, quote: str, places: bool = True) -> bool:
 # in front of X. The same function finds X in the claim. Not guaranteed: a namesake's obituary, or a plain "X died" on a satire page; those
 # rest on the three-owner threshold (sach/news.py) and the judge. Everything here fails closed: no subject found means "none".
 # English only; claims in other languages reach the news judge as their English translation (independent reviews, 19 Nov 2026).
-_TOK = re.compile(r"\d+\+?|[A-Za-z](?:[A-Za-z\-]|\.(?=[A-Za-z]))*(?:'s)?|[,;:]")      # a dot only inside a word ("M.S."), never a full stop
+# A dot inside a word stays ("M.S."); a sentence end (. ! ? before a space or the end) is its own token, a boundary like , ; :
+_TOK = re.compile(r"\d+\+?|[A-Za-z](?:[A-Za-z\-]|\.(?=[A-Za-z]))*(?:'s)?|[,;:]|(?<![A-Z])[.!?](?=\s|$)")   # not after an initial ("M.S. Dhoni")
+_CLAUSE_END = {",", ";", ":", ".", "!", "?"}
+# Doubt earlier in the same sentence ("Rumour: X died", "I think X died", "X reportedly ..."): never a report.
+_DEATH_HEDGE = {"rumour", "rumor", "rumours", "rumors", "fake", "hoax", "alleged", "allegedly", "reportedly", "think", "believe", "claim", "claims",
+          "claimed", "unconfirmed", "viral", "false", "speculation"}
 _DEATH_VERB = ((("died",), 1), (("dies",), 1), (("passes", "away"), 2), (("passed", "away"), 2), (("is", "no", "more"), 3),
                (("was", "no", "more"), 3), (("breathed", "his", "last"), 3), (("breathed", "her", "last"), 3), (("breathes", "his", "last"), 3),
                (("breathes", "her", "last"), 3))
@@ -371,7 +376,7 @@ _BREAK = {"of", "for", "to", "and", "with", "by", "from", "about", "on", "at", "
 # task", "died for the role", "died hard", "dies in Pushpa 2" (independent review, 19 Nov 2026).
 _TAIL_OK = {"at", "aged", "on", "after", "following", "while", "today", "yesterday", "early", "late", "last", "this", "due", "of", "from",
             "peacefully", "suddenly", "around", "amid", "here", "there", "tonight"}
-_TAIL_LINK = {",", ";", ":", "on", "after", "at", "following", "due", "today", "yesterday", "early", "late", "this", "last", "while", "of", "aged"}
+_TAIL_LINK = {",", ";", ":", ".", "!", "on", "after", "at", "following", "due", "today", "yesterday", "early", "late", "this", "last", "while", "of", "aged"}
 _SHOWBIZ = {"film", "films", "movie", "movies", "serial", "scene", "show", "episode", "play", "drama", "series", "climax", "task", "game",
             "role", "screen", "stage", "set", "sets", "shoot", "trailer", "teaser", "video", "reel", "skit", "sketch", "story", "novel", "book"}
 _EN_PAGE_DOUBT = re.compile(r"\b(hoax|death rumou?rs?|rumou?rs? (?:of|about) (?:his|her|the actor's|their) death|fake (?:news|message|post)|"
@@ -380,8 +385,10 @@ _EN_PAGE_DOUBT = re.compile(r"\b(hoax|death rumou?rs?|rumou?rs? (?:of|about) (?:
 
 def _tail_ok(tail: list, verb: tuple) -> bool:
     """The words right after the death verb (original case)."""
-    if not tail or tail[0] in (",", ";", ":"):
+    if not tail or tail[0] in (",", ";", ":", ".", "!"):
         return True
+    if tail[0] == "?":
+        return False
     if verb[-1] in ("more", "last"):          # "is no more" / "breathed his last" end the clause; "was no more interested" is not a death
         return False
     t = [w.lower() for w in tail]
@@ -421,7 +428,7 @@ def death_subjects(text: str) -> list:
             while j >= 0 and (low[j] in _GAP or low[j].rstrip("+").isdigit()):
                 if low[j] == ",":                 # "X, who acted in 600 films, has died": skip a who-clause closed by this comma
                     k = j - 1
-                    while k >= 0 and low[k] not in (",", ";", ":"):
+                    while k >= 0 and low[k] not in _CLAUSE_END:
                         k -= 1
                     if k >= 0 and low[k] == "," and k + 1 < j and low[k + 1] == "who":
                         j = k
@@ -432,9 +439,11 @@ def death_subjects(text: str) -> list:
             # "the beloved wife of veteran Telugu actor X dies", "X's son ...": something else owns the death. Look back to the start of
             # the clause for "of" or a possessive.
             k, owned = j, False
-            while k >= 0 and low[k] not in (",", ";", ":"):
-                owned = owned or low[k] == "of" or low[k].endswith("'s")
+            while k >= 0 and low[k] not in _CLAUSE_END:
+                owned = owned or low[k] == "of" or low[k].endswith("'s") or low[k] in _DEATH_HEDGE
                 k -= 1
+            if k >= 1 and low[k] == ":" and low[k - 1] in _DEATH_HEDGE:     # "Rumour: X died"
+                owned = True
             if name and not owned and _tail_ok(toks[i + n:i + n + 5], words):
                 out.append((name, " ".join(low[i + n:i + n + 4])))
     return out
