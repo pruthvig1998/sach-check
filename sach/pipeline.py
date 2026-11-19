@@ -1,5 +1,5 @@
 from __future__ import annotations
-import os, time
+import inspect, os, time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as _Timeout, wait
 from . import ledger
 from .card import render_card
@@ -29,11 +29,14 @@ def _run_with_deadline(fn, secs, default):
     finally:
         ex.shutdown(wait=False)      # abandon a hung thread instead of blocking on it
 
-def _search_one(r, q):
+def _search_one(r, q, lang: str = ""):
     """-> (evidence, SearchRun or None). Retrievers that can report web-search health expose search_with_status; the
-    status object is created per call, so parallel claims never share one."""
+    status object is created per call, so parallel claims never share one. `lang` (the forward's own language) is passed to a retriever
+    that takes it, since `q` is usually the English translation."""
     fn = getattr(r, "search_with_status", None)
-    return fn(q) if fn else (r.search(q), None)
+    if not fn:
+        return r.search(q), None
+    return fn(q, lang=lang) if "lang" in inspect.signature(fn).parameters else fn(q)
 
 class _JudgeError(Exception):
     def __init__(self, kind: str, ms: int):
@@ -55,7 +58,7 @@ def _check_claim(claim: Claim, lang: str, retrievers, llm, deadline: float, engl
             tinfo.update(translator=tr["translator"], detected=tr["detected"])
     evidence = []
     rex = ThreadPoolExecutor(max_workers=max(1, len(retrievers)))      # PIB and web search in parallel, not one after the other
-    rfuts = [rex.submit(_search_one, r, q) for r in retrievers]
+    rfuts = [rex.submit(_search_one, r, q, lang) for r in retrievers]
     wait(rfuts, timeout=left(RETRIEVE_DEADLINE_S))
     sstat, sprov = [], []
     news_searched, social_urls = False, []

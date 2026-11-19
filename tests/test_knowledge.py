@@ -852,3 +852,20 @@ def test_build_people_keeps_only_strong_evidence(monkeypatch):
         row(url="https://www.instagram.com/p/abc/", platform="instagram", verified_badge="yes"),          # a post, not a profile
     ])
     assert out["own"] == {"x:badge": "Asha Example", "x:newsref": "Asha Example"} and out["impostor"] == {"x:fakeasha": "Asha Example"}
+
+
+def test_the_forwards_own_language_reaches_the_news_search_even_though_it_searches_in_english(monkeypatch):
+    # The pipeline searches with the English translation; before this, a Telugu forward's news search never added Telugu outlets.
+    from sach import retrieve, pipeline
+    monkeypatch.setenv("SACH_NEWS_TIER", "1")
+    r = retrieve.BraveRetriever(key="k", chain=type("C", (), {"configured": True, "new_run": lambda self: type("R", (), {"status": "ok", "providers": []})()})())
+    asked = []
+    monkeypatch.setattr(r, "_urls", lambda q, pred, n: asked.append(q) or [])
+    monkeypatch.setattr(r, "_search_claim", lambda claim: r._extras("Giri Babu actor died", 5)[0])
+    pipeline._search_one(r, "Did the actor Giri Babu die?", "te")
+    assert any(news.lang_news_q("te") in q for q in asked)                         # Telugu outlets, though the words are English
+    asked.clear()
+    pipeline._search_one(r, "Did the actor Giri Babu die?", "en")
+    assert not any("tv9telugu.com" in q for q in asked)
+    plain = type("Old", (), {"search_with_status": lambda self, q: (["ok"], None)})()  # a retriever without the lang parameter still works
+    assert pipeline._search_one(plain, "q", "te") == (["ok"], None)

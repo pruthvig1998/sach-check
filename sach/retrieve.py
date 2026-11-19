@@ -178,17 +178,19 @@ class BraveRetriever:
     def search(self, claim: str) -> list[Evidence]:
         return self.search_with_status(claim)[0]
 
-    def search_with_status(self, claim: str):
+    def search_with_status(self, claim: str, lang: str = ""):
         """-> (evidence, SearchRun). PIB first, then the wider official pool (gov.in, nic.in, WHO, RBI, MyGov, Parliament);
-        fact-checkers only if nothing authoritative was found (they can never decide a verdict, so skip the extra query)."""
+        fact-checkers only if nothing authoritative was found (they can never decide a verdict, so skip the extra query).
+        `lang`: the language of the forward as the user wrote it. `claim` is usually its English translation, so the news search would
+        otherwise never know to add the outlets of that language."""
         run = self.chain.new_run()
         if not self.chain.configured:
             return [], run                                   # status off: no search key is a deliberate configuration
-        self._tls.run = run
+        self._tls.run, self._tls.lang = run, lang
         try:
             return self._search_claim(claim), run
         finally:
-            self._tls.run = None
+            self._tls.run, self._tls.lang = None, ""
 
     def _extras(self, kw: str, box_s: float):
         """-> (news evidence, social links, complete). Runs beside the official evidence, inside `box_s` seconds, with its own SearchRun.
@@ -205,7 +207,7 @@ class BraveRetriever:
         try:
             is_news_page = lambda u: _news.is_news(u) and not is_factchecker(u)
             fn = ex.submit(search, f"{kw} {_news.NEWS_Q}", is_news_page, 10) if _news.news_enabled() else None
-            lq = _news.lang_news_q(_detect_lang(kw)) if fn is not None else ""
+            lq = _news.lang_news_q(getattr(self._tls, "lang", "") or _detect_lang(kw)) if fn is not None else ""
             fl = ex.submit(search, f"{kw} {lq}", is_news_page, 10) if lq else None    # outlets in the claim's own language
             fs = ex.submit(search, f"{kw} {_news.SOCIAL_Q}", _news.is_social, 10) if _news.social_enabled() else None
             if fn is not None:
