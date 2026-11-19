@@ -364,16 +364,52 @@ _DEATH_VERB = ((("died",), 1), (("dies",), 1), (("passes", "away"), 2), (("passe
                (("was", "no", "more"), 3), (("breathed", "his", "last"), 3), (("breathed", "her", "last"), 3), (("breathes", "his", "last"), 3),
                (("breathes", "her", "last"), 3))
 _GAP = {"has", "had", "have", ","}                                # between the person and the verb: "X, 80, has died"
-_BREAK = {"of", "for", "to", "and", "with", "by", "from", "about", "on", "at", "in", "the", "a", "an"}   # words a name never contains
-_AFTER = re.compile(r"^(in|during|on) (a|an|the|his|her) (film|movie|serial|scene|show|episode|play|drama|series)\b|^on[- ]screen\b|"
-                    r"^in (the )?(climax|scene)\b|^in (19|20)\d\d\b", re.I)
-_EN_PAGE_DOUBT = re.compile(r"\b(alive|hale and hearty|recovering|stable condition|is stable|safe and sound|hoax|rumou?rs?|fake (?:news|message|post)|"
-                            r"not true|false (?:news|claim|report)|denied|clarified)\b", re.I)
+# Words a name never contains, including sentence openers that make the death hypothetical or a question ("If X died ...").
+_BREAK = {"of", "for", "to", "and", "with", "by", "from", "about", "on", "at", "in", "the", "a", "an", "if", "as", "when", "whether", "what",
+          "is", "was", "will", "would", "could", "should", "may", "might", "did", "does", "do", "can", "unless", "suppose", "imagine"}
+# After died / dies / passed away the sentence must go on in a way an obituary does, or end. Anything else fails closed: "dies in Bigg Boss
+# task", "died for the role", "died hard", "dies in Pushpa 2" (independent review, 19 Nov 2026).
+_TAIL_OK = {"at", "aged", "on", "after", "following", "while", "today", "yesterday", "early", "late", "last", "this", "due", "of", "from",
+            "peacefully", "suddenly", "around", "amid", "here", "there", "tonight"}
+_TAIL_LINK = {",", ";", ":", "on", "after", "at", "following", "due", "today", "yesterday", "early", "late", "this", "last", "while", "of", "aged"}
+_SHOWBIZ = {"film", "films", "movie", "movies", "serial", "scene", "show", "episode", "play", "drama", "series", "climax", "task", "game",
+            "role", "screen", "stage", "set", "sets", "shoot", "trailer", "teaser", "video", "reel", "skit", "sketch", "story", "novel", "book"}
+_EN_PAGE_DOUBT = re.compile(r"\b(hoax|death rumou?rs?|rumou?rs? (?:of|about) (?:his|her|the actor's|their) death|fake (?:news|message|post)|"
+                            r"is alive|alive and well|hale and hearty|is recovering|is stable|doing well|safe and sound|not true|false news)\b", re.I)
+
+
+def _tail_ok(tail: list, verb: tuple) -> bool:
+    """The words right after the death verb (original case)."""
+    if not tail or tail[0] in (",", ";", ":"):
+        return True
+    if verb[-1] in ("more", "last"):          # "is no more" / "breathed his last" end the clause; "was no more interested" is not a death
+        return False
+    t = [w.lower() for w in tail]
+    if any(w in _SHOWBIZ for w in t[:4]):
+        return False
+    if t[0] in _TAIL_OK:
+        return not (t[0] == "on" and len(t) > 1 and t[1] in ("screen", "stage", "camera"))
+    if t[0] != "in" or len(t) < 2:
+        return False
+    if t[1].isdigit():                                           # "died in 2026" is news; "died in 1998" is not
+        return len(t[1]) == 4 and int(t[1]) >= _this_year()
+    if t[1] in ("a", "an", "the", "his", "her", "their", "hospital", "sleep"):
+        return True
+    # "in Hyderabad", "in New Delhi on Saturday": a place of one or two capitalised words, then the end or a linking word
+    k = 2 if len(tail) > 2 and tail[2][:1].isupper() else 1
+    return tail[1][:1].isupper() and (len(t) == k + 1 or t[k + 1] in _TAIL_LINK)
+
+
+def _this_year() -> int:
+    import datetime
+    return datetime.date.today().year
+
+
 _DEATH_CLAIM = re.compile(r"\b(died|dies|dead|passed away|passes away|no more|breathed (?:his|her) last)\b", re.I)
 
 
 def death_subjects(text: str) -> list:
-    """[(name words, words after the verb)] for every 'X died' in the text whose X can be found (see the guarantee above)."""
+    """[(name words, words after the verb)] for every 'X died' in the text whose X is the subject (see the guarantee above)."""
     toks = _TOK.findall((text or "").replace("\u2019", "'"))
     low = [t.lower() for t in toks]
     out = []
@@ -393,10 +429,13 @@ def death_subjects(text: str) -> list:
             name = []
             while j >= 0 and toks[j][:1].isupper() and not toks[j].endswith("'s") and low[j] not in _BREAK:
                 name.insert(0, low[j]); j -= 1
-            # "Wife of actor X", "X's son": something else owns the death. Look back past job words and adjectives (lower case) to the
-            # nearest "of" or possessive within three words.
-            before = [low[k] for k in range(max(0, j - 2), j + 1)]
-            if name and not any(w == "of" or w.endswith("'s") for w in before):
+            # "the beloved wife of veteran Telugu actor X dies", "X's son ...": something else owns the death. Look back to the start of
+            # the clause for "of" or a possessive.
+            k, owned = j, False
+            while k >= 0 and low[k] not in (",", ";", ":"):
+                owned = owned or low[k] == "of" or low[k].endswith("'s")
+                k -= 1
+            if name and not owned and _tail_ok(toks[i + n:i + n + 5], words):
                 out.append((name, " ".join(low[i + n:i + n + 4])))
     return out
 
@@ -420,7 +459,7 @@ def _death_subject_ok(claim: str, quote: str, page: str) -> bool:
     if not who or _EN_PAGE_DOUBT.search(page):
         return False
     for name, after in death_subjects(quote):
-        if any(_same_person(c, name) for c in who) and not _AFTER.search(after):
+        if any(_same_person(c, name) for c in who):
             return True
     return False
 

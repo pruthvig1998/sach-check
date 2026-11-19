@@ -886,6 +886,12 @@ DEATH_SUBJECT_CONFIRM = [
     ("actor Giri Babu has died.", "Veteran Telugu Actor Giri Babu Dies At 80"),
     ("actor Giri Babu has died.", "Giri Babu, 80, has died in Hyderabad."),
     ("Dhoni has died.", "MS Dhoni has died."),
+    # real obituary forms (third review)
+    ("Giri Babu has died.", "Giri Babu died of cardiac arrest in Hyderabad."),
+    ("Giri Babu has died.", "Giri Babu died in a road accident on Monday."),
+    ("Giri Babu has died.", "Giri Babu died in Hyderabad on Saturday."),
+    ("Giri Babu has died.", "Giri Babu died in New Delhi."),
+    ("Giri Babu has died.", "One of the finest actors of Telugu cinema, Giri Babu, died on Saturday."),
 ]
 
 
@@ -905,6 +911,16 @@ def test_names_match_by_their_last_words_and_ignore_spacing():
     assert ok("Industrialist Ratan Tata passed away in Mumbai.", "Ratan Tata died in Mumbai.", "")
     assert ok("actor Giribabu has died.", "Veteran Telugu actor Giri Babu dies at 80.", "")
     assert not ok("Giri Babu has died.", "Babu died on Monday.", "") and not ok("Ratan Tata has died.", "Tata died.", "")
+
+
+def test_a_genuine_obituary_page_is_not_refused_for_ordinary_words():
+    # page-level doubt is explicit phrases only (third review): "rumours of his ill health", "denied", "stable" no longer block
+    from sach.stance import _death_subject_ok as ok
+    for q in ("Giri Babu passed away on Tuesday.", "Giri Babu passed away in his sleep.", "Giri Babu is no more, his family said.", "GIRI BABU DIES AT 80"):
+        assert ok("Giri Babu has died.", q, ""), q                   # the subject rule accepts these (the older overlap checks may not)
+    page = "Rumours of his ill health had circulated last year. He was in stable condition last week. The family clarified funeral plans."
+    assert ok("Giri Babu has died.", "Giri Babu died on Monday.", page)
+    assert ok("Giri Babu has died.", "Giri Babu died in 2026.", "") and not ok("Giri Babu has died.", "Giri Babu died in 2023.", "")
 DEATH_SUBJECT_REFUSE = [   # (claim, quote, rest of the page)
     ("Giri Babu has died.", "Giri Babu's father died on Monday.", ""),
     ("Giri Babu has died.", "Giri Babu's wife died on Monday.", ""),
@@ -934,6 +950,16 @@ DEATH_SUBJECT_REFUSE = [   # (claim, quote, rest of the page)
     ("giri babu has died.", "Giri Babu died on Monday.", ""),                    # no name Sach can find in the claim: abstain, never guess
     ("Giri Babu has died.", "Rao, who worked with Giri Babu, has died.", ""),
     ("Giri Babu has died.", "Babu died on Monday.", ""),                          # one shared word is not the same two-word name
+    # third review
+    ("Giri Babu has died.", "the beloved wife of veteran Telugu actor Giri Babu dies at 70", ""),
+    ("Giri Babu has died.", "If Giri Babu died, the industry would mourn.", ""),
+    ("Giri Babu has died.", "Giri Babu was no more interested in films.", ""),
+    ("Giri Babu has died.", "Giri Babu dies in Bigg Boss task", ""),
+    ("Giri Babu has died.", "Giri Babu died for the role", ""),
+    ("Giri Babu has died.", "Giri Babu died hard in the climax", ""),
+    ("Giri Babu has died.", "Giri Babu dies in Pushpa 2", ""),
+    ("Giri Babu has died.", "Giri Babu dies on screen in his new film", ""),
+    ("Giri Babu has died.", "Giri Babu died on Monday.", "Death rumours about the actor were dismissed by his son."),
 ]
 
 

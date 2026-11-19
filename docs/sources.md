@@ -177,9 +177,11 @@ The count is shown as a signal and is never evidence. How many accounts post a c
 ### Whose death a news page reports (19 Nov 2026)
 For a death claim, a news quote counts toward REPORTED only if the claim's person is the grammatical subject of a death verb in it: the name
 directly before died / dies / passed away / is no more / breathed his last, with only an age, a comma, has/had or a "who ..." clause between,
-and no "of" or possessive in front of the name. The same function (`stance.death_subjects`) reads the person from the claim; names match by
-their last two words (one for a one-word name), spaces ignored. Also refused: "in a film / scene / serial", "in 1998" right after the verb,
-and a page that says alive, recovering, hoax, rumour, fake, not true, denied or clarified. Everything fails closed: no person found, no count.
+and no "of" or possessive earlier in that clause. The words after the verb must read like an obituary (the end, an age, a date, "of",
+"after", "in a hospital", "in <place>") or the sentence is refused, so "dies in Bigg Boss task", "died for the role", "dies in Pushpa 2"
+and "was no more interested" never count. The same function (`stance.death_subjects`) reads the person from the claim; names match by
+their last two words (one for a one-word name), spaces ignored. Also refused: a past year right after the verb ("died in 1998"), and a page with an explicit doubt phrase (hoax, death rumours, fake news,
+is alive, alive and well, hale and hearty, is recovering, not true): plain "rumours", "denied" or "stable" no longer block a real obituary. Everything fails closed: no person found, no count.
 **Guaranteed:** "X's father/co-star died", "X mourns Y", "wife of X dies", "X said Y died", "X has not / nearly / reportedly died" never count.
 **Not guaranteed:** a namesake's obituary, or a plain "X died" on a satire page; those rest on the three-owner threshold and the judge.
 Measured on the four live pages that reported Giri Babu's death: all four owners still count. English only; claims in other languages reach
