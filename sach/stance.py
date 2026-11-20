@@ -464,19 +464,32 @@ def _same_person(claim_name: list, quote_name: list) -> bool:
         n += 1
     if n >= need:
         return True
-    joined = lambda ws, k: "".join(ws[-k:])
+    joined = lambda ws, k: "".join(ws[-k:]).replace("-", "")            # "Giri-Babu" is "Giri Babu" is "Giribabu"
     return any(joined(claim_name, a) == joined(quote_name, b) for a in (1, 2) for b in (1, 2)
                if a != b and a <= len(claim_name) and b <= len(quote_name))
 
 
-def _death_subject_ok(claim: str, quote: str, page: str) -> bool:
+def _death_subject_ok(claim: str, quote: str, page: str):
+    """(claim's name words, quote's name words) of the first match, or None. Truthy exactly when the quote reports the claim's person's death."""
     who = [n for n, _ in death_subjects(claim)]
     if not who or _EN_PAGE_DOUBT.search(page):
-        return False
+        return None
     for name, after in death_subjects(quote):
-        if any(_same_person(c, name) for c in who):
-            return True
-    return False
+        for c in who:
+            if _same_person(c, name):
+                return c, name
+    return None
+
+
+def _one_spelling(claim: str, quote: str, match) -> tuple:
+    """After a match, write the person's name the same way in claim and quote ("Giribabu" / "Giri Babu" / "Giri-Babu"), so the later
+    word-overlap checks do not refuse a report for the spelling alone. Only the matched last words (two, or one for a one-word name)."""
+    c, q = match
+    canon = " ".join(w.capitalize() for w in c[-min(2, len(c)):])     # the claim's own spelling: the quote is rewritten to match it
+    for words in (c[-min(2, len(c)):], q[-min(2, len(q)):]):
+        pat = re.compile(r"\b" + r"[\s\-]?".join(re.escape(w).replace("\\-", "[\\s\\-]?") for w in words) + r"\b", re.I)
+        claim, quote = pat.sub(canon, claim), pat.sub(canon, quote)
+    return claim, quote
 
 
 def validate_stance(label: str, quote: str, claim: str, title: str, text: str, tier: str = "") -> str:
@@ -526,8 +539,10 @@ def validate_stance(label: str, quote: str, claim: str, title: str, text: str, t
     # A denial ("This is fake; no such proposal exists.") gets its subject from the page title, so for CONTRADICTS the title
     # and quote together must relate to the claim. Confirmations / partial matches must be matched by the quote itself.
     if tier == "news" and label in ("confirms", "mixed") and _DEATH_CLAIM.search(claim):
-        if not _death_subject_ok(claim, quote, f"{title} {text}"):
+        match = _death_subject_ok(claim, quote, f"{title} {text}")
+        if not match:
             return "none"                    # the quote does not say that the claim's person died (see death_subjects)
+        claim, quote = _one_spelling(claim, quote, match)
         # The quote is known to say that this person died, so "passed away" / "is no more" / "dies" are the same word as the claim's
         # "has died" for the word-overlap checks below (they refused real reports for the wording alone, live test 19 Nov 2026).
         claim, quote = _EN_DEATH_WORDS.sub("died", claim), _EN_DEATH_WORDS.sub("died", quote)

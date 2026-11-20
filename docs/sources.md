@@ -184,7 +184,8 @@ earlier in the sentence ("Rumour: X died", "I think X died", "X reportedly ...")
 their last two words (one for a one-word name), spaces ignored. Also refused: a past year right after the verb ("died in 1998"), and a page with an explicit doubt phrase (hoax, death rumours, fake news,
 is alive, alive and well, hale and hearty, is recovering, not true): plain "rumours", "denied" or "stable" no longer block a real obituary. Everything fails closed: no person found, no count.
 Once a quote passes this check, "passed away", "is no more", "breathed his last" and "dies" count as the same word as the claim's "has
-died" in the later word-overlap checks, which used to refuse real reports for their wording alone.
+died" in the later word-overlap checks, which used to refuse real reports for their wording alone. The matched name is also written the
+claim's way in the quote ("Giribabu", "Giri-Babu" and "Giri Babu" are one name), for the same reason.
 **Guaranteed:** "X's father/co-star died", "X mourns Y", "wife of X dies", "X said Y died", "X has not / nearly / reportedly died" never count.
 **Not guaranteed:** a namesake's obituary, or a plain "X died" on a satire page; those rest on the three-owner threshold and the judge.
 Measured on the four live pages that reported Giri Babu's death: all four owners still count. English only; claims in other languages reach
